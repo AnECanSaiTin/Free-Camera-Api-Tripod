@@ -12,7 +12,8 @@
     "chunk_loader.ClientChunkCacheMixin",
     "chunk_loader.LevelRendererMixin",
     "control_scheme.MinecraftMixin",
-    "control_scheme.MouseHandlerMixin"
+    "control_scheme.MouseHandlerMixin",
+    "CameraModifierMixin"
   ],
   "injectors": {
     "defaultRequire": 1

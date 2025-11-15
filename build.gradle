@@ -18,6 +18,18 @@ version = 'neo-' + minecraft_version + '-' + mod_version
 group = mod_group_id
 
 repositories {
+    clear()
+    maven {
+        url = "https://libraries.minecraft.net/"
+    }
+
+    maven {
+        url = "https://neoforged.forgecdn.net/releases"
+    }
+
+    maven {
+        url = "https://neoforged.forgecdn.net/mojang-meta"
+    }
     // Add here additional repositories if required by some of the dependencies below.
     mavenLocal()
 
@@ -125,7 +137,7 @@ configurations {
 }
 
 dependencies {
-    implementation files("libs/free_camera_api-neo-1.21.7-3.1.0.jar")
+    implementation files("libs/free_camera_api-neo-1.21.7-3.2.2.jar")
 //    implementation "maven.modrinth:free-camera-api:3.0.2"
     // Example optional mod dependency with JEI
     // The JEI API is declared for compile time use, while the full JEI artifact is used at runtime
@@ -141,7 +153,6 @@ dependencies {
 
     // Example mod dependency using a file as dependency
     // implementation files("libs/coolmod-${mc_version}-${coolmod_version}.jar")
-
     // Example project dependency using a sister or child project:
     // implementation project(":myproject")
 
