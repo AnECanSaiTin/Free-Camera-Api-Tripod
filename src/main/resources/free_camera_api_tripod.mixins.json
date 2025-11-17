@@ -9,11 +9,12 @@
     "chunk_loader.TrackedEntityMixin"
   ],
   "client": [
+    "CameraModifierMixin",
+    "ModifierManagerMixin",
     "chunk_loader.ClientChunkCacheMixin",
     "chunk_loader.LevelRendererMixin",
     "control_scheme.MinecraftMixin",
-    "control_scheme.MouseHandlerMixin",
-    "CameraModifierMixin"
+    "control_scheme.MouseHandlerMixin"
   ],
   "injectors": {
     "defaultRequire": 1

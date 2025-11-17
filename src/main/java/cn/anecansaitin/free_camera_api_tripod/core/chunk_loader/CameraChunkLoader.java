@@ -12,10 +12,9 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.network.ClientPacketDistributor;
-import net.neoforged.neoforge.network.PacketDistributor;
 import org.joml.Vector3f;
 
-import static cn.anecansaitin.freecameraapi.core.ModifierStates.*;
+import static cn.anecansaitin.freecameraapi.api.ModifierStates.*;
 
 @EventBusSubscriber(modid = FreeCameraApiTripod.MODID, value = Dist.CLIENT)
 public class CameraChunkLoader {
