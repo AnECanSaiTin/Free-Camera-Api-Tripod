@@ -62,7 +62,6 @@ neoForge {
         minecraftVersion = project.parchment_minecraft_version
     }
 
-    interfaceInjectionData.from "interfaces.json"
     // This line is optional. Access Transformers are automatically detected
     // accessTransformers = project.files('src/main/resources/META-INF/accesstransformer.cfg')
 
@@ -138,7 +137,7 @@ configurations {
 }
 
 dependencies {
-    implementation files("libs/free_camera_api-neo-1.21.7-3.2.2.jar")
+    implementation files("libs/free_camera_api-neo-1.21.7-4.0.0.jar")
 //    implementation "maven.modrinth:free-camera-api:3.0.2"
     // Example optional mod dependency with JEI
     // The JEI API is declared for compile time use, while the full JEI artifact is used at runtime

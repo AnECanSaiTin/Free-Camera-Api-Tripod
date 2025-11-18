@@ -1,9 +1,10 @@
 package cn.anecansaitin.free_camera_api_tripod.core.control_scheme;
 
 import cn.anecansaitin.free_camera_api_tripod.FreeCameraApiTripod;
-import cn.anecansaitin.freecameraapi.api.extension.ControlScheme;
+import cn.anecansaitin.free_camera_api_tripod.api.control_scheme.ControlScheme;
+import cn.anecansaitin.free_camera_api_tripod.mixin_interface.IExModifierManager;
+import cn.anecansaitin.freecameraapi.api.ModifierStates;
 import cn.anecansaitin.freecameraapi.core.ModifierManager;
-import cn.anecansaitin.freecameraapi.core.ModifierStates;
 import com.mojang.blaze3d.platform.Window;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.ClientInput;
@@ -25,9 +26,8 @@ import org.joml.Vector3f;
 
 import java.util.Optional;
 
-import static cn.anecansaitin.freecameraapi.api.extension.ControlScheme.*;
-import static cn.anecansaitin.freecameraapi.core.ModifierStates.ENABLE;
 import static cn.anecansaitin.freecameraapi.ClientUtil.*;
+import static cn.anecansaitin.freecameraapi.api.ModifierStates.*;
 
 @EventBusSubscriber(modid = FreeCameraApiTripod.MODID, value = Dist.CLIENT)
 public class ControlSchemeManager {
@@ -41,19 +41,20 @@ public class ControlSchemeManager {
     @SubscribeEvent
     public static void onMovementInputUpdate(MovementInputUpdateEvent event) {
         ModifierManager manager = ModifierManager.INSTANCE;
+        IExModifierManager exManager = IExModifierManager.of(manager);
 
-        if (!manager.isStateEnabledAnd(ENABLE) || Minecraft.getInstance().player.isPassenger()) {
+        if (!manager.isStateEnabledAnd(ENABLE) || player().isPassenger()) {
             return;
         }
 
-        ControlScheme controlScheme = manager.controlScheme();
+        ControlScheme controlScheme = exManager.controlScheme();
         ClientInput input = event.getInput();
 
         switch (controlScheme) {
-            case CAMERA_RELATIVE cameraRelative -> cameraRelative(input, manager);
-            case CAMERA_RELATIVE_STRAFE cameraRelativeStrafe -> cameraRelativeStrafe(input, manager);
-            case PLAYER_RELATIVE playerRelative -> playerRelative(input, playerRelative.angle());
-            case PLAYER_RELATIVE_STRAFE playerRelativeStrafe -> mouseMove();
+            case ControlScheme.CAMERA_RELATIVE cameraRelative -> cameraRelative(input, manager);
+            case ControlScheme.CAMERA_RELATIVE_STRAFE cameraRelativeStrafe -> cameraRelativeStrafe(input, manager);
+            case ControlScheme.PLAYER_RELATIVE playerRelative -> playerRelative(input, playerRelative.angle());
+            case ControlScheme.PLAYER_RELATIVE_STRAFE playerRelativeStrafe -> mouseMove();
             default -> {
             }
         }
@@ -71,6 +72,7 @@ public class ControlSchemeManager {
         int angle = ANGLES[VEC2.x + 1][VEC2.y + 1];
 
         player().setYRot(yRot + angle);
+        player().setXRot(0);
         input.keyPresses = new Input(true, false, false, false, keyPresses.jump(), keyPresses.shift(), keyPresses.sprint());
         input.moveVector = FORWARD;
     }
@@ -97,6 +99,7 @@ public class ControlSchemeManager {
         calculateImpulse(keyPresses);
         LocalPlayer player = player();
         player.setYRot(VEC2.x * -angle + playerYHeadRot());
+        player.setXRot(0);
 
         switch (VEC2.y) {
             case -1 -> input.moveVector = BACKWARD;
@@ -120,14 +123,15 @@ public class ControlSchemeManager {
     public static void mouseInput(InputEvent.MouseButton.Pre event) {
         Minecraft mc = mc();
         ModifierManager manager = ModifierManager.INSTANCE;
+        IExModifierManager exManager = IExModifierManager.of(manager);
 
         if (mc.screen != null || !manager.isStateEnabledOr(ModifierStates.ENABLE)) {
             return;
         }
 
-        switch (manager.controlScheme()) {
-            case CAMERA_RELATIVE_STRAFE cameraRelativeStrafe -> mc.mouseHandler.releaseMouse();
-            case PLAYER_RELATIVE_STRAFE playerRelativeStrafe -> mc.mouseHandler.releaseMouse();
+        switch (exManager.controlScheme()) {
+            case ControlScheme.CAMERA_RELATIVE_STRAFE cameraRelativeStrafe -> mc.mouseHandler.releaseMouse();
+            case ControlScheme.PLAYER_RELATIVE_STRAFE playerRelativeStrafe -> mc.mouseHandler.releaseMouse();
             case null, default -> {
             }
         }
@@ -136,9 +140,26 @@ public class ControlSchemeManager {
     public static void mouseMove() {
         Minecraft mc = mc();
         ModifierManager manager = ModifierManager.INSTANCE;
+        IExModifierManager exManager = IExModifierManager.of(manager);
 
         if (mc.screen != null || !manager.isStateEnabledOr(ModifierStates.ENABLE)) {
             return;
+        }
+
+        switch (exManager.controlScheme()) {
+            case ControlScheme.CAMERA_RELATIVE cameraRelative -> {
+                return;
+            }
+            case ControlScheme.CAMERA_RELATIVE_STRAFE cameraRelativeStrafe -> {
+            }
+            case ControlScheme.PLAYER_RELATIVE playerRelative -> {
+                return;
+            }
+            case ControlScheme.PLAYER_RELATIVE_STRAFE playerRelativeStrafe -> {
+            }
+            case ControlScheme.VANILLA vanilla -> {
+                return;
+            }
         }
 
         Vector3f blockPos = pick();
@@ -198,14 +219,13 @@ public class ControlSchemeManager {
 
     private static Vector3f getMousePosInWorld() {
         Vector3f mouseRay = getMouseRay();
-        Minecraft mc = Minecraft.getInstance();
 
         if (Math.abs(mouseRay.y) < 1e-6f) {
-            return mc.player.position().toVector3f().add(mouseRay.mul(100));
+            return player().position().toVector3f().add(mouseRay.mul(100));
         }
 
         Vector3f cameraPos = ModifierManager.INSTANCE.pos();
-        float playerY = (float) mc.player.getY();
+        float playerY = (float) player().getY();
         float length = (playerY - cameraPos.y) / mouseRay.y;
         return mouseRay.set(cameraPos.x + mouseRay.x * length, playerY, cameraPos.z + mouseRay.z * length);
     }

@@ -1,7 +1,8 @@
 package cn.anecansaitin.free_camera_api_tripod;
 
+import cn.anecansaitin.free_camera_api_tripod.api.IExCameraModifier;
+import cn.anecansaitin.free_camera_api_tripod.api.control_scheme.ControlScheme;
 import cn.anecansaitin.freecameraapi.api.*;
-import cn.anecansaitin.freecameraapi.api.extension.ControlScheme;
 
 @CameraPlugin(value = "dev", priority = ModifierPriority.LOWEST)
 public class DevPlugin implements ICameraPlugin {
@@ -12,9 +13,10 @@ public class DevPlugin implements ICameraPlugin {
         this.modifier = modifier;
         modifier.disable()
                 .enablePos()
-                .enableRotation()
-                .asExtension()
-                .setControlScheme(ControlScheme.PLAYER_RELATIVE_STRAFE);
+                .enableRotation();
+        IExCameraModifier.of(modifier)
+                .setControlScheme(ControlScheme.VANILLA)
+                .enableChunkLoader();
     }
 
     @Override
@@ -23,8 +25,10 @@ public class DevPlugin implements ICameraPlugin {
 //                .disable()
                 .enable()
 //                .setPos(4,5,-4)
-//                .setRotationYXZ(45,45,0)
-                .setPos(5,5,-5)
-                .setRotationYXZ(45,45,0);
+                .enableGlobalMode()
+                .setRotationYXZ(90,0,0)
+                .setPos(100, 90, -10)
+//                .setRotationYXZ(45, 45, 0);
+ ;
     }
 }

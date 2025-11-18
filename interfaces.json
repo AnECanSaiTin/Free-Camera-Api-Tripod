@@ -1,8 +1,0 @@
-{
-  "cn/anecansaitin/freecameraapi/core/Modifier": [
-    "cn/anecansaitin/free_camera_api_tripod/api/IExCameraModifier"
-  ],
-  "cn/anecansaitin/freecameraapi/core/ModifierManager": [
-    "cn/anecansaitin/free_camera_api_tripod/api/IExModifierManager"
-  ]
-}
