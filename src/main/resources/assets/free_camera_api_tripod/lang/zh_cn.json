@@ -1,3 +1,7 @@
 {
-  "free_camera_api_tripod.configuration.camera_chunk_loading_radius": "相机区块加载半径"
+  "free_camera_api_tripod.configuration.camera_chunk_loading_radius": "相机区块加载半径",
+  "commands.free_camera_api_tripod.arguments.camera_state.invalid": "相机状态必须是%1$s之一，但发现了%2$s",
+  "commands.free_camera_api_tripod.cmd_camera.presets.not_found": "相机预设%s不存在",
+  "commands.free_camera_api_tripod.cmd_camera.state.set": "相机预设%s的状态%s设置为%s",
+  "commands.free_camera_api_tripod.cmd_camera.state.get": "相机预设%s的状态%s为%s"
 }

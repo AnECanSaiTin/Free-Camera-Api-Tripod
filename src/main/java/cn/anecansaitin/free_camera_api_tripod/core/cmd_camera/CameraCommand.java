@@ -1,7 +1,10 @@
 package cn.anecansaitin.free_camera_api_tripod.core.cmd_camera;
 
 import cn.anecansaitin.free_camera_api_tripod.FreeCameraApiTripod;
+import cn.anecansaitin.free_camera_api_tripod.commands.argument.StateArgument;
+import cn.anecansaitin.freecameraapi.api.ModifierStates;
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.BoolArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import net.minecraft.commands.CommandSourceStack;
@@ -21,8 +24,41 @@ public class CameraCommand {
                         .then(Commands.literal("state")
                                 .then(Commands.argument("presets", StringArgumentType.string())
                                         .suggests(CAMERA_ID)
-                                        .then(Commands.argument("state", StringArgumentType.string())
-                                                .suggests(CAMERA_STATE)
+                                        .then(Commands.argument("state", new StateArgument())
+                                                .then(Commands.literal("get")
+                                                        .executes(ctx -> {
+                                                            String presets = ctx.getArgument("presets", String.class);
+                                                            CameraState camera = CmdCamera.INSTANCE.get(presets);
+
+                                                            if (camera == null) {
+                                                                ctx.getSource().sendFailure(Component.translatable("commands." + FreeCameraApiTripod.MODID + ".cmd_camera.presets.not_found", presets));
+                                                                return 0;
+                                                            }
+
+                                                            Integer state = ctx.getArgument("state", Integer.class);
+
+                                                            ctx.getSource().sendSuccess(() -> Component.translatable("commands." + FreeCameraApiTripod.MODID + ".cmd_camera.state.get", presets, ModifierStates.getName(state), Boolean.toString(isStateEnabled(camera.getState(), state))), true);
+                                                            return 1;
+                                                        })
+                                                )
+                                                .then(Commands.literal("set")
+                                                        .then(Commands.argument("value", BoolArgumentType.bool())
+                                                                .executes(ctx -> {
+                                                                    String presets = ctx.getArgument("presets", String.class);
+                                                                    CameraState camera = CmdCamera.INSTANCE.get(presets);
+
+                                                                    if (camera == null) {
+                                                                        camera = CmdCamera.INSTANCE.create(presets);
+                                                                    }
+
+                                                                    Integer state = ctx.getArgument("state", Integer.class);
+                                                                    Boolean value = ctx.getArgument("value", Boolean.class);
+                                                                    camera.setBitState(state, value);
+                                                                    ctx.getSource().sendSuccess(() -> Component.translatable("commands." + FreeCameraApiTripod.MODID + ".cmd_camera.state.set", presets, ModifierStates.getName(state), value.toString()), true);
+                                                                    return 1;
+                                                                })
+                                                        )
+                                                )
                                         )
                                 )
                         )
@@ -37,28 +73,7 @@ public class CameraCommand {
         return builder.buildFuture();
     };
 
-    private static final SuggestionProvider<CommandSourceStack> CAMERA_STATE = (ctx, builder) -> builder
-            .suggest("pos")
-            .suggest("rot")
-            .suggest("fov")
-            .suggest("obstacle")
-            .suggest("global_mode")
-            .suggest("chunk_loader")
-            .suggest("control_scheme")
-            .buildFuture();
+    private static boolean isStateEnabled(int cameraState, int state) {
+        return (cameraState & state) != 0;
+    }
 }
-
-//.then(Commands.literal("get")
-//                                                .executes(context -> {
-//String id = context.getArgument("presets", String.class);
-//CameraState state = CmdCamera.INSTANCE.get(id);
-//
-//                                                    if (state == null) {
-//        context.getSource().sendFailure(Component.literal("id 不存在"));
-//        return 0;
-//        }
-//
-//state.
-//                                                    return 1;
-//                                                            })
-//                                                            )

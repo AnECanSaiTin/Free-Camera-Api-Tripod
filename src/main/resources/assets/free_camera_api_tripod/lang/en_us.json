@@ -1,3 +1,7 @@
 {
-  "free_camera_api_tripod.configuration.camera_chunk_loading_radius": "Camera Chunk Loading Radius"
+  "free_camera_api_tripod.configuration.camera_chunk_loading_radius": "Camera Chunk Loading Radius",
+  "commands.free_camera_api_tripod.arguments.camera_state.invalid": "Camera state must be one of %1$s, found %2$s",
+  "commands.free_camera_api_tripod.cmd_camera.presets.not_found": "Camera presets %s not found",
+  "commands.free_camera_api_tripod.cmd_camera.state.set": "value for state %2$s for presets %1$s set to %3$s",
+  "commands.free_camera_api_tripod.cmd_camera.state.get": "Value of state %2$s for presets %1$s is %3$s"
 }

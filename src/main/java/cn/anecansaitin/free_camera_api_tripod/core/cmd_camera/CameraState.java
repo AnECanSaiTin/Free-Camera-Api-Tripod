@@ -18,12 +18,25 @@ public class CameraState {
         scheme = ControlScheme.VANILLA;
     }
 
+    public CameraState() {
+        this.state = 0;
+        scheme = ControlScheme.VANILLA;
+    }
+
     public int getState() {
         return state;
     }
 
     public void setState(int state) {
         this.state = state;
+    }
+
+    public void setBitState(int state, boolean value) {
+        if (value) {
+            this.state |= state;
+        } else {
+            this.state &= ~state;
+        }
     }
 
     @NotNull
