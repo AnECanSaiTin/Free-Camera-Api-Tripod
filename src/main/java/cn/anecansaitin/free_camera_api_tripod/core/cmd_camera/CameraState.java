@@ -1,4 +1,4 @@
-package cn.anecansaitin.free_camera_api_tripod.core.server_camera;
+package cn.anecansaitin.free_camera_api_tripod.core.cmd_camera;
 
 import cn.anecansaitin.free_camera_api_tripod.api.control_scheme.ControlScheme;
 import org.jetbrains.annotations.NotNull;

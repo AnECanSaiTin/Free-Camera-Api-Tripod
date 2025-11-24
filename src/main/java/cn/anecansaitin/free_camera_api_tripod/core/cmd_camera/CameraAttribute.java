@@ -1,4 +1,4 @@
-package cn.anecansaitin.free_camera_api_tripod.core.server_camera;
+package cn.anecansaitin.free_camera_api_tripod.core.cmd_camera;
 
 import org.joml.Vector3f;
 

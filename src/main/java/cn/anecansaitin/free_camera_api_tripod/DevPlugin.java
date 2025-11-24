@@ -21,13 +21,13 @@ public class DevPlugin implements ICameraPlugin {
 
     @Override
     public void update() {
-        modifier
+//        modifier
 //                .disable()
-                .enable()
+//                .enable()
 //                .setPos(4,5,-4)
-                .enableGlobalMode()
-                .setRotationYXZ(90,0,0)
-                .setPos(100, 90, -10)
+//                .enableGlobalMode()
+//                .setRotationYXZ(90,0,0)
+//                .setPos(100, 90, -10)
 //                .setRotationYXZ(45, 45, 0);
  ;
     }
