@@ -1,7 +1,19 @@
 {
   "free_camera_api_tripod.configuration.camera_chunk_loading_radius": "相机区块加载半径",
   "commands.free_camera_api_tripod.arguments.camera_state.invalid": "相机状态必须是%1$s之一，但发现了%2$s",
-  "commands.free_camera_api_tripod.cmd_camera.presets.not_found": "相机预设%s不存在",
-  "commands.free_camera_api_tripod.cmd_camera.state.set": "相机预设%s的状态%s设置为%s",
-  "commands.free_camera_api_tripod.cmd_camera.state.get": "相机预设%s的状态%s为%s"
+  "commands.free_camera_api_tripod.arguments.control_scheme.invalid": "相机控制模式必须是%1$s之一，但发现了%2$s",
+  "commands.free_camera_api_tripod.cmd_camera.presets.not_found": "相机预设[%s]不存在",
+  "commands.free_camera_api_tripod.cmd_camera.state.set": "相机预设[%s]的状态%s设置为%s",
+  "commands.free_camera_api_tripod.cmd_camera.state.get": "相机预设[%s]的状态%s为%s",
+  "commands.free_camera_api_tripod.cmd_camera.control_scheme.get": "相机预设[%s]的控制模式为%s",
+  "commands.free_camera_api_tripod.cmd_camera.control_scheme.set": "相机预设[%s]的控制模式设置为%s",
+  "commands.free_camera_api_tripod.cmd_camera.presets.list.empty": "相机预设列表为空",
+  "commands.free_camera_api_tripod.cmd_camera.presets.list.title": "§a序列 §r| §b编号",
+  "commands.free_camera_api_tripod.cmd_camera.presets.list.click": "[点击查看]",
+  "commands.free_camera_api_tripod.cmd_camera.presets.view.title": "§a状态 §r| §b值  §r预设[%s]",
+  "free_camera_api_tripod.control_scheme.vanilla": "原版",
+  "free_camera_api_tripod.control_scheme.camera_relative": "相对相机",
+  "free_camera_api_tripod.control_scheme.camera_relative_strafe": "相对相机横移",
+  "free_camera_api_tripod.control_scheme.player_relative": "相对玩家 [%s°]",
+  "free_camera_api_tripod.control_scheme.player_relative_strafe": "相对玩家横移"
 }
