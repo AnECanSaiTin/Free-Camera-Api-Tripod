@@ -13,6 +13,7 @@
     "ModifierManagerMixin",
     "chunk_loader.ClientChunkCacheMixin",
     "chunk_loader.LevelRendererMixin",
+    "cmd_camera.ScreenMixin",
     "control_scheme.MinecraftMixin",
     "control_scheme.MouseHandlerMixin"
   ],
