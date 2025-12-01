@@ -27,13 +27,15 @@ public record CameraState(boolean enable, boolean update) implements CustomPacke
     }
 
     public static void handle(CameraState pack, IPayloadContext context) {
-        Player player = context.player();
-        CameraData data = player.getData(ModAttachment.CAMERA_DATA);
-        data.updateState(pack.enable, pack.update);
+        context.enqueueWork(() -> {
+            Player player = context.player();
+            CameraData data = player.getData(ModAttachment.CAMERA_DATA);
+            data.updateState(pack.enable, pack.update);
 
-        if (!pack.enable && pack.update) {
-            CameraTicketController.removeAllChunk((ServerPlayer) player);
-            ((ServerLevel) player.level()).getChunkSource().chunkMap.move((ServerPlayer) player);
-        }
+            if (!pack.enable && pack.update) {
+                CameraTicketController.removeAllChunk((ServerPlayer) player);
+                ((ServerLevel) player.level()).getChunkSource().chunkMap.move((ServerPlayer) player);
+            }
+        });
     }
 }

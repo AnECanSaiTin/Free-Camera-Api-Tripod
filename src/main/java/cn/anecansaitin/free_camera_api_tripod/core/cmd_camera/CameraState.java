@@ -1,9 +1,16 @@
 package cn.anecansaitin.free_camera_api_tripod.core.cmd_camera;
 
 import cn.anecansaitin.free_camera_api_tripod.api.control_scheme.ControlScheme;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
 import org.jetbrains.annotations.NotNull;
 
 public class CameraState {
+    public static final Codec<CameraState> CODEC = RecordCodecBuilder.create(instance -> instance.group(
+                    Codec.INT.fieldOf("state").forGetter(CameraState::getState),
+                    ControlScheme.CODEC.fieldOf("scheme").forGetter(CameraState::getScheme)
+            ).apply(instance, CameraState::new)
+    );
     private int state;
     @NotNull
     private ControlScheme scheme;

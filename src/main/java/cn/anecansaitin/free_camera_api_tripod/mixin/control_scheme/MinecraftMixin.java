@@ -2,7 +2,7 @@ package cn.anecansaitin.free_camera_api_tripod.mixin.control_scheme;
 
 import cn.anecansaitin.free_camera_api_tripod.api.control_scheme.ControlScheme;
 import cn.anecansaitin.free_camera_api_tripod.mixin_interface.IExModifierManager;
-import cn.anecansaitin.freecameraapi.api.ModifierStates;
+import cn.anecansaitin.freecameraapi.api.CameraStates;
 import cn.anecansaitin.freecameraapi.core.ModifierManager;
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
@@ -18,7 +18,7 @@ public abstract class MinecraftMixin {
         ModifierManager manager = ModifierManager.INSTANCE;
         IExModifierManager exManager = IExModifierManager.of(manager);
 
-        if(!manager.isStateEnabledAnd(ModifierStates.ENABLE)) {
+        if(!manager.isStateEnabledAnd(CameraStates.ENABLE)) {
             original.call(instance);
             return;
         }

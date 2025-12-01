@@ -1,7 +1,7 @@
 package cn.anecansaitin.free_camera_api_tripod.commands.argument;
 
 import cn.anecansaitin.free_camera_api_tripod.FreeCameraApiTripod;
-import cn.anecansaitin.freecameraapi.api.ModifierStates;
+import cn.anecansaitin.freecameraapi.api.CameraStates;
 import com.mojang.brigadier.StringReader;
 import com.mojang.brigadier.arguments.ArgumentType;
 import com.mojang.brigadier.context.CommandContext;
@@ -26,16 +26,16 @@ public class StateArgument implements ArgumentType<Integer> {
         EXAMPLES = new ArrayList<>(1);
         EXAMPLES.add("camera state");
 
-        SUGGESTIONS = ModifierStates.NAME_STATE.keySet().toArray(new String[0]);
+        SUGGESTIONS = CameraStates.NAME_STATE.keySet().toArray(new String[0]);
         SUGGESTIONS_STRING = String.join(" | ", SUGGESTIONS);
     }
 
     @Override
     public Integer parse(StringReader reader) throws CommandSyntaxException {
         String name = reader.readString();
-        int state = ModifierStates.getState(name);
+        int state = CameraStates.getState(name);
 
-        if (state == ModifierStates.NAME_STATE.defaultReturnValue()) {
+        if (state == CameraStates.NAME_STATE.defaultReturnValue()) {
             throw ERROR.createWithContext(reader, name, SUGGESTIONS_STRING);
         }
 

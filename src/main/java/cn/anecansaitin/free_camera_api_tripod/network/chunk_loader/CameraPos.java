@@ -25,8 +25,10 @@ public record CameraPos(float x, float y, float z) implements CustomPacketPayloa
     }
 
     public static void handle(CameraPos pack, IPayloadContext context) {
-        Player player = context.player();
-        CameraData data = player.getData(ModAttachment.CAMERA_DATA);
-        data.updatePos(pack.x, pack.y, pack.z);
+        context.enqueueWork(() -> {
+            Player player = context.player();
+            CameraData data = player.getData(ModAttachment.CAMERA_DATA);
+            data.updatePos(pack.x, pack.y, pack.z);
+        });
     }
 }

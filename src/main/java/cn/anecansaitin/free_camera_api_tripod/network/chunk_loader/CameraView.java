@@ -29,25 +29,27 @@ public record CameraView(int x, int z) implements CustomPacketPayload {
     }
 
     public static void handle(CameraView pack, IPayloadContext context) {
-        Player player = context.player();
-        CameraData data = player.getData(ModAttachment.CAMERA_DATA);
-        int radius = CameraAdditionConfig.cameraChunkLoadRadius((ServerPlayer) player);
-        boolean updateView = data.updateView(pack.x, pack.z, radius);
+        context.enqueueWork(() -> {
+            Player player = context.player();
+            CameraData data = player.getData(ModAttachment.CAMERA_DATA);
+            int radius = CameraAdditionConfig.cameraChunkLoadRadius((ServerPlayer) player);
+            boolean updateView = data.updateView(pack.x, pack.z, radius);
 
-        if (updateView) {
-            int currentX = data.view.x();
-            int currentZ = data.view.z();
+            if (updateView) {
+                int currentX = data.view.x();
+                int currentZ = data.view.z();
 
-            int minX = currentX - radius;
-            int maxX = currentX + radius;
-            int minZ = currentZ - radius;
-            int maxZ = currentZ + radius;
+                int minX = currentX - radius;
+                int maxX = currentX + radius;
+                int minZ = currentZ - radius;
+                int maxZ = currentZ + radius;
 
-            for (int x = minX; x <= maxX; x++) {
-                for (int z = minZ; z <= maxZ; z++) {
-                    CameraTicketController.addChunk((ServerLevel) player.level(), player, x, z);
+                for (int x = minX; x <= maxX; x++) {
+                    for (int z = minZ; z <= maxZ; z++) {
+                        CameraTicketController.addChunk((ServerLevel) player.level(), player, x, z);
+                    }
                 }
             }
-        }
+        });
     }
 }

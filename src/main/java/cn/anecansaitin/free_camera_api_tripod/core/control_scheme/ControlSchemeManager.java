@@ -3,7 +3,7 @@ package cn.anecansaitin.free_camera_api_tripod.core.control_scheme;
 import cn.anecansaitin.free_camera_api_tripod.FreeCameraApiTripod;
 import cn.anecansaitin.free_camera_api_tripod.api.control_scheme.ControlScheme;
 import cn.anecansaitin.free_camera_api_tripod.mixin_interface.IExModifierManager;
-import cn.anecansaitin.freecameraapi.api.ModifierStates;
+import cn.anecansaitin.freecameraapi.api.CameraStates;
 import cn.anecansaitin.freecameraapi.core.ModifierManager;
 import com.mojang.blaze3d.platform.Window;
 import net.minecraft.client.Minecraft;
@@ -27,7 +27,7 @@ import org.joml.Vector3f;
 import java.util.Optional;
 
 import static cn.anecansaitin.freecameraapi.ClientUtil.*;
-import static cn.anecansaitin.freecameraapi.api.ModifierStates.*;
+import static cn.anecansaitin.freecameraapi.api.CameraStates.*;
 
 @EventBusSubscriber(modid = FreeCameraApiTripod.MODID, value = Dist.CLIENT)
 public class ControlSchemeManager {
@@ -125,7 +125,7 @@ public class ControlSchemeManager {
         ModifierManager manager = ModifierManager.INSTANCE;
         IExModifierManager exManager = IExModifierManager.of(manager);
 
-        if (mc.screen != null || !manager.isStateEnabledOr(ModifierStates.ENABLE)) {
+        if (mc.screen != null || !manager.isStateEnabledOr(CameraStates.ENABLE)) {
             return;
         }
 
@@ -142,7 +142,7 @@ public class ControlSchemeManager {
         ModifierManager manager = ModifierManager.INSTANCE;
         IExModifierManager exManager = IExModifierManager.of(manager);
 
-        if (mc.screen != null || !manager.isStateEnabledOr(ModifierStates.ENABLE)) {
+        if (mc.screen != null || !manager.isStateEnabledOr(CameraStates.ENABLE)) {
             return;
         }
 

@@ -1,6 +1,6 @@
 package cn.anecansaitin.free_camera_api_tripod.mixin;
 
-import cn.anecansaitin.free_camera_api_tripod.api.ExModifierStates;
+import cn.anecansaitin.free_camera_api_tripod.api.ExCameraStates;
 import cn.anecansaitin.free_camera_api_tripod.api.IExCameraModifier;
 import cn.anecansaitin.free_camera_api_tripod.api.control_scheme.ControlScheme;
 import cn.anecansaitin.freecameraapi.core.Modifier;
@@ -17,13 +17,13 @@ public abstract class CameraModifierMixin implements IExCameraModifier {
 
     @Override
     public IExCameraModifier enableChunkLoader() {
-        state |= ExModifierStates.CHUNK_LOADER;
+        state |= ExCameraStates.CHUNK_LOADER;
         return this;
     }
 
     @Override
     public IExCameraModifier disableChunkLoader() {
-        state &= ~ExModifierStates.CHUNK_LOADER;
+        state &= ~ExCameraStates.CHUNK_LOADER;
         return this;
     }
 

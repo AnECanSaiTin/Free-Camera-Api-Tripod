@@ -1,16 +1,13 @@
 package cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.client.screen;
 
 import cn.anecansaitin.free_camera_api_tripod.FreeCameraApiTripod;
-import cn.anecansaitin.free_camera_api_tripod.api.control_scheme.ControlScheme;
-import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.CameraState;
-import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.CmdCamera;
-import cn.anecansaitin.freecameraapi.ClientUtil;
-import net.minecraft.ChatFormatting;
+import cn.anecansaitin.free_camera_api_tripod.network.cmd_camera.PlayerRelativeSetting;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.StringWidget;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
+import net.neoforged.neoforge.client.network.ClientPacketDistributor;
 import org.lwjgl.glfw.GLFW;
 
 public class PlayerRelativeSettingScreen extends Screen {
@@ -31,18 +28,8 @@ public class PlayerRelativeSettingScreen extends Screen {
                     return false;
                 }
 
-                CameraState state = CmdCamera.INSTANCE.get(presets);
-
-                if (state == null) {
-                    ClientUtil.player().displayClientMessage(Component.translatable("commands." + FreeCameraApiTripod.MODID + ".cmd_camera.presets.not_found", presets), false);
-                    onClose();
-                    return true;
-                }
-
                 int rot = Integer.parseInt(getValue().isBlank() ? "0" : getValue());
-                ControlScheme.PLAYER_RELATIVE scheme = ControlScheme.PLAYER_RELATIVE(rot);
-                state.setScheme(scheme);
-                ClientUtil.player().displayClientMessage(Component.translatable("commands." + FreeCameraApiTripod.MODID + ".cmd_camera.control_scheme.set", presets, scheme.getTranslation().withStyle(ChatFormatting.GREEN)), false);
+                ClientPacketDistributor.sendToServer(new PlayerRelativeSetting(presets, rot));
                 onClose();
                 return true;
             }
