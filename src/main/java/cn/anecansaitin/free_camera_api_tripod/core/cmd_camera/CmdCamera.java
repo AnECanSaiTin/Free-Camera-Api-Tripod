@@ -10,19 +10,21 @@ import org.jetbrains.annotations.Nullable;
 import java.util.HashMap;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 public class CmdCamera extends SavedData {
-    public static final SavedDataType<CmdCamera> TYPE = new SavedDataType<>(
-            "free_camera_api_tripod:cmd_camera",
+        public static final SavedDataType<CmdCamera> TYPE = new SavedDataType<>(
+            "cmd_camera",
             CmdCamera::new,
             RecordCodecBuilder.create(instance -> instance.group(
                             Codec.unboundedMap(Codec.STRING, CameraState.CODEC)
-                                    .xmap(HashMap::new, map -> map)
+                                    .xmap(HashMap::new, Function.identity())
                                     .fieldOf("states")
-                                    .forGetter(data -> data.states))
+                                    .forGetter(cmdCamera -> cmdCamera.states))
                     .apply(instance, CmdCamera::new)
             )
     );
+
     private final HashMap<String, CameraState> states;
 
     public CmdCamera() {

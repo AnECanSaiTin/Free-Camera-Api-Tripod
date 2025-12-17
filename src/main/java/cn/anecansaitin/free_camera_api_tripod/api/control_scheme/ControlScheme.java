@@ -16,11 +16,13 @@ public sealed interface ControlScheme {
     PLAYER_RELATIVE_STRAFE PLAYER_RELATIVE_STRAFE = new PLAYER_RELATIVE_STRAFE();
 
     HashMap<String, MapCodec<? extends ControlScheme>> CODEC_TYPE = new HashMap<>(Map.of(VANILLA.type(), VANILLA.mapCodec(), CAMERA_RELATIVE.type(), CAMERA_RELATIVE.mapCodec(), CAMERA_RELATIVE_STRAFE.type(), CAMERA_RELATIVE_STRAFE.mapCodec(), PLAYER_RELATIVE_STRAFE.type(), PLAYER_RELATIVE_STRAFE.mapCodec(), PLAYER_RELATIVE.TYPE, PLAYER_RELATIVE.MAP_CODEC));
-    Codec<ControlScheme> CODEC = Codec.STRING.dispatch(ControlScheme::type, CODEC_TYPE::get);
+    Codec<ControlScheme> CODEC = Codec.STRING.dispatch(
+            ControlScheme::type,
+            CODEC_TYPE::get
+    );
 
     MutableComponent translation();
     String type();
-    MapCodec<? extends ControlScheme> mapCodec();
 
     static PLAYER_RELATIVE PLAYER_RELATIVE(int angle) {
         return new PLAYER_RELATIVE(angle);
@@ -28,7 +30,7 @@ public sealed interface ControlScheme {
 
     record VANILLA() implements ControlScheme {
         public static final String TYPE = "vanilla";
-        public static final MapCodec<VANILLA> MAP_CODEC = MapCodec.unit(ControlScheme.VANILLA);
+        public static final MapCodec<VANILLA> MAP_CODEC = MapCodec.unit(() -> ControlScheme.VANILLA);
 
         @Override
         public MutableComponent translation() {
@@ -40,7 +42,6 @@ public sealed interface ControlScheme {
             return TYPE;
         }
 
-        @Override
         public MapCodec<? extends ControlScheme> mapCodec() {
             return MAP_CODEC;
         }
@@ -48,7 +49,7 @@ public sealed interface ControlScheme {
 
     record CAMERA_RELATIVE() implements ControlScheme {
         public static final String TYPE = "camera_relative";
-        public static final MapCodec<CAMERA_RELATIVE> MAP_CODEC = MapCodec.unit(ControlScheme.CAMERA_RELATIVE);
+        public static final MapCodec<CAMERA_RELATIVE> MAP_CODEC = MapCodec.unit(() -> ControlScheme.CAMERA_RELATIVE);
 
         @Override
         public MutableComponent translation() {
@@ -60,7 +61,6 @@ public sealed interface ControlScheme {
             return TYPE;
         }
 
-        @Override
         public MapCodec<? extends ControlScheme> mapCodec() {
             return MAP_CODEC;
         }
@@ -80,7 +80,6 @@ public sealed interface ControlScheme {
             return TYPE;
         }
 
-        @Override
         public MapCodec<? extends ControlScheme> mapCodec() {
             return MAP_CODEC;
         }
@@ -101,16 +100,11 @@ public sealed interface ControlScheme {
         public String type() {
             return TYPE;
         }
-
-        @Override
-        public MapCodec<? extends ControlScheme> mapCodec() {
-            return MAP_CODEC;
-        }
     }
 
     record PLAYER_RELATIVE_STRAFE() implements ControlScheme {
         public static final String TYPE = "player_relative_strafe";
-        public static final MapCodec<PLAYER_RELATIVE_STRAFE> MAP_CODEC = MapCodec.unit(ControlScheme.PLAYER_RELATIVE_STRAFE);
+        public static final MapCodec<PLAYER_RELATIVE_STRAFE> MAP_CODEC = MapCodec.unit(() -> ControlScheme.PLAYER_RELATIVE_STRAFE);
 
         @Override
         public MutableComponent translation() {
@@ -122,7 +116,6 @@ public sealed interface ControlScheme {
             return TYPE;
         }
 
-        @Override
         public MapCodec<? extends ControlScheme> mapCodec() {
             return MAP_CODEC;
         }
