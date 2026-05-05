@@ -1,7 +1,7 @@
-package cn.anecansaitin.free_camera_api_tripod.commands.argument;
+package cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.commands.argument;
 
 import cn.anecansaitin.free_camera_api_tripod.FreeCameraApiTripod;
-import cn.anecansaitin.freecameraapi.api.CameraStates;
+import cn.anecansaitin.free_camera_api_tripod.api.control_scheme.ControlScheme;
 import com.mojang.brigadier.StringReader;
 import com.mojang.brigadier.arguments.ArgumentType;
 import com.mojang.brigadier.context.CommandContext;
@@ -14,32 +14,40 @@ import net.neoforged.neoforge.server.command.CommandUtils;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.concurrent.CompletableFuture;
 
-public class StateArgument implements ArgumentType<Integer> {
+public class SchemeArgument implements ArgumentType<ControlScheme> {
     private static final ArrayList<String> EXAMPLES;
     private static final String[] SUGGESTIONS;
+    private static final HashMap<String, ControlScheme> CONSTANTS;
     private static final String SUGGESTIONS_STRING;
-    private static final Dynamic2CommandExceptionType ERROR = new Dynamic2CommandExceptionType((found, constants) -> CommandUtils.makeTranslatableWithFallback("commands." + FreeCameraApiTripod.MODID + ".arguments.camera_state.invalid", constants, found));
+    private static final Dynamic2CommandExceptionType ERROR = new Dynamic2CommandExceptionType((found, constants) -> CommandUtils.makeTranslatableWithFallback("commands." + FreeCameraApiTripod.MODID + ".arguments.control_scheme.invalid", constants, found));
 
     static {
-        EXAMPLES = new ArrayList<>(1);
-        EXAMPLES.add("camera state");
+        EXAMPLES = new ArrayList<>(4);
+        EXAMPLES.add("control scheme");
 
-        SUGGESTIONS = CameraStates.NAME_STATE.keySet().toArray(new String[0]);
+        CONSTANTS = new HashMap<>(4);
+        CONSTANTS.put("vanilla", ControlScheme.VANILLA);
+        CONSTANTS.put("camera_relative", ControlScheme.CAMERA_RELATIVE);
+        CONSTANTS.put("camera_relative_strafe", ControlScheme.CAMERA_RELATIVE_STRAFE);
+        CONSTANTS.put("player_relative_strafe", ControlScheme.PLAYER_RELATIVE_STRAFE);
+
+        SUGGESTIONS = new String[]{"vanilla", "camera_relative", "camera_relative_strafe", "player_relative_strafe"};
         SUGGESTIONS_STRING = String.join(" | ", SUGGESTIONS);
     }
 
     @Override
-    public Integer parse(StringReader reader) throws CommandSyntaxException {
+    public ControlScheme parse(StringReader reader) throws CommandSyntaxException {
         String name = reader.readString();
-        int state = CameraStates.getState(name);
+        ControlScheme scheme = CONSTANTS.get(name);
 
-        if (state == CameraStates.NAME_STATE.defaultReturnValue()) {
+        if (scheme == null) {
             throw ERROR.createWithContext(reader, name, SUGGESTIONS_STRING);
         }
 
-        return state;
+        return scheme;
     }
 
     @Override

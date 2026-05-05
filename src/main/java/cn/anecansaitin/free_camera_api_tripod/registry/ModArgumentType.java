@@ -1,8 +1,8 @@
 package cn.anecansaitin.free_camera_api_tripod.registry;
 
 import cn.anecansaitin.free_camera_api_tripod.FreeCameraApiTripod;
-import cn.anecansaitin.free_camera_api_tripod.commands.argument.SchemeArgument;
-import cn.anecansaitin.free_camera_api_tripod.commands.argument.StateArgument;
+import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.commands.argument.SchemeArgument;
+import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.commands.argument.StateArgument;
 import net.minecraft.commands.synchronization.ArgumentTypeInfo;
 import net.minecraft.commands.synchronization.ArgumentTypeInfos;
 import net.minecraft.commands.synchronization.SingletonArgumentInfo;

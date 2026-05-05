@@ -1,7 +1,7 @@
 package cn.anecansaitin.free_camera_api_tripod.mixin.chunk_loader;
 
-import cn.anecansaitin.free_camera_api_tripod.attachment.chunk_loader.CameraData;
-import cn.anecansaitin.free_camera_api_tripod.attachment.ModAttachment;
+import cn.anecansaitin.free_camera_api_tripod.core.chunk_loader.attachment.CameraData;
+import cn.anecansaitin.free_camera_api_tripod.registry.ModAttachment;
 import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import com.llamalad7.mixinextras.sugar.Local;
 import net.minecraft.server.level.ChunkMap;
@@ -29,6 +29,7 @@ public abstract class ChunkMapMixin {
             if (data.update) {
                 // 玩家退出相机视角并恢复到正常视角后，再次发送玩家周围方块信息，避免区块渲染缺失
                 player.getChunkTrackingView().forEach(chunkPos -> markChunkPendingToSend(player, chunkPos));
+//                CameraChunkLoader.INSTANCE.cameraStorage();
                 data.update = false;
             }
 

@@ -1,11 +1,11 @@
-package cn.anecansaitin.free_camera_api_tripod.network;
+package cn.anecansaitin.free_camera_api_tripod.registry;
 
 import cn.anecansaitin.free_camera_api_tripod.FreeCameraApiTripod;
-import cn.anecansaitin.free_camera_api_tripod.network.chunk_loader.CameraPos;
-import cn.anecansaitin.free_camera_api_tripod.network.chunk_loader.CameraState;
-import cn.anecansaitin.free_camera_api_tripod.network.chunk_loader.CameraView;
-import cn.anecansaitin.free_camera_api_tripod.network.cmd_camera.PlayerRelativeSetting;
-import cn.anecansaitin.free_camera_api_tripod.network.cmd_camera.PresetsDelete;
+import cn.anecansaitin.free_camera_api_tripod.core.chunk_loader.network.CameraPos;
+import cn.anecansaitin.free_camera_api_tripod.core.chunk_loader.network.CameraState;
+import cn.anecansaitin.free_camera_api_tripod.core.chunk_loader.network.CameraView;
+import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.network.PlayerRelativeSetting;
+import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.network.PresetsDelete;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;

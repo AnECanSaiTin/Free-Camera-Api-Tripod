@@ -41,12 +41,12 @@ public class ControlSchemeManager {
     @SubscribeEvent
     public static void onMovementInputUpdate(MovementInputUpdateEvent event) {
         ModifierManager manager = ModifierManager.INSTANCE;
-        IExModifierManager exManager = IExModifierManager.of(manager);
 
         if (!manager.isStateEnabledAnd(ENABLE) || player().isPassenger()) {
             return;
         }
 
+        IExModifierManager exManager = IExModifierManager.of(manager);
         ControlScheme controlScheme = exManager.controlScheme();
         ClientInput input = event.getInput();
 

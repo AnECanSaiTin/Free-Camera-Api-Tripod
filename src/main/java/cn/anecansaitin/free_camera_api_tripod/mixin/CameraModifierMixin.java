@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.Unique;
 @Mixin(Modifier.class)
 public abstract class CameraModifierMixin implements IExCameraModifier {
     @Unique
-    private ControlScheme scheme;
+    private ControlScheme scheme = ControlScheme.VANILLA;
     @Shadow
     private int state;
 

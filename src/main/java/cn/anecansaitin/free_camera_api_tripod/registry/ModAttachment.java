@@ -1,7 +1,7 @@
-package cn.anecansaitin.free_camera_api_tripod.attachment;
+package cn.anecansaitin.free_camera_api_tripod.registry;
 
 import cn.anecansaitin.free_camera_api_tripod.FreeCameraApiTripod;
-import cn.anecansaitin.free_camera_api_tripod.attachment.chunk_loader.CameraData;
+import cn.anecansaitin.free_camera_api_tripod.core.chunk_loader.attachment.CameraData;
 import net.neoforged.neoforge.attachment.AttachmentType;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;

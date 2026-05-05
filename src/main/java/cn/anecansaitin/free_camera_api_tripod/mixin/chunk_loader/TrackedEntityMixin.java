@@ -1,8 +1,8 @@
 package cn.anecansaitin.free_camera_api_tripod.mixin.chunk_loader;
 
 import cn.anecansaitin.free_camera_api_tripod.core.chunk_loader.CameraChunkLoader;
-import cn.anecansaitin.free_camera_api_tripod.attachment.chunk_loader.CameraData;
-import cn.anecansaitin.free_camera_api_tripod.attachment.ModAttachment;
+import cn.anecansaitin.free_camera_api_tripod.core.chunk_loader.attachment.CameraData;
+import cn.anecansaitin.free_camera_api_tripod.registry.ModAttachment;
 import com.llamalad7.mixinextras.sugar.Local;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;

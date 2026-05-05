@@ -20,7 +20,7 @@ public class CameraAdditionConfig {
 
     public static int cameraChunkLoadRadius(ServerPlayer player) {
         int radius = CAMERA_CHUNK_LOAD_RADIUS.getAsInt();
-        int renderDistance = Mth.clamp(player.requestedViewDistance(), 2, player.getServer().getPlayerList().getViewDistance());
+        int renderDistance = Mth.clamp(player.requestedViewDistance(), 2, player.level().getServer().getPlayerList().getViewDistance());
 
         if (radius == 1) {
             return renderDistance;

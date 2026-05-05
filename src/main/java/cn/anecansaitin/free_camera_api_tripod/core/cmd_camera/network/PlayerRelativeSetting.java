@@ -1,4 +1,4 @@
-package cn.anecansaitin.free_camera_api_tripod.network.cmd_camera;
+package cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.network;
 
 import cn.anecansaitin.free_camera_api_tripod.FreeCameraApiTripod;
 import cn.anecansaitin.free_camera_api_tripod.api.control_scheme.ControlScheme;
@@ -11,12 +11,12 @@ import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.player.Player;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 public record PlayerRelativeSetting(String presets, int angle) implements CustomPacketPayload {
-    public static final Type<PlayerRelativeSetting> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(FreeCameraApiTripod.MODID, "player_relative_setting"));
+    public static final Type<PlayerRelativeSetting> TYPE = new Type<>(Identifier.fromNamespaceAndPath(FreeCameraApiTripod.MODID, "player_relative_setting"));
     public static final StreamCodec<ByteBuf, PlayerRelativeSetting> CODEC = StreamCodec.composite(
             ByteBufCodecs.STRING_UTF8, pack -> pack.presets,
             ByteBufCodecs.VAR_INT, pack -> pack.angle,

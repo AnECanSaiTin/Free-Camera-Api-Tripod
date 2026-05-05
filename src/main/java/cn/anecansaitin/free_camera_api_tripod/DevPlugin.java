@@ -3,6 +3,7 @@ package cn.anecansaitin.free_camera_api_tripod;
 import cn.anecansaitin.free_camera_api_tripod.api.IExCameraModifier;
 import cn.anecansaitin.free_camera_api_tripod.api.control_scheme.ControlScheme;
 import cn.anecansaitin.freecameraapi.api.*;
+import net.minecraft.client.Minecraft;
 
 @CameraPlugin(value = "dev", priority = ModifierPriority.LOWEST)
 public class DevPlugin implements ICameraPlugin {
@@ -11,24 +12,27 @@ public class DevPlugin implements ICameraPlugin {
     @Override
     public void initialize(ICameraModifier modifier) {
         this.modifier = modifier;
-        modifier.disable()
-                .enablePos()
-                .enableRotation();
-        IExCameraModifier.of(modifier)
-                .setControlScheme(ControlScheme.VANILLA)
-                .enableChunkLoader();
     }
 
     @Override
     public void update() {
-//        modifier
-//                .disable()
-//                .enable()
-//                .setPos(4,5,-4)
+//        modifier.enable()
+//                .enablePos()
 //                .enableGlobalMode()
-//                .setRotationYXZ(90,0,0)
-//                .setPos(100, 90, -10)
-//                .setRotationYXZ(45, 45, 0);
- ;
+//                .setPos(509,60,-9999);
+//        IExCameraModifier.of(modifier)
+//                .enableChunkLoader();
+
+//        modifier.enable()
+//                .enablePos()
+//                .enableRotation()
+//                .setPos(0, 10, 0)
+//                .setRotationYXZ(90, 0, 0);
+//        IExCameraModifier.of(modifier)
+//                .setControlScheme(ControlScheme.VANILLA);
+
+//        modifier.disable();
+//        IExCameraModifier.of(modifier)
+//                .disableChunkLoader();
     }
 }

@@ -40,8 +40,8 @@ public abstract class MouseHandlerMixin {
         ControlSchemeManager.mouseMove();
     }
 
-    @WrapOperation(method = "onPress", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/MouseHandler;grabMouse()V"))
-    public void freeCameraAPI$onPress(MouseHandler instance, Operation<Void> original) {
+    @WrapOperation(method = "onButton", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/MouseHandler;grabMouse()V"))
+    public void freeCameraAPI$onButton(MouseHandler instance, Operation<Void> original) {
         ModifierManager manager = ModifierManager.INSTANCE;
         IExModifierManager exManager = IExModifierManager.of(manager);
 

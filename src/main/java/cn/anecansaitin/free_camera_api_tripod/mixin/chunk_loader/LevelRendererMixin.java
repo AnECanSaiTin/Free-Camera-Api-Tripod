@@ -24,8 +24,8 @@ public abstract class LevelRendererMixin {
     @Shadow
     private ViewArea viewArea;
 
-    @Inject(method = "setupRender", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/chunk/SectionRenderDispatcher;setCameraPosition(Lnet/minecraft/world/phys/Vec3;)V"))
-    public void freeCameraAPI$setupRender(Camera camera, Frustum frustum, boolean hasCapturedFrustum, boolean isSpectator, CallbackInfo ci, @Local(ordinal = 0) int i, @Local(ordinal = 1) int j, @Local(ordinal = 2) int k) {
+    @Inject(method = "cullTerrain", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/chunk/SectionRenderDispatcher;setCameraPosition(Lnet/minecraft/world/phys/Vec3;)V"))
+    public void freeCameraAPI$setupRender(Camera camera, Frustum frustum, boolean isSpectator, CallbackInfo ci, @Local(ordinal = 0) int i, @Local(ordinal = 1) int j, @Local(ordinal = 2) int k) {
         if (!CameraChunkLoader.INSTANCE.loadingChunk()) {
             return;
         }
@@ -39,6 +39,6 @@ public abstract class LevelRendererMixin {
         lastCameraSectionX = i;
         lastCameraSectionY = j;
         lastCameraSectionZ = k;
-        viewArea.repositionCamera(SectionPos.of(camera.getPosition()));
+        viewArea.repositionCamera(SectionPos.of(camera.position()));
     }
 }

@@ -1,7 +1,7 @@
 package cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.client.screen;
 
 import cn.anecansaitin.free_camera_api_tripod.FreeCameraApiTripod;
-import cn.anecansaitin.free_camera_api_tripod.network.cmd_camera.PresetsDelete;
+import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.network.PresetsDelete;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.components.StringWidget;
 import net.minecraft.client.gui.screens.Screen;

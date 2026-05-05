@@ -1,6 +1,6 @@
 package cn.anecansaitin.free_camera_api_tripod;
 
-import cn.anecansaitin.free_camera_api_tripod.attachment.ModAttachment;
+import cn.anecansaitin.free_camera_api_tripod.registry.ModAttachment;
 import cn.anecansaitin.free_camera_api_tripod.registry.ModArgumentType;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;

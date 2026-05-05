@@ -1,7 +1,7 @@
 plugins {
     id 'java-library'
     id 'maven-publish'
-    id 'net.neoforged.moddev' version '2.0.99'
+    id 'net.neoforged.moddev' version '2.0.126'
     id 'idea'
 }
 
@@ -137,7 +137,7 @@ configurations {
 }
 
 dependencies {
-    implementation files("libs/free_camera_api-neo-1.21.7-4.0.0.jar")
+    implementation files("libs/free_camera_api-neo-1.21.11-4.0.1-beta.jar")
 //    implementation "maven.modrinth:free-camera-api:3.0.2"
     // Example optional mod dependency with JEI
     // The JEI API is declared for compile time use, while the full JEI artifact is used at runtime

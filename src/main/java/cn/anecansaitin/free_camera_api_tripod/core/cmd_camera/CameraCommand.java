@@ -2,8 +2,8 @@ package cn.anecansaitin.free_camera_api_tripod.core.cmd_camera;
 
 import cn.anecansaitin.free_camera_api_tripod.FreeCameraApiTripod;
 import cn.anecansaitin.free_camera_api_tripod.api.control_scheme.ControlScheme;
-import cn.anecansaitin.free_camera_api_tripod.commands.argument.SchemeArgument;
-import cn.anecansaitin.free_camera_api_tripod.commands.argument.StateArgument;
+import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.commands.argument.SchemeArgument;
+import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.commands.argument.StateArgument;
 import cn.anecansaitin.freecameraapi.api.CameraStates;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.BoolArgumentType;
@@ -19,7 +19,7 @@ import net.minecraft.nbt.StringTag;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
@@ -31,10 +31,15 @@ import java.util.Set;
 public class CameraCommand {
     @SubscribeEvent
     public static void register(RegisterCommandsEvent event) {
+
+    }
+
+    // region 状态
+    private static void state(RegisterCommandsEvent event) {
         CommandDispatcher<CommandSourceStack> dispatcher = event.getDispatcher();
         dispatcher.register(
                 Commands.literal("cmd_camera")
-                        .requires(source -> source.hasPermission(Commands.LEVEL_ADMINS))
+                        .requires(Commands.hasPermission(Commands.LEVEL_ADMINS))
                         // region 状态
                         .then(Commands.literal("state")
                                 .then(Commands.argument("presets", StringArgumentType.string())
@@ -270,7 +275,7 @@ public class CameraCommand {
         }, false);
         source.sendSuccess(() -> {
             MutableComponent click = Component.translatable("commands." + FreeCameraApiTripod.MODID + ".cmd_camera.state.options.click").withStyle(ChatFormatting.BLUE);
-            click.setStyle(click.getStyle().withClickEvent(new ClickEvent.Custom(ResourceLocation.fromNamespaceAndPath(FreeCameraApiTripod.MODID, "player_relative_setting"), Optional.of(StringTag.valueOf(presets)))));
+            click.setStyle(click.getStyle().withClickEvent(new ClickEvent.Custom(Identifier.fromNamespaceAndPath(FreeCameraApiTripod.MODID, "player_relative_setting"), Optional.of(StringTag.valueOf(presets)))));
             return Component.translatable(FreeCameraApiTripod.MODID + ".control_scheme.player_relative", "0").withStyle(ChatFormatting.GREEN).append(" ").append(click);
         }, false);
         source.sendSuccess(() -> {
@@ -303,7 +308,7 @@ public class CameraCommand {
 
                         MutableComponent deleteClick = Component.translatable("commands." + FreeCameraApiTripod.MODID + ".cmd_camera.presets.list.click.delete");
                         deleteClick.withStyle(ChatFormatting.RED);
-                        deleteClick.setStyle(deleteClick.getStyle().withClickEvent(new ClickEvent.Custom(ResourceLocation.fromNamespaceAndPath(FreeCameraApiTripod.MODID, "presets_delete"), Optional.of(StringTag.valueOf(presets)))));
+                        deleteClick.setStyle(deleteClick.getStyle().withClickEvent(new ClickEvent.Custom(Identifier.fromNamespaceAndPath(FreeCameraApiTripod.MODID, "presets_delete"), Optional.of(StringTag.valueOf(presets)))));
 
                         return Component.literal(String.valueOf(finalI))
                                 .withStyle(ChatFormatting.GREEN)
@@ -412,4 +417,6 @@ public class CameraCommand {
     private static boolean isStateEnabled(int cameraState, int state) {
         return (cameraState & state) != 0;
     }
+
+    // endregion
 }
