@@ -1,7 +1,6 @@
 package cn.anecansaitin.free_camera_api_tripod.mixin;
 
-import cn.anecansaitin.free_camera_api_tripod.api.IExCameraModifier;
-import cn.anecansaitin.free_camera_api_tripod.api.control_scheme.ControlScheme;
+import cn.anecansaitin.free_camera_api_tripod.api.ControlScheme;
 import cn.anecansaitin.free_camera_api_tripod.mixin_interface.IExModifierManager;
 import cn.anecansaitin.freecameraapi.api.ICameraModifier;
 import cn.anecansaitin.freecameraapi.core.ModifierManager;

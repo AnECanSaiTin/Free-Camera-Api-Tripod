@@ -1,6 +1,6 @@
 package cn.anecansaitin.free_camera_api_tripod.mixin.control_scheme;
 
-import cn.anecansaitin.free_camera_api_tripod.api.control_scheme.ControlScheme;
+import cn.anecansaitin.free_camera_api_tripod.api.ControlScheme;
 import cn.anecansaitin.free_camera_api_tripod.core.control_scheme.ControlSchemeManager;
 import cn.anecansaitin.free_camera_api_tripod.mixin_interface.IExModifierManager;
 import cn.anecansaitin.freecameraapi.ClientUtil;
@@ -27,10 +27,10 @@ public abstract class MouseHandlerMixin {
         }
 
         switch (exManager.controlScheme()) {
-            case ControlScheme.CAMERA_RELATIVE cameraRelative -> ci.cancel();
-            case ControlScheme.CAMERA_RELATIVE_STRAFE cameraRelativeStrafe -> ci.cancel();
-            case ControlScheme.PLAYER_RELATIVE playerRelative -> ci.cancel();
-            case ControlScheme.PLAYER_RELATIVE_STRAFE playerRelativeStrafe -> ci.cancel();
+            case ControlScheme.CameraRelative cameraRelative -> ci.cancel();
+            case ControlScheme.CameraRelativeStrafe cameraRelativeStrafe -> ci.cancel();
+            case ControlScheme.PlayerRelative playerRelative -> ci.cancel();
+            case ControlScheme.PlayerRelativeStrafe playerRelativeStrafe -> ci.cancel();
             default -> {}
         }
     }
@@ -51,9 +51,9 @@ public abstract class MouseHandlerMixin {
         }
 
         switch (exManager.controlScheme()) {
-            case ControlScheme.CAMERA_RELATIVE_STRAFE cameraRelativeStrafe -> {}
-            case ControlScheme.PLAYER_RELATIVE playerRelative -> {}
-            case ControlScheme.PLAYER_RELATIVE_STRAFE playerRelativeStrafe -> {}
+            case ControlScheme.CameraRelativeStrafe cameraRelativeStrafe -> {}
+            case ControlScheme.PlayerRelative playerRelative -> {}
+            case ControlScheme.PlayerRelativeStrafe playerRelativeStrafe -> {}
             default -> original.call(instance);
         }
     }

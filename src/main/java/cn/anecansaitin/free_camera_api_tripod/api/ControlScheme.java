@@ -1,4 +1,4 @@
-package cn.anecansaitin.free_camera_api_tripod.api.control_scheme;
+package cn.anecansaitin.free_camera_api_tripod.api;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
@@ -10,27 +10,38 @@ import java.util.HashMap;
 import java.util.Map;
 
 public sealed interface ControlScheme {
-    VANILLA VANILLA = new VANILLA();
-    CAMERA_RELATIVE CAMERA_RELATIVE = new CAMERA_RELATIVE();
-    CAMERA_RELATIVE_STRAFE CAMERA_RELATIVE_STRAFE = new CAMERA_RELATIVE_STRAFE();
-    PLAYER_RELATIVE_STRAFE PLAYER_RELATIVE_STRAFE = new PLAYER_RELATIVE_STRAFE();
+    Vanilla VANILLA = new Vanilla();
+    CameraRelative CAMERA_RELATIVE = new CameraRelative();
+    CameraRelativeStrafe CAMERA_RELATIVE_STRAFE = new CameraRelativeStrafe();
+    PlayerRelativeStrafe PLAYER_RELATIVE_STRAFE = new PlayerRelativeStrafe();
 
-    HashMap<String, MapCodec<? extends ControlScheme>> CODEC_TYPE = new HashMap<>(Map.of(VANILLA.type(), VANILLA.mapCodec(), CAMERA_RELATIVE.type(), CAMERA_RELATIVE.mapCodec(), CAMERA_RELATIVE_STRAFE.type(), CAMERA_RELATIVE_STRAFE.mapCodec(), PLAYER_RELATIVE_STRAFE.type(), PLAYER_RELATIVE_STRAFE.mapCodec(), PLAYER_RELATIVE.TYPE, PLAYER_RELATIVE.MAP_CODEC));
     Codec<ControlScheme> CODEC = Codec.STRING.dispatch(
             ControlScheme::type,
-            CODEC_TYPE::get
+            ControlScheme::getCodec
     );
 
     MutableComponent translation();
+
     String type();
 
-    static PLAYER_RELATIVE PLAYER_RELATIVE(int angle) {
-        return new PLAYER_RELATIVE(angle);
+    private static MapCodec<? extends ControlScheme> getCodec(String type) {
+        return switch (type) {
+            case Vanilla.TYPE -> Vanilla.MAP_CODEC;
+            case CameraRelative.TYPE -> CameraRelative.MAP_CODEC;
+            case CameraRelativeStrafe.TYPE -> CameraRelativeStrafe.MAP_CODEC;
+            case PlayerRelative.TYPE -> PlayerRelative.MAP_CODEC;
+            case PlayerRelativeStrafe.TYPE -> PlayerRelativeStrafe.MAP_CODEC;
+            default -> null;
+        };
     }
 
-    record VANILLA() implements ControlScheme {
+    static PlayerRelative playerRelative(int angle) {
+        return new PlayerRelative(angle);
+    }
+
+    record Vanilla() implements ControlScheme {
         public static final String TYPE = "vanilla";
-        public static final MapCodec<VANILLA> MAP_CODEC = MapCodec.unit(() -> ControlScheme.VANILLA);
+        public static final MapCodec<Vanilla> MAP_CODEC = MapCodec.unit(() -> ControlScheme.VANILLA);
 
         @Override
         public MutableComponent translation() {
@@ -47,9 +58,9 @@ public sealed interface ControlScheme {
         }
     }
 
-    record CAMERA_RELATIVE() implements ControlScheme {
+    record CameraRelative() implements ControlScheme {
         public static final String TYPE = "camera_relative";
-        public static final MapCodec<CAMERA_RELATIVE> MAP_CODEC = MapCodec.unit(() -> ControlScheme.CAMERA_RELATIVE);
+        public static final MapCodec<CameraRelative> MAP_CODEC = MapCodec.unit(() -> ControlScheme.CAMERA_RELATIVE);
 
         @Override
         public MutableComponent translation() {
@@ -66,9 +77,9 @@ public sealed interface ControlScheme {
         }
     }
 
-    record CAMERA_RELATIVE_STRAFE() implements ControlScheme {
+    record CameraRelativeStrafe() implements ControlScheme {
         public static final String TYPE = "camera_relative_strafe";
-        public static final MapCodec<CAMERA_RELATIVE_STRAFE> MAP_CODEC = MapCodec.unit(ControlScheme.CAMERA_RELATIVE_STRAFE);
+        public static final MapCodec<CameraRelativeStrafe> MAP_CODEC = MapCodec.unit(ControlScheme.CAMERA_RELATIVE_STRAFE);
 
         @Override
         public MutableComponent translation() {
@@ -85,11 +96,11 @@ public sealed interface ControlScheme {
         }
     }
 
-    record PLAYER_RELATIVE(int angle) implements ControlScheme {
+    record PlayerRelative(int angle) implements ControlScheme {
         public static final String TYPE = "player_relative";
-        public static final MapCodec<PLAYER_RELATIVE> MAP_CODEC = RecordCodecBuilder.mapCodec(instance -> instance.group(
-                Codec.INT.fieldOf("angle").forGetter(PLAYER_RELATIVE::angle)
-        ).apply(instance, PLAYER_RELATIVE::new));
+        public static final MapCodec<PlayerRelative> MAP_CODEC = RecordCodecBuilder.mapCodec(instance -> instance.group(
+                Codec.INT.fieldOf("angle").forGetter(PlayerRelative::angle)
+        ).apply(instance, PlayerRelative::new));
 
         @Override
         public MutableComponent translation() {
@@ -102,9 +113,9 @@ public sealed interface ControlScheme {
         }
     }
 
-    record PLAYER_RELATIVE_STRAFE() implements ControlScheme {
+    record PlayerRelativeStrafe() implements ControlScheme {
         public static final String TYPE = "player_relative_strafe";
-        public static final MapCodec<PLAYER_RELATIVE_STRAFE> MAP_CODEC = MapCodec.unit(() -> ControlScheme.PLAYER_RELATIVE_STRAFE);
+        public static final MapCodec<PlayerRelativeStrafe> MAP_CODEC = MapCodec.unit(() -> ControlScheme.PLAYER_RELATIVE_STRAFE);
 
         @Override
         public MutableComponent translation() {

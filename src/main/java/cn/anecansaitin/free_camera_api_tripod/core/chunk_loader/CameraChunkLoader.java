@@ -15,7 +15,7 @@ import net.neoforged.neoforge.client.network.ClientPacketDistributor;
 import org.joml.Vector3f;
 
 import static cn.anecansaitin.freecameraapi.api.CameraStates.*;
-import static cn.anecansaitin.free_camera_api_tripod.api.ExCameraStates.*;
+import static cn.anecansaitin.free_camera_api_tripod.api.TripodStates.*;
 
 @EventBusSubscriber(modid = FreeCameraApiTripod.MODID, value = Dist.CLIENT)
 public class CameraChunkLoader {

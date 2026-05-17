@@ -9,7 +9,6 @@
     "chunk_loader.TrackedEntityMixin"
   ],
   "client": [
-    "CameraModifierMixin",
     "ModifierManagerMixin",
     "chunk_loader.ClientChunkCacheMixin",
     "chunk_loader.LevelRendererMixin",

@@ -1,6 +1,6 @@
 package cn.anecansaitin.free_camera_api_tripod.mixin.control_scheme;
 
-import cn.anecansaitin.free_camera_api_tripod.api.control_scheme.ControlScheme;
+import cn.anecansaitin.free_camera_api_tripod.api.ControlScheme;
 import cn.anecansaitin.free_camera_api_tripod.mixin_interface.IExModifierManager;
 import cn.anecansaitin.freecameraapi.api.CameraStates;
 import cn.anecansaitin.freecameraapi.core.ModifierManager;
@@ -24,8 +24,8 @@ public abstract class MinecraftMixin {
         }
 
         switch (exManager.controlScheme()) {
-            case ControlScheme.CAMERA_RELATIVE_STRAFE cameraRelativeStrafe-> {}
-            case ControlScheme.PLAYER_RELATIVE_STRAFE playerRelativeStrafe-> {}
+            case ControlScheme.CameraRelativeStrafe cameraRelativeStrafe-> {}
+            case ControlScheme.PlayerRelativeStrafe playerRelativeStrafe-> {}
             default -> original.call(instance);
         }
     }

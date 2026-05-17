@@ -1,9 +1,6 @@
 package cn.anecansaitin.free_camera_api_tripod;
 
-import cn.anecansaitin.free_camera_api_tripod.api.IExCameraModifier;
-import cn.anecansaitin.free_camera_api_tripod.api.control_scheme.ControlScheme;
 import cn.anecansaitin.freecameraapi.api.*;
-import net.minecraft.client.Minecraft;
 
 @CameraPlugin(value = "dev", priority = ModifierPriority.LOWEST)
 public class DevPlugin implements ICameraPlugin {

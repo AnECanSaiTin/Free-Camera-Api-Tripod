@@ -31,16 +31,6 @@ public class ModPayload {
                         CameraView.TYPE,
                         CameraView.CODEC,
                         CameraView::handle
-                )
-                .playToServer(
-                        PlayerRelativeSetting.TYPE,
-                        PlayerRelativeSetting.CODEC,
-                        PlayerRelativeSetting::handle
-                )
-                .playToServer(
-                        PresetsDelete.TYPE,
-                        PresetsDelete.CODEC,
-                        PresetsDelete::handle
                 );
     }
 }

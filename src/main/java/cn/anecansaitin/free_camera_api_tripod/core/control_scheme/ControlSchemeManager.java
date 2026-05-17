@@ -1,7 +1,7 @@
 package cn.anecansaitin.free_camera_api_tripod.core.control_scheme;
 
 import cn.anecansaitin.free_camera_api_tripod.FreeCameraApiTripod;
-import cn.anecansaitin.free_camera_api_tripod.api.control_scheme.ControlScheme;
+import cn.anecansaitin.free_camera_api_tripod.api.ControlScheme;
 import cn.anecansaitin.free_camera_api_tripod.mixin_interface.IExModifierManager;
 import cn.anecansaitin.freecameraapi.api.CameraStates;
 import cn.anecansaitin.freecameraapi.core.ModifierManager;
@@ -51,10 +51,10 @@ public class ControlSchemeManager {
         ClientInput input = event.getInput();
 
         switch (controlScheme) {
-            case ControlScheme.CAMERA_RELATIVE cameraRelative -> cameraRelative(input, manager);
-            case ControlScheme.CAMERA_RELATIVE_STRAFE cameraRelativeStrafe -> cameraRelativeStrafe(input, manager);
-            case ControlScheme.PLAYER_RELATIVE playerRelative -> playerRelative(input, playerRelative.angle());
-            case ControlScheme.PLAYER_RELATIVE_STRAFE playerRelativeStrafe -> mouseMove();
+            case ControlScheme.CameraRelative cameraRelative -> cameraRelative(input, manager);
+            case ControlScheme.CameraRelativeStrafe cameraRelativeStrafe -> cameraRelativeStrafe(input, manager);
+            case ControlScheme.PlayerRelative playerRelative -> playerRelative(input, playerRelative.angle());
+            case ControlScheme.PlayerRelativeStrafe playerRelativeStrafe -> mouseMove();
             default -> {
             }
         }
@@ -130,8 +130,8 @@ public class ControlSchemeManager {
         }
 
         switch (exManager.controlScheme()) {
-            case ControlScheme.CAMERA_RELATIVE_STRAFE cameraRelativeStrafe -> mc.mouseHandler.releaseMouse();
-            case ControlScheme.PLAYER_RELATIVE_STRAFE playerRelativeStrafe -> mc.mouseHandler.releaseMouse();
+            case ControlScheme.CameraRelativeStrafe cameraRelativeStrafe -> mc.mouseHandler.releaseMouse();
+            case ControlScheme.PlayerRelativeStrafe playerRelativeStrafe -> mc.mouseHandler.releaseMouse();
             case null, default -> {
             }
         }
@@ -147,17 +147,17 @@ public class ControlSchemeManager {
         }
 
         switch (exManager.controlScheme()) {
-            case ControlScheme.CAMERA_RELATIVE cameraRelative -> {
+            case ControlScheme.CameraRelative cameraRelative -> {
                 return;
             }
-            case ControlScheme.CAMERA_RELATIVE_STRAFE cameraRelativeStrafe -> {
+            case ControlScheme.CameraRelativeStrafe cameraRelativeStrafe -> {
             }
-            case ControlScheme.PLAYER_RELATIVE playerRelative -> {
+            case ControlScheme.PlayerRelative playerRelative -> {
                 return;
             }
-            case ControlScheme.PLAYER_RELATIVE_STRAFE playerRelativeStrafe -> {
+            case ControlScheme.PlayerRelativeStrafe playerRelativeStrafe -> {
             }
-            case ControlScheme.VANILLA vanilla -> {
+            case ControlScheme.Vanilla vanilla -> {
                 return;
             }
         }
