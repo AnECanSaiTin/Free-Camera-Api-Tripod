@@ -1,17 +1,18 @@
 package cn.anecansaitin.free_camera_api_tripod.api;
 
 import cn.anecansaitin.free_camera_api_tripod.core.Data;
+import cn.anecansaitin.freecameraapi.api.CameraData;
 
-public interface TripodData {
+public interface TripodData extends CameraData {
     Data enableChunkLoader();
 
     Data disableChunkLoader();
 
-    Data setControlScheme(ControlScheme scheme);
+    Data controlScheme(ControlScheme scheme);
 
-    ControlScheme getControlScheme();
+    ControlScheme controlScheme();
 
-    int getState();
+    int state();
 
-    Data setState(int state);
+    Data state(int state);
 }

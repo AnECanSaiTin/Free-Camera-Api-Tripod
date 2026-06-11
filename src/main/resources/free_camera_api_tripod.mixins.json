@@ -4,15 +4,8 @@
   "package": "cn.anecansaitin.free_camera_api_tripod.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
-    "chunk_loader.ChunkMapMixin",
-    "chunk_loader.PlayerListMixin",
-    "chunk_loader.TrackedEntityMixin"
   ],
   "client": [
-    "ModifierManagerMixin",
-    "chunk_loader.ClientChunkCacheMixin",
-    "chunk_loader.LevelRendererMixin",
-    "cmd_camera.ScreenMixin",
     "control_scheme.MinecraftMixin",
     "control_scheme.MouseHandlerMixin"
   ],

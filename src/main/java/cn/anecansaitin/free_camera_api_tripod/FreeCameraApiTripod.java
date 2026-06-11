@@ -13,7 +13,7 @@ public class FreeCameraApiTripod {
 
     public FreeCameraApiTripod(IEventBus modEventBus, ModContainer modContainer) {
         ModAttachment.ATTACHMENT_TYPES.register(modEventBus);
-        modContainer.registerConfig(ModConfig.Type.COMMON, CameraAdditionConfig.SPEC);
+//        modContainer.registerConfig(ModConfig.Type.COMMON, CameraAdditionConfig.SPEC);
         ModArgumentType.register(modEventBus);
     }
 }

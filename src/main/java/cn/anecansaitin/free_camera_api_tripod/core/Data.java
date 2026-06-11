@@ -8,39 +8,44 @@ import cn.anecansaitin.freecameraapi.api.CameraDataType;
 public class Data implements TripodData {
     public static final CameraDataType<TripodData> TYPE = new CameraDataType<>(TripodData.class, Data::new);
     private int state;
-    private ControlScheme controlScheme;
+    private ControlScheme controlScheme = ControlScheme.VANILLA;
 
     @Override
     public Data enableChunkLoader() {
-        state |= TripodStates.CHUNK_LOADER;
+        state |= TripodStates.CHUNK_LOADER.code;
         return this;
     }
 
     @Override
     public Data disableChunkLoader() {
-        state &= ~TripodStates.CHUNK_LOADER;
+        state &= ~TripodStates.CHUNK_LOADER.code;
         return this;
     }
 
     @Override
-    public Data setControlScheme(ControlScheme scheme) {
+    public Data controlScheme(ControlScheme scheme) {
         this.controlScheme = scheme;
         return this;
     }
 
     @Override
-    public ControlScheme getControlScheme() {
+    public ControlScheme controlScheme() {
         return controlScheme;
     }
 
     @Override
-    public int getState() {
+    public int state() {
         return state;
     }
 
     @Override
-    public Data setState(int state) {
+    public Data state(int state) {
         this.state = state;
         return this;
+    }
+
+    @Override
+    public void update() {
+
     }
 }

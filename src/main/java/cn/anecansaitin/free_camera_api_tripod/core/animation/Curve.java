@@ -2,13 +2,13 @@ package cn.anecansaitin.free_camera_api_tripod.core.animation;
 
 import cn.anecansaitin.free_camera_api_tripod.api.Keyframe;
 import net.minecraft.util.Mth;
-import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
+import org.jspecify.annotations.NullMarked;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+@NullMarked
 public class Curve {
     /// 升序
     private final ArrayList<MutableKeyframe> keys = new ArrayList<>();
@@ -16,8 +16,6 @@ public class Curve {
     public WrapMode postMode = WrapMode.CLAMP;
     /// 索引缓存
     private int lastIndex = 0;
-    private boolean recopy;
-    private ImmutableKeyframe[] keysCopy;
 
     public Curve() {
     }
@@ -32,7 +30,6 @@ public class Curve {
         }
 
         this.keys.sort(Keyframe.TIME_COMPARATOR);
-        recopy = true;
     }
 
     public Curve(List<Keyframe> keys) {
@@ -45,7 +42,6 @@ public class Curve {
         }
 
         this.keys.sort(Keyframe.TIME_COMPARATOR);
-        recopy = true;
     }
 
     public float evaluate(float time) {
@@ -61,17 +57,30 @@ public class Curve {
 
         time = mapTime(time);
         int index = findFloorIndex(time);
-        Keyframe left = keys.get(index);
-        Keyframe right = keys.get(index + 1);
+        MutableKeyframe left = keys.get(index);
+        MutableKeyframe right = keys.get(index + 1);
         float duration = right.time() - left.time();
 
         if (Float.isInfinite(left.outTangent()) || Float.isInfinite(right.inTangent())) {
-            // 切线为无限，视为Step插值，取右值
-            return right.value();
+            // 切线为无限，视为Step插值，取左值
+            return left.value();
         }
 
         // 归一化时间
         time = Math.clamp((time - left.time()) / duration, 0, 1);
+
+        return switch (left.evaluateMode()) {
+            case LINEAR -> evaluateLinear(left, right, time);
+            case STEP -> left.value();
+            case HERMITE -> evaluateHermite(left, right, time, duration);
+        };
+    }
+
+    private float evaluateLinear(MutableKeyframe left, MutableKeyframe right, float time) {
+        return (left.value() + right.value()) * time;
+    }
+
+    private float evaluateHermite(MutableKeyframe left, MutableKeyframe right, float time, float duration) {
         // 切线计算
         float leftTangent = left.outTangent();
         float rightTangent = right.inTangent();
@@ -89,14 +98,15 @@ public class Curve {
         return hermite(left.value(), leftTangent, right.value(), rightTangent, time, duration);
     }
 
-    public int addKey(float time, float value) {
-        return addKey(new MutableKeyframe(time, value));
+    public int key(float time, float value) {
+        return key(new MutableKeyframe(time, value));
     }
 
-    /// 添加关键帧
-    /// 相同时间仅能存在两个关键帧，超出则不添加并返回-1
+    /// 添加关键帧，并返回索引
+    /// 根据关键帧时间，自动选择插入位置
+    /// 如果对应时间已有关键帧，则修改该关键帧并返回索引
     /// 如果时间小于0，则不添加并返回-1
-    public int addKey(Keyframe key) {
+    public int key(Keyframe key) {
         if (key.time() < 0) {
             return -1;
         }
@@ -104,48 +114,65 @@ public class Curve {
         int index = Collections.binarySearch(keys, key, Keyframe.TIME_COMPARATOR);
 
         if (index >= 0) {
-            return -1;
+            // 已存在，修改关键帧
+            MutableKeyframe keyframe = keys.get(index);
+            keyframe.set(key);
+            return index;
         }
 
         int insertIndex = -(index + 1);
         keys.add(insertIndex, new MutableKeyframe(key));
-        recopy = true;
         return insertIndex;
+    }
+
+    public Keyframe key(int index) {
+        return keys.get(index);
     }
 
     /// 移动关键帧
     /// 如果index不在范围内，则不移动并返回-1
-    /// 如果时间小于0，则不移动并返回-1
+    /// 如果newTime小于0，则不移动并返回-1
     /// 如果目标时间已有关键帧（且都不是被移动的这一个），则不移动并返回-1
-    public int moveKey(int index, @NonNull Keyframe key) {
-        if (index < 0 || index >= length() || key.time() < 0) {
+    public int moveKey(int index, float newTime) {
+        if (index < 0 || index >= size() || newTime < 0) {
             return -1;
         }
 
-        removeKey(index);
-        index = Collections.binarySearch(keys, key, Keyframe.TIME_COMPARATOR);
+        MutableKeyframe keyframe = keys.get(index);
 
-        if (index >= 0) {
-            keys.set(index, new MutableKeyframe(key));
-        } else {
-            index = -(index + 1);
-            keys.add(index, new MutableKeyframe(key));
+        if (keyframe.time() == newTime) {
+            return -1;
         }
 
-        recopy = true;
-        return index;
+        keys.remove(index);
+        return key(keyframe.time(newTime));
+    }
+
+    public int moveKey(float oldTime, float newTime) {
+        if (oldTime == newTime) {
+            return -1;
+        }
+
+        int index = binarySearch(oldTime);
+        return moveKey(index, newTime);
     }
 
     /// 删除关键帧
     /// 如果index不在范围内，则不删除
-    public void removeKey(int index) {
-        if (index < 0 || index >= length()) {
-            return;
+    public boolean removeKey(int index) {
+        if (index < 0 || index >= size()) {
+            return false;
         }
 
         keys.remove(index);
-        recopy = true;
+        return true;
     }
+
+    public boolean removeKye(float time) {
+        int index = binarySearch(time);
+        return removeKey(index);
+    }
+
 
     public void smoothTangents(int index, float weight) {
         if (keys.isEmpty() || index < 0 || index >= keys.size()) {
@@ -198,36 +225,8 @@ public class Curve {
         current.outTangent(outTangent);
     }
 
-    public int length() {
+    public int size() {
         return keys.size();
-    }
-
-    public Keyframe key(int index) {
-        recopy();
-        return keysCopy[index];
-    }
-
-    public void key(int index, @Nullable Keyframe key) {
-        if (key == null) {
-            removeKey(index);
-            return;
-        }
-
-        MutableKeyframe keyframe = keys.get(index);
-
-        if (keyframe.time() == key.time()) {
-            keyframe.set(key);
-            recopy = true;
-            return;
-        }
-
-        removeKey(index);
-        int result = addKey(key);
-
-        if (result == -1) {
-            keys.add(index, keyframe);
-            recopy = true;
-        }
     }
 
     public static Curve constant(float timeStart, float timeEnd, float value) {
@@ -246,7 +245,7 @@ public class Curve {
         return new Curve(new MutableKeyframe(timeStart, valueStart), new MutableKeyframe(timeEnd, valueEnd));
     }
 
-    public static @NonNull Curve linear(float timeStart, float valueStart, float timeEnd, float valueEnd) {
+    public static Curve linear(float timeStart, float valueStart, float timeEnd, float valueEnd) {
         if (timeStart == timeEnd) {
             return new Curve(new MutableKeyframe(timeStart, valueStart, 0, 0));
         }
@@ -255,21 +254,9 @@ public class Curve {
         return new Curve(new MutableKeyframe(timeStart, valueStart, 0, slope), new MutableKeyframe(timeEnd, valueEnd, slope, 0));
     }
 
-    private void recopy() {
-        if (recopy) {
-            keysCopy = new ImmutableKeyframe[keys.size()];
-
-            for (int i = 0; i < keys.size(); i++) {
-                keysCopy[i] = new ImmutableKeyframe(keys.get(i));
-            }
-
-            recopy = false;
-        }
-    }
-
     /// 根据时间wrap模式，映射到有效时间范围内
     private float mapTime(float time) {
-        if (length() == 0) {
+        if (size() == 0) {
             return 0;
         }
 
@@ -358,29 +345,28 @@ public class Curve {
             return lastIndex;
         }
         // endregion
-        lastIndex = binarySearch(time);
+        lastIndex = Math.max(binarySearch(time), 0);
         return lastIndex;
     }
 
     private int binarySearch(float time) {
         int left = 0;
-        int right = keys.size() - 2;
+        int right = keys.size() - 1;
 
         while (left <= right) {
-            int mid = (left + right) / 2;
+            int mid = (left + right) >>> 1;
+            float midTime = keys.get(mid).time();
 
-            if (keys.get(mid).time() <= time) {
-                if (mid == keys.size() - 2 || keys.get(mid + 1).time() > time) {
-                    return mid;
-                }
-
+            if (midTime < time) {
                 left = mid + 1;
-            } else {
+            } else if (midTime > time) {
                 right = mid - 1;
+            } else {
+                return mid;
             }
         }
 
-        return 0;
+        return -(left + 1);
     }
 
     private float computeWeightScale(float weight) {

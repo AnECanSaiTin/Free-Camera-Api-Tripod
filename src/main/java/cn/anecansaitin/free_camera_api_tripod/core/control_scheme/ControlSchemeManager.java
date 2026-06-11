@@ -2,7 +2,8 @@ package cn.anecansaitin.free_camera_api_tripod.core.control_scheme;
 
 import cn.anecansaitin.free_camera_api_tripod.FreeCameraApiTripod;
 import cn.anecansaitin.free_camera_api_tripod.api.ControlScheme;
-import cn.anecansaitin.free_camera_api_tripod.mixin_interface.IExModifierManager;
+import cn.anecansaitin.free_camera_api_tripod.api.TripodData;
+import cn.anecansaitin.free_camera_api_tripod.core.Data;
 import cn.anecansaitin.freecameraapi.api.CameraStates;
 import cn.anecansaitin.freecameraapi.core.ModifierManager;
 import com.mojang.blaze3d.platform.Window;
@@ -28,6 +29,7 @@ import java.util.Optional;
 
 import static cn.anecansaitin.freecameraapi.ClientUtil.*;
 import static cn.anecansaitin.freecameraapi.api.CameraStates.*;
+import static cn.anecansaitin.free_camera_api_tripod.api.ControlScheme.*;
 
 @EventBusSubscriber(modid = FreeCameraApiTripod.MODID, value = Dist.CLIENT)
 public class ControlSchemeManager {
@@ -42,19 +44,19 @@ public class ControlSchemeManager {
     public static void onMovementInputUpdate(MovementInputUpdateEvent event) {
         ModifierManager manager = ModifierManager.INSTANCE;
 
-        if (!manager.isStateEnabledAnd(ENABLE) || player().isPassenger()) {
+        if (!manager.isStateEnabledAnd(ENABLE.code) || player().isPassenger()) {
             return;
         }
 
-        IExModifierManager exManager = IExModifierManager.of(manager);
-        ControlScheme controlScheme = exManager.controlScheme();
+        TripodData data = manager.getData(Data.TYPE);
+        ControlScheme controlScheme = data.controlScheme();
         ClientInput input = event.getInput();
 
         switch (controlScheme) {
-            case ControlScheme.CameraRelative cameraRelative -> cameraRelative(input, manager);
-            case ControlScheme.CameraRelativeStrafe cameraRelativeStrafe -> cameraRelativeStrafe(input, manager);
-            case ControlScheme.PlayerRelative playerRelative -> playerRelative(input, playerRelative.angle());
-            case ControlScheme.PlayerRelativeStrafe playerRelativeStrafe -> mouseMove();
+            case CameraRelative _ -> cameraRelative(input, manager);
+            case CameraRelativeStrafe _ -> cameraRelativeStrafe(input, manager);
+            case PlayerRelative playerRelative -> playerRelative(input, playerRelative.angle());
+            case PlayerRelativeStrafe _ -> mouseMove();
             default -> {
             }
         }
@@ -123,15 +125,14 @@ public class ControlSchemeManager {
     public static void mouseInput(InputEvent.MouseButton.Pre event) {
         Minecraft mc = mc();
         ModifierManager manager = ModifierManager.INSTANCE;
-        IExModifierManager exManager = IExModifierManager.of(manager);
+        TripodData data = manager.getData(Data.TYPE);
 
-        if (mc.screen != null || !manager.isStateEnabledOr(CameraStates.ENABLE)) {
+        if (mc.screen != null || !manager.isStateEnabledOr(ENABLE.code)) {
             return;
         }
 
-        switch (exManager.controlScheme()) {
-            case ControlScheme.CameraRelativeStrafe cameraRelativeStrafe -> mc.mouseHandler.releaseMouse();
-            case ControlScheme.PlayerRelativeStrafe playerRelativeStrafe -> mc.mouseHandler.releaseMouse();
+        switch (data.controlScheme()) {
+            case CameraRelativeStrafe _, PlayerRelativeStrafe _ -> mc.mouseHandler.releaseMouse();
             case null, default -> {
             }
         }
@@ -140,24 +141,16 @@ public class ControlSchemeManager {
     public static void mouseMove() {
         Minecraft mc = mc();
         ModifierManager manager = ModifierManager.INSTANCE;
-        IExModifierManager exManager = IExModifierManager.of(manager);
+        TripodData data = manager.getData(Data.TYPE);
 
-        if (mc.screen != null || !manager.isStateEnabledOr(CameraStates.ENABLE)) {
+        if (mc.screen != null || !manager.isStateEnabledOr(ENABLE.code)) {
             return;
         }
 
-        switch (exManager.controlScheme()) {
-            case ControlScheme.CameraRelative cameraRelative -> {
-                return;
+        switch (data.controlScheme()) {
+            case CameraRelativeStrafe _, PlayerRelativeStrafe _ -> {
             }
-            case ControlScheme.CameraRelativeStrafe cameraRelativeStrafe -> {
-            }
-            case ControlScheme.PlayerRelative playerRelative -> {
-                return;
-            }
-            case ControlScheme.PlayerRelativeStrafe playerRelativeStrafe -> {
-            }
-            case ControlScheme.Vanilla vanilla -> {
+            case CameraRelative _, PlayerRelative _, Vanilla _ -> {
                 return;
             }
         }
