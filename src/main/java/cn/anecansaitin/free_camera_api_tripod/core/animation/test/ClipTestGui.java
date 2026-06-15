@@ -1,8 +1,8 @@
 package cn.anecansaitin.free_camera_api_tripod.core.animation.test;
 
+import cn.anecansaitin.free_camera_api_tripod.api.Keyframe;
 import cn.anecansaitin.free_camera_api_tripod.core.animation.Clip;
 import cn.anecansaitin.free_camera_api_tripod.core.animation.Curve;
-import cn.anecansaitin.free_camera_api_tripod.core.animation.ImmutableKeyframe;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.render.TextureSetup;
 import net.minecraft.client.gui.screens.Screen;
@@ -16,25 +16,31 @@ public class ClipTestGui extends Screen {
     public ClipTestGui() {
         super(Component.empty());
         clip.addCurve("test", new Curve());
-        clip.addKey("test", new ImmutableKeyframe(0, 0));
-        clip.addKey("test", new ImmutableKeyframe(1, 1));
-        clip.addKey("test", new ImmutableKeyframe(2, 2));
-        clip.addKey("test", new ImmutableKeyframe(3, -1));
-        clip.addKey("test", new ImmutableKeyframe(4, -2));
-        clip.addKey("test", new ImmutableKeyframe(5, 0));
+        clip.addKey("test", Keyframe.hermite(0, 0, 0, 0));
+        clip.addKey("test", Keyframe.hermite(1, 1, 0, 0));
+        clip.addKey("test", Keyframe.hermite(2, 2, 0, 0));
+        clip.addKey("test", Keyframe.hermite(3, -1, 0, 0));
+        clip.addKey("test", Keyframe.hermite(4, -2, 0, 0));
+        clip.addKey("test", Keyframe.hermite(5, 0, 0, 0));
+        clip.addKey("test", Keyframe.hermite(6, 5, 0, 0));
+        clip.addKey("test", Keyframe.hermite(7, 3, 0, 0));
+        clip.addKey("test", Keyframe.hermite(8, -4, 0, 0));
+        clip.addKey("test", Keyframe.hermite(9, 0, 0, 0));
+        Curve test = clip.curve("test");
+        test.smoothTangents(1f);
     }
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float a) {
         super.extractRenderState(graphics, mouseX, mouseY, a);
-        float time = 1f;
+        float time = 0f;
 
-        for (int i = 0; i < 100; i++) {
+        for (int i = 0; i < 900; i++) {
             float test = clip.evaluate("test", time);
-            float x0 = time * 100;
-            float y0 = test * 100;
+            float x0 = time * 10 + 100;
+            float y0 = test * 10 + 100;
             fillFloat(graphics, x0, y0, x0 + 1, y0 + 1, 0xFFFFFFFF);
-            time += 0.01f;
+            time = 0.01f * i;
         }
     }
 

@@ -151,8 +151,12 @@ public class Clip {
             return false;
         }
 
-        curve.removeKey(index);
-        updateDuration();
-        return true;
+        boolean result = curve.removeKey(index);
+
+        if (result) {
+            updateDuration();
+        }
+
+        return result;
     }
 }

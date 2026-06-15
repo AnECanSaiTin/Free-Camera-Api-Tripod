@@ -1,9 +1,9 @@
 package cn.anecansaitin.free_camera_api_tripod.core.cmd_camera;
 
+import cn.anecansaitin.free_camera_api_tripod.api.Keyframe;
 import cn.anecansaitin.free_camera_api_tripod.core.animation.Clip;
 import cn.anecansaitin.free_camera_api_tripod.core.animation.Curve;
 import cn.anecansaitin.free_camera_api_tripod.core.animation.Evaluator;
-import cn.anecansaitin.free_camera_api_tripod.core.animation.ImmutableKeyframe;
 import cn.anecansaitin.freecameraapi.api.CameraModifier;
 import cn.anecansaitin.freecameraapi.api.CameraPlugin;
 import cn.anecansaitin.freecameraapi.api.Plugin;
@@ -108,19 +108,19 @@ public class CmdCamera implements CameraPlugin {
     }
 
     public void addPosKey(float time, float x, float y, float z) {
-        clip.addKey("position.x", new ImmutableKeyframe(time, x));
-        clip.addKey("position.y", new ImmutableKeyframe(time, y));
-        clip.addKey("position.z", new ImmutableKeyframe(time, z));
+        clip.addKey("position.x", Keyframe.create(time, x));
+        clip.addKey("position.y", Keyframe.create(time, y));
+        clip.addKey("position.z", Keyframe.create(time, z));
     }
 
     public void addRotKey(float time, float x, float y, float z) {
-        clip.addKey("rotation.x", new ImmutableKeyframe(time, x));
-        clip.addKey("rotation.y", new ImmutableKeyframe(time, y));
-        clip.addKey("rotation.z", new ImmutableKeyframe(time, z));
+        clip.addKey("rotation.x", Keyframe.create(time, x));
+        clip.addKey("rotation.y", Keyframe.create(time, y));
+        clip.addKey("rotation.z", Keyframe.create(time, z));
     }
 
     public void addFovKey(float time, float fov) {
-        clip.addKey("fov", new ImmutableKeyframe(time, fov));
+        clip.addKey("fov", Keyframe.create(time, fov));
     }
 
     public void removePosKey(int index) {

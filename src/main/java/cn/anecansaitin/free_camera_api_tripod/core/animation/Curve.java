@@ -11,11 +11,12 @@ import java.util.List;
 @NullMarked
 public class Curve {
     /// 升序
-    private final ArrayList<MutableKeyframe> keys = new ArrayList<>();
+    private final ArrayList<MultiKeyframe> keys = new ArrayList<>();
     public WrapMode preMode = WrapMode.CLAMP;
     public WrapMode postMode = WrapMode.CLAMP;
     /// 索引缓存
     private int lastIndex = 0;
+    private boolean positive = true;
 
     public Curve() {
     }
@@ -26,7 +27,7 @@ public class Curve {
         }
 
         for (Keyframe key : keys) {
-            this.keys.add(new MutableKeyframe(key));
+            this.keys.add(new MultiKeyframe(key));
         }
 
         this.keys.sort(Keyframe.TIME_COMPARATOR);
@@ -38,7 +39,7 @@ public class Curve {
         }
 
         for (Keyframe key : keys) {
-            this.keys.add(new MutableKeyframe(key));
+            this.keys.add(new MultiKeyframe(key));
         }
 
         this.keys.sort(Keyframe.TIME_COMPARATOR);
@@ -57,8 +58,13 @@ public class Curve {
 
         time = mapTime(time);
         int index = findFloorIndex(time);
-        MutableKeyframe left = keys.get(index);
-        MutableKeyframe right = keys.get(index + 1);
+        MultiKeyframe left = keys.get(index);
+
+        if (index == size - 1) {
+            return left.value();
+        }
+
+        MultiKeyframe right = keys.get(index + 1);
         float duration = right.time() - left.time();
 
         if (Float.isInfinite(left.outTangent()) || Float.isInfinite(right.inTangent())) {
@@ -76,11 +82,11 @@ public class Curve {
         };
     }
 
-    private float evaluateLinear(MutableKeyframe left, MutableKeyframe right, float time) {
-        return (left.value() + right.value()) * time;
+    private float evaluateLinear(MultiKeyframe left, MultiKeyframe right, float time) {
+        return (right.value() - left.value()) * time + left.value();
     }
 
-    private float evaluateHermite(MutableKeyframe left, MutableKeyframe right, float time, float duration) {
+    private float evaluateHermite(MultiKeyframe left, MultiKeyframe right, float time, float duration) {
         // 切线计算
         float leftTangent = left.outTangent();
         float rightTangent = right.inTangent();
@@ -99,7 +105,7 @@ public class Curve {
     }
 
     public int key(float time, float value) {
-        return key(new MutableKeyframe(time, value));
+        return key(new MultiKeyframe(time, value));
     }
 
     /// 添加关键帧，并返回索引
@@ -115,13 +121,13 @@ public class Curve {
 
         if (index >= 0) {
             // 已存在，修改关键帧
-            MutableKeyframe keyframe = keys.get(index);
+            MultiKeyframe keyframe = keys.get(index);
             keyframe.set(key);
             return index;
         }
 
         int insertIndex = -(index + 1);
-        keys.add(insertIndex, new MutableKeyframe(key));
+        keys.add(insertIndex, new MultiKeyframe(key));
         return insertIndex;
     }
 
@@ -138,7 +144,7 @@ public class Curve {
             return -1;
         }
 
-        MutableKeyframe keyframe = keys.get(index);
+        MultiKeyframe keyframe = keys.get(index);
 
         if (keyframe.time() == newTime) {
             return -1;
@@ -173,6 +179,11 @@ public class Curve {
         return removeKey(index);
     }
 
+    public void smoothTangents(float weight) {
+        for (int i = 0; i < size(); i++) {
+            smoothTangents(i, weight);
+        }
+    }
 
     public void smoothTangents(int index, float weight) {
         if (keys.isEmpty() || index < 0 || index >= keys.size()) {
@@ -180,7 +191,7 @@ public class Curve {
         }
 
         int count = keys.size();
-        MutableKeyframe current = keys.get(index);
+        MultiKeyframe current = keys.get(index);
         weight = Math.clamp(weight, 0, 1);
 
         float inTangent, outTangent;
@@ -227,31 +238,6 @@ public class Curve {
 
     public int size() {
         return keys.size();
-    }
-
-    public static Curve constant(float timeStart, float timeEnd, float value) {
-        if (timeStart == timeEnd) {
-            return new Curve(new MutableKeyframe(timeStart, value, 0, 0));
-        }
-
-        return new Curve(new MutableKeyframe(timeStart, value), new MutableKeyframe(timeEnd, value));
-    }
-
-    public static Curve easeInOut(float timeStart, float valueStart, float timeEnd, float valueEnd) {
-        if (timeStart == timeEnd) {
-            return new Curve(new MutableKeyframe(timeStart, valueStart, 0, 0));
-        }
-
-        return new Curve(new MutableKeyframe(timeStart, valueStart), new MutableKeyframe(timeEnd, valueEnd));
-    }
-
-    public static Curve linear(float timeStart, float valueStart, float timeEnd, float valueEnd) {
-        if (timeStart == timeEnd) {
-            return new Curve(new MutableKeyframe(timeStart, valueStart, 0, 0));
-        }
-
-        float slope = (valueEnd - valueStart) / (timeEnd - timeStart);
-        return new Curve(new MutableKeyframe(timeStart, valueStart, 0, slope), new MutableKeyframe(timeEnd, valueEnd, slope, 0));
     }
 
     /// 根据时间wrap模式，映射到有效时间范围内
@@ -333,40 +319,54 @@ public class Curve {
     }
 
     private int findFloorIndex(float time) {
-        // region 缓存快速检查
-        if (lastIndex < 0 || lastIndex >= keys.size() - 1) {
-            lastIndex = 0;
-        }
+        int size = keys.size();
+        int maxFloor = size - 1;
 
-        Keyframe left = keys.get(lastIndex);
-        Keyframe right = keys.get(lastIndex + 1);
+        if (lastIndex >= 0 && lastIndex < maxFloor) {
+            Keyframe left = keys.get(lastIndex);
+            Keyframe right = keys.get(lastIndex + 1);
 
-        if (time >= left.time() && time <= right.time()) {
-            return lastIndex;
-        }
-        // endregion
-        lastIndex = Math.max(binarySearch(time), 0);
-        return lastIndex;
-    }
+            if (time >= left.time() && time < right.time()) {
+                return lastIndex;
+            }
 
-    private int binarySearch(float time) {
-        int left = 0;
-        int right = keys.size() - 1;
+            if (positive) {
+                if (time >= right.time()) {
+                    if (lastIndex + 1 >= maxFloor) {
+                        return lastIndex = maxFloor;
+                    }
 
-        while (left <= right) {
-            int mid = (left + right) >>> 1;
-            float midTime = keys.get(mid).time();
+                    left = right;
+                    right = keys.get(lastIndex + 2);
 
-            if (midTime < time) {
-                left = mid + 1;
-            } else if (midTime > time) {
-                right = mid - 1;
-            } else {
-                return mid;
+                    if (time >= left.time() && time < right.time()) {
+                        return ++lastIndex;
+                    }
+                }
+            } else if (time < left.time()) {
+                if (lastIndex <= 0) {
+                    return lastIndex = 0;
+                }
+
+                right = left;
+                left = keys.get(lastIndex - 1);
+
+                if (time >= left.time() && time < right.time()) {
+                    return --lastIndex;
+                }
             }
         }
 
-        return -(left + 1);
+        int i = binarySearch(time);
+        i = i < 0 ? -i - 2 : i;
+        positive = i >= lastIndex;
+        return lastIndex = i;
+    }
+
+    private final MultiKeyframe searchingCache = new MultiKeyframe(0, 0);
+
+    private int binarySearch(float time) {
+        return Collections.binarySearch(keys, searchingCache.time(time), Keyframe.TIME_COMPARATOR);
     }
 
     private float computeWeightScale(float weight) {
@@ -387,5 +387,30 @@ public class Curve {
         float h11 = t3 - t2;
 
         return h00 * p0 + h10 * p1 + h01 * tangent0 + h11 * tangent1;
+    }
+
+    public static Curve constant(float timeStart, float timeEnd, float value) {
+        if (timeStart == timeEnd) {
+            return new Curve(new MultiKeyframe(timeStart, value, 0, 0));
+        }
+
+        return new Curve(new MultiKeyframe(timeStart, value), new MultiKeyframe(timeEnd, value));
+    }
+
+    public static Curve easeInOut(float timeStart, float valueStart, float timeEnd, float valueEnd) {
+        if (timeStart == timeEnd) {
+            return new Curve(new MultiKeyframe(timeStart, valueStart, 0, 0));
+        }
+
+        return new Curve(new MultiKeyframe(timeStart, valueStart), new MultiKeyframe(timeEnd, valueEnd));
+    }
+
+    public static Curve linear(float timeStart, float valueStart, float timeEnd, float valueEnd) {
+        if (timeStart == timeEnd) {
+            return new Curve(new MultiKeyframe(timeStart, valueStart, 0, 0));
+        }
+
+        float slope = (valueEnd - valueStart) / (timeEnd - timeStart);
+        return new Curve(new MultiKeyframe(timeStart, valueStart, 0, slope), new MultiKeyframe(timeEnd, valueEnd, slope, 0));
     }
 }
