@@ -6,50 +6,51 @@ import org.jspecify.annotations.NullMarked;
 @NullMarked
 public class PathNode {
     private final Vector3f position;
-    private final Vector3f inControl;
-    private final Vector3f outControl;
+    // 控制点相对position的偏移量
+    private final Vector3f inTangent;
+    private final Vector3f outTangent;
     private PathMode pathMode;
 
-    public PathNode(Vector3f position, Vector3f inControl, Vector3f outControl, PathMode pathMode) {
+    public PathNode(Vector3f position, Vector3f inTangent, Vector3f outTangent, PathMode pathMode) {
         this.position = position;
-        this.inControl = inControl;
-        this.outControl = outControl;
+        this.inTangent = inTangent;
+        this.outTangent = outTangent;
         this.pathMode = pathMode;
     }
 
-    public Vector3f inPosition() {
+    public Vector3f position() {
         return position;
     }
 
-    public PathNode inPosition(float x, float y, float z) {
+    public PathNode position(float x, float y, float z) {
         position.set(x, y, z);
         return this;
     }
 
-    public Vector3f inControl() {
-        return inControl;
+    public Vector3f inTangent() {
+        return inTangent;
     }
 
-    public PathNode inControl(float x, float y, float z) {
-        inControl.set(x, y, z);
+    public PathNode inTangent(float x, float y, float z) {
+        inTangent.set(x, y, z);
         return this;
     }
 
-    public Vector3f outControl() {
-        return outControl;
+    public Vector3f outTangent() {
+        return outTangent;
     }
 
-    public PathNode outControl(float x, float y, float z) {
-        outControl.set(x, y, z);
+    public PathNode outTangent(float x, float y, float z) {
+        outTangent.set(x, y, z);
         return this;
     }
 
-    public PathMode evaluateMode() {
+    public PathMode pathMode() {
         return pathMode;
     }
 
-    public PathNode evaluateMode(PathMode evaluateMode) {
-        this.pathMode = evaluateMode;
+    public PathNode pathMode(PathMode pathMode) {
+        this.pathMode = pathMode;
         return this;
     }
 }

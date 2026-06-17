@@ -3,6 +3,7 @@ package cn.anecansaitin.free_camera_api_tripod.core.animation;
 import cn.anecansaitin.free_camera_api_tripod.api.Keyframe;
 import net.minecraft.util.Mth;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -131,7 +132,11 @@ public class Curve {
         return insertIndex;
     }
 
-    public Keyframe key(int index) {
+    public @Nullable Keyframe key(int index) {
+        if (index < 0 || index >= size()) {
+            return null;
+        }
+
         return keys.get(index);
     }
 
