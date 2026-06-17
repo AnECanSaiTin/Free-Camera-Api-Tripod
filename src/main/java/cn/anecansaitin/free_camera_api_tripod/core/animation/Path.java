@@ -13,6 +13,47 @@ public class Path {
     private final ArrayList<PathNode> nodes = new ArrayList<>();
     private final FloatArrayList arcLengthTable = new FloatArrayList();
     private double totalLength;
+    /// 索引缓存
+    private int lastIndex = 0;
+    private boolean positive = true;
+
+    /// 临时变量缓存
+    private final Vector3f cache1 = new Vector3f();
+    private final Vector3f cache2 = new Vector3f();
+
+    public Vector3f evaluate(float progress, Vector3f dest) {
+        double length = totalLength * Math.clamp(progress, 0, 1);
+
+        for (int i = 0; i < arcLengthTable.size(); i++) {
+            float f = arcLengthTable.getFloat(i);
+            length -= f;
+
+            if (length > 0) {
+                continue;
+            }
+
+            return switch (nodes.get(i).pathMode()) {
+                case LINEAR -> {
+                    Vector3f p = nodes.get(i).position();
+                    Vector3f n = nodes.get(i + 1).position();
+                    p.lerp(n, (float) ((f + length) / f), dest);
+                    yield dest;
+                }
+                case BEZIER -> {
+                    PathNode pre = nodes.get(i);
+                    PathNode post = nodes.get(i + 1);
+                    Vector3f p1 = pre.position();
+                    Vector3f c1 = cache1.set(p1).add(pre.outTangent());
+                    Vector3f p2 = post.position();
+                    Vector3f c2 = cache2.set(p2).add(post.inTangent());
+
+                    yield BezierUtils.bezier(p1, c1, c2, p2, (float) ((f + length) / f), dest);
+                }
+            };
+        }
+
+        throw new RuntimeException();
+    }
 
     public void node(PathNode node) {
         nodes.add(node);
@@ -80,9 +121,6 @@ public class Path {
             totalLength = totalLength + length - arcLengthTable.set(nodeIndex, length);
         }
     }
-
-    private final Vector3f cache1 = new Vector3f();
-    private final Vector3f cache2 = new Vector3f();
 
     private float calculateLength(PathNode pre, PathNode post) {
         return switch (pre.pathMode()) {
