@@ -1,39 +1,37 @@
 package cn.anecansaitin.free_camera_api_tripod.core.animation.test;
 
-import cn.anecansaitin.free_camera_api_tripod.api.Keyframe;
-import cn.anecansaitin.free_camera_api_tripod.core.animation.Clip;
-import cn.anecansaitin.free_camera_api_tripod.core.animation.Curve;
+import cn.anecansaitin.free_camera_api_tripod.core.animation.Path;
+import cn.anecansaitin.free_camera_api_tripod.core.animation.PathMode;
+import cn.anecansaitin.free_camera_api_tripod.core.animation.PathNode;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.render.TextureSetup;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
+import net.neoforged.neoforge.client.gui.widget.ExtendedButton;
 import org.joml.Matrix3x2f;
+import org.joml.Vector3f;
 
-public class ClipTestGui extends Screen {
-    private final Clip clip = new Clip();
+public class PathTestGui extends Screen {
+    private final Path path = new Path();
 
-    public ClipTestGui() {
+    public PathTestGui() {
         super(Component.empty());
-        clip.addCurve("test", new Curve());
-        clip.addKey("test", Keyframe.hermite(0, 0, 0, 0));
-        clip.addKey("test", Keyframe.hermite(1, 1, 0, 0));
-        clip.addKey("test", Keyframe.hermite(2, 2, 0, 0));
-        clip.addKey("test", Keyframe.hermite(3, -1, 0, 0));
-        clip.addKey("test", Keyframe.hermite(4, -2, 0, 0));
-        clip.addKey("test", Keyframe.hermite(5, 0, 0, 0));
-        clip.addKey("test", Keyframe.hermite(6, 5, 0, 0));
-        clip.addKey("test", Keyframe.hermite(7, 3, 0, 0));
-        clip.addKey("test", Keyframe.hermite(8, -4, 0, 0));
-        clip.addKey("test", Keyframe.hermite(9, 0, 0, 0));
-        Curve test = clip.curve("test");
-        test.smoothTangents(1f);
+        path.node(new PathNode(new Vector3f(0, 0, 0), new Vector3f(0, 0, 0), new Vector3f(1, 0, 0), PathMode.BEZIER));
+        path.node(new PathNode(new Vector3f(1, 1, 0), new Vector3f(-1, 0, 0), new Vector3f(1, 0, 0), PathMode.BEZIER));
+        path.node(new PathNode(new Vector3f(2, -2, 0), new Vector3f(-1, 0, 0), new Vector3f(0.2f, 0, 0), PathMode.BEZIER));
+        path.node(new PathNode(new Vector3f(3, 3, 0), new Vector3f(-0.2f, 0, 0), new Vector3f(0, 0, 0), PathMode.BEZIER));
+        path.node(new PathNode(new Vector3f(4, -4, 0), new Vector3f(0, 0, 0), new Vector3f(0, 0, 0), PathMode.BEZIER));
+    }
+
+    @Override
+    protected void init() {
+        addRenderableWidget(new ExtendedButton(0, 0, 10, 10, Component.literal("+"), (_) -> up()));
     }
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float a) {
         super.extractRenderState(graphics, mouseX, mouseY, a);
-
         graphics.horizontalLine(100, 300, 60, 0xff000000);
         graphics.horizontalLine(100, 300, 70, 0xff000000);
         graphics.horizontalLine(100, 300, 80, 0xff000000);
@@ -51,18 +49,26 @@ public class ClipTestGui extends Screen {
         graphics.verticalLine(140, 50, 200, 0xff000000);
         graphics.verticalLine(150, 50, 200, 0xff000000);
 
-        float time = 0f;
+        if (path.size() < 2) {
+            return;
+        }
 
-        for (int i = 0; i < 900; i++) {
-            float test = clip.evaluate("test", time);
-            float x0 = time * 10 + 100;
-            float y0 = test * 10 + 100;
+        float delta = 0.01f;
+        Vector3f dest = new Vector3f();
+
+        for (int i = 0; i < 100; i++) {
+            path.evaluate(delta * i, dest);
+            float x0 = dest.x * 10 + 100;
+            float y0 = dest.y * 10 + 100;
             fillFloat(graphics, x0, y0, x0 + 1, y0 + 1, 0xFFFFFFFF);
-            time = 0.01f * i;
         }
     }
 
     private void fillFloat(GuiGraphicsExtractor graphics, float x0, float y0, float x1, float y1, int col) {
         graphics.submitGuiElementRenderState(new FloatFill(RenderPipelines.GUI, TextureSetup.noTexture(), new Matrix3x2f(graphics.pose()), x0, y0, x1, y1, col, col, graphics.peekScissorStack()));
+    }
+
+    public void up() {
+        path.node(0, new PathNode(new Vector3f(0, -1, 0), new Vector3f(0, 0, 0), new Vector3f(0, 0, 0), PathMode.LINEAR));
     }
 }
