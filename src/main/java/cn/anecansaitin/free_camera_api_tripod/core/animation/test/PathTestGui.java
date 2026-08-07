@@ -1,7 +1,7 @@
 package cn.anecansaitin.free_camera_api_tripod.core.animation.test;
 
 import cn.anecansaitin.free_camera_api_tripod.core.animation.Path;
-import cn.anecansaitin.free_camera_api_tripod.core.animation.PathMode;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.PathMode;
 import cn.anecansaitin.free_camera_api_tripod.core.animation.PathNode;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.render.TextureSetup;
@@ -57,7 +57,7 @@ public class PathTestGui extends Screen {
         Vector3f dest = new Vector3f();
 
         for (int i = 0; i < 100; i++) {
-            path.evaluate(delta * i, dest);
+            path.evaluate(dest, delta * i);
             float x0 = dest.x * 10 + 100;
             float y0 = dest.y * 10 + 100;
             fillFloat(graphics, x0, y0, x0 + 1, y0 + 1, 0xFFFFFFFF);

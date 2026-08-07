@@ -46,9 +46,9 @@ public class CmdCameraKeyMapping {
         }
 
         while (TEST2.get().consumeClick()) {
-//            CmdCamera cmdCamera = CmdCamera.INSTANCE;
-//            cmdCamera.play();
-            Minecraft.getInstance().setScreen(new PathTestGui());
+            CmdCamera cmdCamera = CmdCamera.INSTANCE;
+            cmdCamera.play();
+//            Minecraft.getInstance().setScreen(new PathTestGui());
         }
 
         while (TEST3.get().consumeClick()) {

@@ -1,25 +1,13 @@
-package cn.anecansaitin.free_camera_api_tripod.api;
+package cn.anecansaitin.free_camera_api_tripod.api.animation;
 
-import cn.anecansaitin.free_camera_api_tripod.core.animation.EvaluateMode;
 import cn.anecansaitin.free_camera_api_tripod.core.animation.MultiKeyframe;
-import cn.anecansaitin.free_camera_api_tripod.core.animation.WeightedMode;
 import org.jspecify.annotations.NullMarked;
 
 import java.util.Comparator;
 
 @NullMarked
 @SuppressWarnings("unused")
-public interface Keyframe {
-    // get
-    float time();
-    float value();
-    float inTangent();
-    float outTangent();
-    float inWeight();
-    float outWeight();
-    WeightedMode weightedMode();
-    EvaluateMode evaluateMode();
-    // set
+public interface Keyframe extends Keyframec {
     Keyframe time(float time);
     Keyframe value(float value);
     Keyframe inTangent(float inTangent);

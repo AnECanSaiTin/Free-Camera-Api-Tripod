@@ -1,0 +1,8 @@
+{
+  "net/minecraft/client/renderer/feature/NameTagFeatureRenderer$Storage": [
+    "cn/anecansaitin/free_camera_api_tripod/core/cmd_camera/NameTagFeatureRendererStorageExtension"
+  ],
+  "net/minecraft/client/renderer/OrderedSubmitNodeCollector": [
+    "cn/anecansaitin/free_camera_api_tripod/core/cmd_camera/OrderedSubmitNodeCollectorExtension"
+  ]
+}

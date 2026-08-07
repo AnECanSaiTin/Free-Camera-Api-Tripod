@@ -6,6 +6,10 @@
   "mixins": [
   ],
   "client": [
+    "cmd_camera.NameTagFeatureRendererStorageMixin",
+    "cmd_camera.OrderedSubmitNodeCollectorMixin",
+    "cmd_camera.SubmitNodeCollectionMixin",
+    "cmd_camera.SubmitNodeStorageMixin",
     "control_scheme.MinecraftMixin",
     "control_scheme.MouseHandlerMixin"
   ],

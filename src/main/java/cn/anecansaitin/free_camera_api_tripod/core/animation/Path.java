@@ -1,16 +1,18 @@
 package cn.anecansaitin.free_camera_api_tripod.core.animation;
 
-import cn.anecansaitin.free_camera_api_tripod.util.BezierUtils;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.PathMode;
+import cn.anecansaitin.free_camera_api_tripod.util.SplineUtils;
 import it.unimi.dsi.fastutil.doubles.DoubleArrayList;
 import it.unimi.dsi.fastutil.floats.FloatArrayList;
 import org.joml.Vector3f;
+import org.joml.Vector3fc;
 import org.jspecify.annotations.NullMarked;
-import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 
 @NullMarked
 public class Path {
+    private String name;
     private final ArrayList<PathNode> nodes = new ArrayList<>();
     private final FloatArrayList segmentLengths = new FloatArrayList();
     private final DoubleArrayList cumulativeLengths = new DoubleArrayList();
@@ -19,7 +21,15 @@ public class Path {
     private int lastIndex = 0;
     private boolean positive = true;
 
-    public Vector3f evaluate(float progress, Vector3f dest) {
+    public Path() {
+        name = "Path";
+    }
+
+    public Path(String name) {
+        this.name = name;
+    }
+
+    public Vector3f evaluate(float distance, Vector3f dest) {
         int size = nodes.size();
 
         switch (size) {
@@ -29,7 +39,7 @@ public class Path {
             }
         }
 
-        double length = totalLength * Math.clamp(progress, 0, 1);
+        double length = Math.clamp(distance, 0, totalLength);
         int index = findFloorIndex(length);
         PathNode left = nodes.get(index);
 
@@ -43,7 +53,7 @@ public class Path {
 
         return switch (left.pathMode()) {
             case LINEAR -> dest.set(left.position()).lerp(right.position(), delta);
-            case BEZIER -> BezierUtils.bezier(
+            case BEZIER -> SplineUtils.bezier(
                     left.position(),
                     left.position().add(left.outTangent(), new Vector3f()),
                     right.position().add(right.inTangent(), new Vector3f()),
@@ -51,19 +61,36 @@ public class Path {
                     delta,
                     dest
             );
+            case CATMULL_ROM -> SplineUtils.catmullRom(
+                    catmullRomP1(index),
+                    left.position(),
+                    right.position(),
+                    catmullRomP4(index),
+                    delta,
+                    dest
+            );
         };
+    }
+
+    public Vector3f evaluate(Vector3f dest, float progress) {
+        return evaluate((float) (progress * totalLength), dest);
     }
 
     public void node(PathNode node) {
         nodes.add(node);
+
+        if (nodes.size() == 1) {
+            return;
+        }
+
         segmentLengths.add(0);
         cumulativeLengths.add(0);
-        updateArcLengthTable(nodes.size() - 1);
+        updateArcLengthTable(segmentLengths.size() - 1, segmentLengths.size());
     }
 
-    public @Nullable PathNode node(int index) {
+    public PathNodec node(int index) {
         if (!validNode(index)) {
-            return null;
+            throw new IndexOutOfBoundsException("Invalid node index: " + index);
         }
 
         return nodes.get(index);
@@ -71,21 +98,55 @@ public class Path {
 
     public void node(int index, PathNode node) {
         nodes.set(index, node);
-        updateArcLengthTable(index);
+        updateArcLengthTable(Math.max(0, index - 2), Math.min(segmentLengths.size(), index + 2));
+    }
+
+    public boolean updateNode(int index, NodeUpdater updater) {
+        if (!validNode(index)) {
+            return false;
+        }
+
+        updater.update(nodes.get(index));
+        updateArcLengthTable(Math.max(0, index - 2), Math.min(segmentLengths.size(), index + 2));
+        return true;
     }
 
     public void insertNode(int index, PathNode node) {
         nodes.add(index, node);
+
+        if (nodes.size() == 1) {
+            return;
+        }
+
         segmentLengths.add(index, 0);
         cumulativeLengths.add(index, 0);
-        updateArcLengthTable(index);
+        updateArcLengthTable(Math.max(0, index - 2), Math.min(segmentLengths.size(), index + 2));
     }
 
-    public void removeNode(int index) {
+    public boolean removeNode(int index) {
+        if (!validNode(index)) {
+            return false;
+        }
+
+        if (index == nodes.size() - 1) {
+            segmentLengths.removeFloat(index - 1);
+            cumulativeLengths.removeDouble(index - 1);
+        } else {
+            segmentLengths.removeFloat(index);
+            cumulativeLengths.removeDouble(index);
+        }
+
         nodes.remove(index);
-        segmentLengths.removeFloat(index);
-        cumulativeLengths.removeDouble(index);
-        updateArcLengthTable(index);
+
+        if (nodes.size() < 2) {
+            totalLength = 0;
+            segmentLengths.clear();
+            cumulativeLengths.clear();
+            return true;
+        }
+
+        updateArcLengthTable(Math.max(0, index - 2), Math.min(segmentLengths.size(), index + 2));
+        return true;
     }
 
     private void updateArcLengthTable() {
@@ -99,57 +160,59 @@ public class Path {
         double totalLength = 0;
 
         for (int i = 0; i < nodes.size() - 1; i++) {
-            float l = calculateLength(nodes.get(i), nodes.get(i + 1));
+            float l = calculateLength(i);
             segmentLengths.add(l);
             totalLength += l;
             cumulativeLengths.add(totalLength);
         }
     }
 
-    private void updateArcLengthTable(int nodeIndex) {
-        if (nodes.size() < 2) {
-            totalLength = 0;
-            cumulativeLengths.clear();
-            segmentLengths.clear();
+    private void updateArcLengthTable(int begin, int end) {
+        // 目前所有调用该方法的函数都是按照4个受影响曲线考虑，对于直线与贝塞尔曲线虽多计算两段，开销较小可忽略
+        if (begin < 0) {
+            throw new IllegalArgumentException("Invalid range: begin must be greater than or equal to 0");
+        }
+
+        if (end > segmentLengths.size()) {
+            throw new IllegalArgumentException("Invalid range: end must be less than or equal to the size of the path");
+        }
+
+        if (begin >= end) {
             return;
         }
 
-        // 前
-        if (validSegment(nodeIndex - 1)) {
-            PathNode pre = nodes.get(nodeIndex - 1);
-            PathNode post = nodes.get(nodeIndex);
-            float length = calculateLength(pre, post);
-            segmentLengths.set(nodeIndex - 1, length);
-        }
-        // 后
-        if (validSegment(nodeIndex)) {
-            PathNode pre = nodes.get(nodeIndex);
-            PathNode post = nodes.get(nodeIndex + 1);
-            float length = calculateLength(pre, post);
-            segmentLengths.set(nodeIndex, length);
+        for (int i = begin; i < end; i++) {
+            segmentLengths.set(i, calculateLength(i));
         }
 
-        if (nodeIndex == 0 || nodeIndex == 1) {
+        if (begin == 0) {
             cumulativeLengths.set(0, segmentLengths.getFloat(0));
         }
 
-        for (int j = Math.max(2, nodeIndex - 1); j < nodes.size(); j++) {
-            double pre = cumulativeLengths.getDouble(j - 2);
-            float current = segmentLengths.getFloat(j - 1);
-            cumulativeLengths.set(j - 1, pre + current);
+        for (int i = Math.max(begin, 1); i < cumulativeLengths.size(); i++) {
+            cumulativeLengths.set(i, cumulativeLengths.getDouble(i - 1) + segmentLengths.getFloat(i));
         }
 
-        totalLength = cumulativeLengths.getDouble(nodes.size() - 2);
+        totalLength = cumulativeLengths.getDouble(cumulativeLengths.size() - 1);
     }
 
-    private float calculateLength(PathNode pre, PathNode post) {
+    private float calculateLength(int currentIndex) {
+        PathNode pre = nodes.get(currentIndex);
+        PathNode post = nodes.get(currentIndex + 1);
+
         return switch (pre.pathMode()) {
             case LINEAR -> pre.position().distance(post.position());
-            case BEZIER -> BezierUtils.bezierLength(
+            case BEZIER -> SplineUtils.bezierLength(
                     pre.position(),
                     pre.position().add(pre.outTangent(), new Vector3f()),
                     post.position().add(post.inTangent(), new Vector3f()),
                     post.position()
+            );
+            case CATMULL_ROM -> SplineUtils.catmullRomLength(
+                    catmullRomP1(currentIndex),
+                    pre.position(),
+                    post.position(),
+                    catmullRomP4(currentIndex)
             );
         };
     }
@@ -176,17 +239,19 @@ public class Path {
 
             if (positive) {
                 if (validSegment(lastIndex + 1)) {
+                    left = right;
                     right = cumulativeLengths.getDouble(lastIndex + 1);
 
-                    if (length < right) {
+                    if (left <= length && length < right) {
                         return ++lastIndex;
                     }
                 }
             } else {
                 if (validSegment(lastIndex - 1)) {
-                    right = cumulativeLengths.getDouble(lastIndex - 1);
+                    right = left;
+                    left = cumulativeLengths.getDouble(lastIndex - 1);
 
-                    if (length < right) {
+                    if (left <= length && length < right) {
                         return --lastIndex;
                     }
                 }
@@ -219,7 +284,52 @@ public class Path {
         return -(low + 1);
     }
 
+    private Vector3fc catmullRomP1(int currentIndex) {
+        if (currentIndex > 0) {
+            PathNode node = nodes.get(currentIndex - 1);
+            return node.pathMode() == PathMode.CATMULL_ROM ? node.position() : nodes.get(currentIndex).position();
+        } else {
+            return nodes.get(currentIndex).position();
+        }
+    }
+
+    private Vector3fc catmullRomP4(int currentIndex) {
+        if (currentIndex < size() - 2) {
+            PathNode node = nodes.get(currentIndex + 2);
+            return node.pathMode() == PathMode.CATMULL_ROM ? node.position() : nodes.get(currentIndex + 1).position();
+        } else {
+            return nodes.get(currentIndex + 1).position();
+        }
+    }
+
+    public double totalLength() {
+        return totalLength;
+    }
+
     public int size() {
         return nodes.size();
+    }
+
+    public String name() {
+        return name;
+    }
+
+    public Path name(String name) {
+        this.name = name;
+        return this;
+    }
+
+    public Path clear() {
+        nodes.clear();
+        cumulativeLengths.clear();
+        segmentLengths.clear();
+        totalLength = 0;
+        lastIndex = 0;
+        return this;
+    }
+
+    @FunctionalInterface
+    public interface NodeUpdater {
+        void update(PathNode node);
     }
 }

@@ -1,6 +1,6 @@
 package cn.anecansaitin.free_camera_api_tripod.core.animation.test;
 
-import cn.anecansaitin.free_camera_api_tripod.api.Keyframe;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.Keyframe;
 import cn.anecansaitin.free_camera_api_tripod.core.animation.Clip;
 import cn.anecansaitin.free_camera_api_tripod.core.animation.Curve;
 import net.minecraft.client.gui.GuiGraphicsExtractor;

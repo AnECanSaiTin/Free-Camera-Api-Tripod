@@ -1,6 +1,7 @@
 package cn.anecansaitin.free_camera_api_tripod.core.animation;
 
-import cn.anecansaitin.free_camera_api_tripod.api.Keyframe;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.Keyframe;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.WrapMode;
 import net.minecraft.util.Mth;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;

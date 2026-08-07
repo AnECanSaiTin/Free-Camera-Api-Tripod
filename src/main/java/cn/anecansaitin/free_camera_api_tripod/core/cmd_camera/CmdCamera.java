@@ -1,45 +1,69 @@
 package cn.anecansaitin.free_camera_api_tripod.core.cmd_camera;
 
-import cn.anecansaitin.free_camera_api_tripod.api.Keyframe;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.Keyframe;
 import cn.anecansaitin.free_camera_api_tripod.core.animation.Clip;
 import cn.anecansaitin.free_camera_api_tripod.core.animation.Curve;
-import cn.anecansaitin.free_camera_api_tripod.core.animation.Evaluator;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.Evaluator;
+import cn.anecansaitin.free_camera_api_tripod.core.animation.Path;
+import cn.anecansaitin.free_camera_api_tripod.core.animation.PathNode;
 import cn.anecansaitin.freecameraapi.api.CameraModifier;
 import cn.anecansaitin.freecameraapi.api.CameraPlugin;
 import cn.anecansaitin.freecameraapi.api.Plugin;
 import net.minecraft.client.Minecraft;
 import org.joml.Vector3f;
+import org.jspecify.annotations.NullMarked;
 
+@NullMarked
 @Plugin("cmd_camera")
 public class CmdCamera implements CameraPlugin {
     public static CmdCamera INSTANCE;
     private final CameraModifier modifier;
     private Clip clip;
+    private Path path;
     private PlayingState state = PlayingState.STOP;
     private int startTime = 0;
     private int pauseTime = 0;
     private int pauseDuration = 0;
+    private final Vector3f cache = new Vector3f();
+
+    private boolean editing = false;
+    // todo 这个不应该放在这里
+    //todo 计划分三个类，播放、编辑、展示信息
+    private Selected selectedPathNode = new Selected(0, Selected.Type.NODE);
 
     public CmdCamera(CameraModifier modifier) {
         INSTANCE = this;
-        this.modifier = modifier;
+        this.modifier = modifier
+                .enableFov()
+                .enablePos()
+                .enableGlobalMode()
+                .enableRotation();
+
         clip = new Clip();
-        clip.addCurve("position.x", new Curve());
-        clip.addCurve("position.y", new Curve());
-        clip.addCurve("position.z", new Curve());
+        clip.addCurve("position", new Curve());
         clip.addCurve("rotation.x", new Curve());
         clip.addCurve("rotation.y", new Curve());
         clip.addCurve("rotation.z", new Curve());
         clip.addCurve("fov", new Curve());
-        modifier.enableFov()
-                .enablePos()
-                .enableGlobalMode()
-                .enableRotation();
+        addPosKey(0f, 0f);
+        addFovKey(0f, 70f);
+
+        path = new Path();
+//        path.node(PathNode.bezier(new Vector3f(3.147f, 58f, -6.496f), new Vector3f(0, -2.2f, 0)));
+//        path.node(PathNode.bezier(new Vector3f(3.484f, 58f, -17.726f), new Vector3f(3, 0, 0)));
+//        path.node(PathNode.bezier(new Vector3f(9.629f, 58f, -17.581f), new Vector3f(-1.5f, -2.3f, 0)));
+//        path.node(PathNode.bezier(new Vector3f(11.308f, 58f, -9.503f), new Vector3f(0, -3, 4.12f)));
+        path.node(PathNode.catmullRom(new Vector3f(3.147f, 58f, -6.496f)));
+        path.node(PathNode.catmullRom(new Vector3f(3.484f, 58f, -17.726f)));
+        path.node(PathNode.catmullRom(new Vector3f(9.629f, 58f, -17.581f)));
+        path.node(PathNode.catmullRom(new Vector3f(11.308f, 58f, -9.503f)));
+        path.node(PathNode.catmullRom(new Vector3f(18.308f, 58f, -9.503f)));
+        addPosKey(5f, /*(float) path.totalLength()*/1);
     }
 
     @Override
     public void update(float deltaTime) {
-        switch (state){
+        switch (state) {
             case PRE_PLAY -> prePlay(deltaTime);
             case PLAY -> playing(deltaTime);
             case PRE_STOP -> preStop();
@@ -83,7 +107,8 @@ public class CmdCamera implements CameraPlugin {
     }
 
     private Vector3f evaluatePos(float time) {
-        return clip.evaluate(time, posEvaluator);
+        float distance = clip.evaluate("position", time);
+        return path.evaluate(cache, distance);
     }
 
     private Vector3f evaluateRot(float time) {
@@ -107,10 +132,8 @@ public class CmdCamera implements CameraPlugin {
         pauseTime = Minecraft.getInstance().levelRenderer.getTicks();
     }
 
-    public void addPosKey(float time, float x, float y, float z) {
-        clip.addKey("position.x", Keyframe.create(time, x));
-        clip.addKey("position.y", Keyframe.create(time, y));
-        clip.addKey("position.z", Keyframe.create(time, z));
+    public void addPosKey(float time, float distance) {
+        clip.addKey("position", Keyframe.create(time, distance));
     }
 
     public void addRotKey(float time, float x, float y, float z) {
@@ -124,9 +147,7 @@ public class CmdCamera implements CameraPlugin {
     }
 
     public void removePosKey(int index) {
-        clip.removeKey("position.x", index);
-        clip.removeKey("position.y", index);
-        clip.removeKey("position.z", index);
+        clip.removeKey("position", index);
     }
 
     public void removeRotKey(int index) {
@@ -139,6 +160,24 @@ public class CmdCamera implements CameraPlugin {
         clip.removeKey("fov", index);
     }
 
+    public void addPosPath(PathNode node) {
+        path.node(node);
+    }
+
+    public void insertPosPath(int index, PathNode node) {
+        path.insertNode(index, node);
+    }
+
+    public boolean removePosPath(int index) {
+        boolean result = path.removeNode(index);
+
+        if (result && selectedPathNode.index() >= path.size()) {
+            selectedPathNode = new Selected(path.size() - 1, Selected.Type.NODE);
+        }
+
+        return result;
+    }
+
     public Clip clip() {
         return clip;
     }
@@ -147,19 +186,26 @@ public class CmdCamera implements CameraPlugin {
         this.clip = clip;
     }
 
-    private final Evaluator<Vector3f> posEvaluator = new Evaluator<>() {
-        private final Vector3f vec = new Vector3f();
+    public Path path() {
+        return path;
+    }
 
-        @Override
-        public String[] properties() {
-            return new String[]{"position.x", "position.y", "position.z"};
+    public void path(Path path) {
+        this.path = path;
+    }
+
+    public Selected selectedPathNode() {
+        return selectedPathNode;
+    }
+
+    public boolean selectedPathNode(Selected selected) {
+        if (selected.index() < 0 || selected.index() >= path.size()) {
+            return false;
         }
 
-        @Override
-        public Vector3f build(float... values) {
-            return vec.set(values[0], values[1], values[2]);
-        }
-    };
+        this.selectedPathNode = selected;
+        return true;
+    }
 
     private final Evaluator<Vector3f> rotEvaluator = new Evaluator<>() {
         private final Vector3f vec = new Vector3f();

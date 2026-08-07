@@ -1,6 +1,8 @@
 package cn.anecansaitin.free_camera_api_tripod.core.animation;
 
-import cn.anecansaitin.free_camera_api_tripod.api.Keyframe;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.EvaluateMode;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.Keyframe;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.WeightedMode;
 import org.jspecify.annotations.NullMarked;
 
 @NullMarked

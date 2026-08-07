@@ -1,4 +1,4 @@
-package cn.anecansaitin.free_camera_api_tripod.core.animation;
+package cn.anecansaitin.free_camera_api_tripod.api.animation;
 
 public interface Evaluator<T> {
     String[] properties();

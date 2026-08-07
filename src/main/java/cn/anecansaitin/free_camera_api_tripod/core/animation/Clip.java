@@ -1,6 +1,7 @@
 package cn.anecansaitin.free_camera_api_tripod.core.animation;
 
-import cn.anecansaitin.free_camera_api_tripod.api.Keyframe;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.Evaluator;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.Keyframe;
 import it.unimi.dsi.fastutil.objects.Object2FloatOpenHashMap;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
