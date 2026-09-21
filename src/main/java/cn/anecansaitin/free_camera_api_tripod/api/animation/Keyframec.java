@@ -1,6 +1,6 @@
 package cn.anecansaitin.free_camera_api_tripod.api.animation;
 
-public interface Keyframec {
+public interface Keyframec extends TrackKey {
     // get
     float time();
 

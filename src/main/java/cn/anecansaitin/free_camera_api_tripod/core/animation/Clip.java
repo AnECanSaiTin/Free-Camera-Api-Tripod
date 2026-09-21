@@ -45,7 +45,6 @@ public class Clip {
         }
 
         curves.put(property, curve);
-        updateDuration();
         return true;
     }
 
@@ -58,13 +57,7 @@ public class Clip {
     }
 
     public @Nullable Curve removeCurve(String property) {
-        Curve removed = curves.remove(property);
-
-        if (removed != null) {
-            updateDuration();
-        }
-
-        return removed;
+        return curves.remove(property);
     }
 
     public float evaluate(String property, float time) {
@@ -95,16 +88,16 @@ public class Clip {
         return evaluateCache;
     }
 
+    /// 动画片段时长。
+    ///
+    /// 用户显式设置时为正数，直接返回；否则（自动模式）按当前曲线实时计算，
+    /// 这样移动键或直接编辑曲线后时长会立即更新。
     public float duration() {
-        return Math.abs(duration);
-    }
-
-    private void updateDuration() {
         if (duration > 0) {
-            return;
+            return duration;
         }
 
-        duration = -calculateDuration();
+        return calculateDuration();
     }
 
     private float calculateDuration() {
@@ -137,11 +130,6 @@ public class Clip {
         }
 
         boolean success = curve.key(key) >= 0;
-
-        if (success) {
-            updateDuration();
-        }
-
         return success;
     }
 
@@ -152,12 +140,6 @@ public class Clip {
             return false;
         }
 
-        boolean result = curve.removeKey(index);
-
-        if (result) {
-            updateDuration();
-        }
-
-        return result;
+        return curve.removeKey(index);
     }
 }

@@ -5,6 +5,8 @@ import cn.anecansaitin.free_camera_api_tripod.api.animation.PathMode;
 import cn.anecansaitin.free_camera_api_tripod.core.animation.Path;
 import cn.anecansaitin.free_camera_api_tripod.core.animation.PathNode;
 import cn.anecansaitin.free_camera_api_tripod.core.animation.PathNodec;
+import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.edit.CameraEditorModel;
+import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.edit.Selected;
 import cn.anecansaitin.free_camera_api_tripod.util.CommandBuilder;
 import com.mojang.brigadier.Command;
 import net.minecraft.commands.CommandSourceStack;
@@ -60,10 +62,14 @@ public class CameraCommand {
         event.getDispatcher().register(builder.build());
     }
 
+    private static CameraEditorModel editor() {
+        return CmdCamera.INSTANCE.editor();
+    }
+
     private static Command<CommandSourceStack> createPath() {
         return (context) -> {
             String name = context.getArgument("name", String.class);
-            CmdCamera.INSTANCE.path(new Path(name));
+            editor().path(new Path(name));
             context.getSource().sendSuccess(() -> Component.literal("Path created"), false);
             return Command.SINGLE_SUCCESS;
         };
@@ -71,8 +77,8 @@ public class CameraCommand {
 
     private static Command<CommandSourceStack> cleanPath() {
         return (context) -> {
-            CmdCamera.INSTANCE.path().clear();
-            CmdCamera.INSTANCE.selectedPathNode(new Selected(0, Selected.Type.NODE));
+            editor().path().clear();
+            editor().selectPathNode(new Selected(0, Selected.Type.NODE));
             PathRender.markDirty();
             context.getSource().sendSuccess(() -> Component.literal("Path cleared"), false);
             return Command.SINGLE_SUCCESS;
@@ -82,7 +88,7 @@ public class CameraCommand {
     private static Command<CommandSourceStack> setPathName() {
         return (context) -> {
             String name = context.getArgument("name", String.class);
-            CmdCamera.INSTANCE.path().name(name);
+            editor().path().name(name);
             context.getSource().sendSuccess(() -> Component.literal("Path name set to " + name), false);
             return Command.SINGLE_SUCCESS;
         };
@@ -90,7 +96,7 @@ public class CameraCommand {
 
     private static Command<CommandSourceStack> getPathName() {
         return (context) -> {
-            context.getSource().sendSuccess(() -> Component.literal("Path name: " + CmdCamera.INSTANCE.path().name()), false);
+            context.getSource().sendSuccess(() -> Component.literal("Path name: " + editor().path().name()), false);
             return Command.SINGLE_SUCCESS;
         };
     }
@@ -98,7 +104,7 @@ public class CameraCommand {
     private static Command<CommandSourceStack> selectPathNode() {
         return (context) -> {
             int index = context.getArgument("index", Integer.class);
-            boolean result = CmdCamera.INSTANCE.selectedPathNode(new Selected(index, Selected.Type.NODE));
+            boolean result = editor().selectPathNode(new Selected(index, Selected.Type.NODE));
             PathRender.markDirtySelected();
 
             if (!result) {
@@ -113,9 +119,9 @@ public class CameraCommand {
 
     private static Command<CommandSourceStack> selectPathNodeWithType() {
         return (context) -> {
-            int index = CmdCamera.INSTANCE.selectedPathNode().index();
+            int index = editor().selectedPathNode().index();
             Selected.Type type = context.getArgument("type", Selected.Type.class);
-            boolean result = CmdCamera.INSTANCE.selectedPathNode(new Selected(index, type));
+            boolean result = editor().selectPathNode(new Selected(index, type));
             PathRender.markDirty();
 
             if (!result) {
@@ -132,7 +138,7 @@ public class CameraCommand {
         return (context) -> {
             int index = context.getArgument("index", Integer.class);
             Selected.Type type = context.getArgument("type", Selected.Type.class);
-            boolean result = CmdCamera.INSTANCE.selectedPathNode(new Selected(index, type));
+            boolean result = editor().selectPathNode(new Selected(index, type));
             PathRender.markDirty();
 
             if (!result) {
@@ -148,9 +154,7 @@ public class CameraCommand {
     private static Command<CommandSourceStack> addPathNode() {
         return context -> {
             Vector3f pos = context.getSource().getPosition().toVector3f();
-            CmdCamera cmdCamera = CmdCamera.INSTANCE;
-            cmdCamera.addPosPath(PathNode.catmullRom(pos));
-            cmdCamera.selectedPathNode(new Selected(cmdCamera.path().size() - 1, Selected.Type.NODE));
+            editor().addPathNode(PathNode.catmullRom(pos));
             PathRender.markDirty();
             context.getSource().sendSuccess(() -> Component.literal("Added path node " + pos), false);
             return Command.SINGLE_SUCCESS;
@@ -160,9 +164,7 @@ public class CameraCommand {
     private static Command<CommandSourceStack> addPathNodeWithPos() {
         return context -> {
             Vec3 pos = context.getArgument("pos", Coordinates.class).getPosition(context.getSource());
-            CmdCamera cmdCamera = CmdCamera.INSTANCE;
-            cmdCamera.addPosPath(PathNode.catmullRom(pos.toVector3f()));
-            cmdCamera.selectedPathNode(new Selected(cmdCamera.path().size() - 1, Selected.Type.NODE));
+            editor().addPathNode(PathNode.catmullRom(pos.toVector3f()));
             PathRender.markDirty();
             context.getSource().sendSuccess(() -> Component.literal("Added path node " + pos), false);
             return Command.SINGLE_SUCCESS;
@@ -173,9 +175,7 @@ public class CameraCommand {
         return context -> {
             Vec3 pos = context.getArgument("pos", Coordinates.class).getPosition(context.getSource());
             int index = context.getArgument("index", Integer.class);
-            CmdCamera cmdCamera = CmdCamera.INSTANCE;
-            cmdCamera.insertPosPath(index, PathNode.catmullRom(pos.toVector3f()));
-            cmdCamera.selectedPathNode(new Selected(index, Selected.Type.NODE));
+            editor().insertPathNode(index, PathNode.catmullRom(pos.toVector3f()));
             PathRender.markDirty();
             context.getSource().sendSuccess(() -> Component.literal("Added path node " + pos + " at index " + index), false);
             return Command.SINGLE_SUCCESS;
@@ -184,8 +184,8 @@ public class CameraCommand {
 
     private static Command<CommandSourceStack> removePathNode() {
         return context -> {
-            int index = CmdCamera.INSTANCE.selectedPathNode().index();
-            boolean result = CmdCamera.INSTANCE.removePosPath(index);
+            int index = editor().selectedPathNode().index();
+            boolean result = editor().removePathNode(index);
 
             if (!result) {
                 context.getSource().sendFailure(Component.literal("Path node index out of range"));
@@ -201,7 +201,7 @@ public class CameraCommand {
     private static Command<CommandSourceStack> removePathNodeWithIndex() {
         return context -> {
             int index = context.getArgument("index", Integer.class);
-            boolean result = CmdCamera.INSTANCE.removePosPath(index);
+            boolean result = editor().removePathNode(index);
             PathRender.markDirty();
 
             if (!result) {
@@ -216,8 +216,8 @@ public class CameraCommand {
 
     private static Command<CommandSourceStack> getPathPos() {
         return context -> {
-            Selected selected = CmdCamera.INSTANCE.selectedPathNode();
-            Path path = CmdCamera.INSTANCE.path();
+            Selected selected = editor().selectedPathNode();
+            Path path = editor().path();
             PathNodec node = path.node(selected.index());
             Vector3fc pos = switch (selected.type()) {
                 case NODE -> node.position();
@@ -233,7 +233,7 @@ public class CameraCommand {
 
     private static Command<CommandSourceStack> getPathPosWithIndex() {
         return context -> {
-            Path path = CmdCamera.INSTANCE.path();
+            Path path = editor().path();
             int index = context.getArgument("index", Integer.class);
             PathNodec node = path.node(index);
             Vector3fc pos = node.position();
@@ -245,8 +245,8 @@ public class CameraCommand {
 
     private static Command<CommandSourceStack> getPathPosWithType() {
         return context -> {
-            Path path = CmdCamera.INSTANCE.path();
-            int index = CmdCamera.INSTANCE.selectedPathNode().index();
+            Path path = editor().path();
+            int index = editor().selectedPathNode().index();
             Selected.Type type = context.getArgument("type", Selected.Type.class);
             PathNodec node = path.node(index);
             Vector3fc pos = switch (type) {
@@ -263,7 +263,7 @@ public class CameraCommand {
 
     private static Command<CommandSourceStack> getPathPosWithTypeAndIndex() {
         return context -> {
-            Path path = CmdCamera.INSTANCE.path();
+            Path path = editor().path();
             int index = context.getArgument("index", Integer.class);
             Selected.Type type = context.getArgument("type", Selected.Type.class);
             PathNodec node = path.node(index);
@@ -282,9 +282,8 @@ public class CameraCommand {
     private static Command<CommandSourceStack> setPathPos() {
         return context -> {
             Vector3f position = context.getSource().getPosition().toVector3f();
-            Path path = CmdCamera.INSTANCE.path();
-            Selected selected = CmdCamera.INSTANCE.selectedPathNode();
-            boolean result = path.updateNode(selected.index(), NODE_POS_UPDATER.set(selected.type(), position));
+            Selected selected = editor().selectedPathNode();
+            boolean result = editor().updatePathNode(selected.index(), NODE_POS_UPDATER.set(selected.type(), position));
 
             if (!result) {
                 context.getSource().sendFailure(Component.literal("Path node index out of range"));
@@ -301,9 +300,8 @@ public class CameraCommand {
     private static Command<CommandSourceStack> setPathPosWithPos() {
         return context -> {
             Vector3f position = context.getArgument("pos", Coordinates.class).getPosition(context.getSource()).toVector3f();
-            Path path = CmdCamera.INSTANCE.path();
-            Selected selected = CmdCamera.INSTANCE.selectedPathNode();
-            boolean result = path.updateNode(selected.index(), NODE_POS_UPDATER.set(selected.type(), position));
+            Selected selected = editor().selectedPathNode();
+            boolean result = editor().updatePathNode(selected.index(), NODE_POS_UPDATER.set(selected.type(), position));
 
             if (!result) {
                 context.getSource().sendFailure(Component.literal("Path node index out of range"));
@@ -320,10 +318,9 @@ public class CameraCommand {
     private static Command<CommandSourceStack> setPathPosWithType() {
         return context -> {
             Vector3f position = context.getSource().getPosition().toVector3f();
-            int index = CmdCamera.INSTANCE.selectedPathNode().index();
+            int index = editor().selectedPathNode().index();
             Selected.Type type = context.getArgument("type", Selected.Type.class);
-            Path path = CmdCamera.INSTANCE.path();
-            boolean result = path.updateNode(index, NODE_POS_UPDATER.set(type, position));
+            boolean result = editor().updatePathNode(index, NODE_POS_UPDATER.set(type, position));
 
             if (!result) {
                 context.getSource().sendFailure(Component.literal("Path node index out of range"));
@@ -340,10 +337,9 @@ public class CameraCommand {
     private static Command<CommandSourceStack> setPathPosWithTypeAndPos() {
         return context -> {
             Vector3f position = context.getArgument("pos", Coordinates.class).getPosition(context.getSource()).toVector3f();
-            int index = CmdCamera.INSTANCE.selectedPathNode().index();
+            int index = editor().selectedPathNode().index();
             Selected.Type type = context.getArgument("type", Selected.Type.class);
-            Path path = CmdCamera.INSTANCE.path();
-            boolean result = path.updateNode(index, NODE_POS_UPDATER.set(type, position));
+            boolean result = editor().updatePathNode(index, NODE_POS_UPDATER.set(type, position));
 
             if (!result) {
                 context.getSource().sendFailure(Component.literal("Path node index out of range"));
@@ -362,8 +358,7 @@ public class CameraCommand {
             Vector3f position = context.getArgument("pos", Coordinates.class).getPosition(context.getSource()).toVector3f();
             Selected.Type type = context.getArgument("type", Selected.Type.class);
             int index = context.getArgument("index", Integer.class);
-            Path path = CmdCamera.INSTANCE.path();
-            boolean result = path.updateNode(index, NODE_POS_UPDATER.set(type, position));
+            boolean result = editor().updatePathNode(index, NODE_POS_UPDATER.set(type, position));
 
             if (!result) {
                 context.getSource().sendFailure(Component.literal("Path node index out of range"));
@@ -379,9 +374,8 @@ public class CameraCommand {
 
     private static Command<CommandSourceStack> getPathMode() {
         return context -> {
-            CmdCamera cmdCamera = CmdCamera.INSTANCE;
-            Selected selected = cmdCamera.selectedPathNode();
-            PathNodec node = cmdCamera.path().node(selected.index());
+            Selected selected = editor().selectedPathNode();
+            PathNodec node = editor().path().node(selected.index());
             context.getSource().sendSuccess(() -> Component.literal("Path node " + selected.index() + " mode: " + node.pathMode()), false);
             return Command.SINGLE_SUCCESS;
         };
@@ -389,10 +383,9 @@ public class CameraCommand {
 
     private static Command<CommandSourceStack> setPathMode() {
         return context -> {
-            CmdCamera cmdCamera = CmdCamera.INSTANCE;
-            Selected selected = cmdCamera.selectedPathNode();
+            Selected selected = editor().selectedPathNode();
             PathMode mode = context.getArgument("mode", PathMode.class);
-            cmdCamera.path().updateNode(selected.index(), NODE_MODE_UPDATER.set(mode));
+            editor().updatePathNode(selected.index(), NODE_MODE_UPDATER.set(mode));
             PathRender.markDirty();
             context.getSource().sendSuccess(() -> Component.literal("Set path node " + selected.index() + " mode to " + mode), false);
             return Command.SINGLE_SUCCESS;
@@ -401,10 +394,9 @@ public class CameraCommand {
 
     private static Command<CommandSourceStack> setPathModeWithIndex() {
         return context -> {
-            CmdCamera cmdCamera = CmdCamera.INSTANCE;
             int index = context.getArgument("index", Integer.class);
             PathMode mode = context.getArgument("mode", PathMode.class);
-            cmdCamera.path().updateNode(index, NODE_MODE_UPDATER.set(mode));
+            editor().updatePathNode(index, NODE_MODE_UPDATER.set(mode));
             PathRender.markDirty();
             context.getSource().sendSuccess(() -> Component.literal("Set path node " + index + " mode to " + mode), false);
             return Command.SINGLE_SUCCESS;
@@ -413,9 +405,8 @@ public class CameraCommand {
 
     private static Command<CommandSourceStack> getPathSmooth() {
         return context -> {
-            CmdCamera cmdCamera = CmdCamera.INSTANCE;
-            Selected selected = cmdCamera.selectedPathNode();
-            PathNodec node = cmdCamera.path().node(selected.index());
+            Selected selected = editor().selectedPathNode();
+            PathNodec node = editor().path().node(selected.index());
             context.getSource().sendSuccess(() -> Component.literal("Path node " + selected.index() + " smooth: " + node.smooth()), false);
             return Command.SINGLE_SUCCESS;
         };
@@ -423,10 +414,9 @@ public class CameraCommand {
 
     private static Command<CommandSourceStack> setPathSmooth() {
         return context -> {
-            CmdCamera cmdCamera = CmdCamera.INSTANCE;
-            Selected selected = cmdCamera.selectedPathNode();
+            Selected selected = editor().selectedPathNode();
             boolean value = context.getArgument("boolean", Boolean.class);
-            cmdCamera.path().updateNode(selected.index(), NODE_SMOOTH_UPDATER.set(value));
+            editor().updatePathNode(selected.index(), NODE_SMOOTH_UPDATER.set(value));
             context.getSource().sendSuccess(() -> Component.literal("Set path node " + selected.index() + " smooth to " + value), false);
             return Command.SINGLE_SUCCESS;
         };
@@ -434,10 +424,9 @@ public class CameraCommand {
 
     private static Command<CommandSourceStack> setPathSmoothWithIndex() {
         return context -> {
-            CmdCamera cmdCamera = CmdCamera.INSTANCE;
             boolean value = context.getArgument("boolean", Boolean.class);
             int index = context.getArgument("index", Integer.class);
-            cmdCamera.path().updateNode(index, NODE_SMOOTH_UPDATER.set(value));
+            editor().updatePathNode(index, NODE_SMOOTH_UPDATER.set(value));
             context.getSource().sendSuccess(() -> Component.literal("Set path node " + index + " smooth to " + value), false);
             return Command.SINGLE_SUCCESS;
         };

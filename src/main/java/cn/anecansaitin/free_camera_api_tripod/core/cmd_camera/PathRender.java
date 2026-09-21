@@ -3,6 +3,7 @@ package cn.anecansaitin.free_camera_api_tripod.core.cmd_camera;
 import cn.anecansaitin.free_camera_api_tripod.FreeCameraApiTripod;
 import cn.anecansaitin.free_camera_api_tripod.core.animation.Path;
 import cn.anecansaitin.free_camera_api_tripod.core.animation.PathNodec;
+import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.edit.Selected;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.renderer.SubmitNodeCollector;
@@ -85,14 +86,14 @@ public class PathRender {
     }
 
     private static boolean canRender() {
-        return CmdCamera.INSTANCE.path().size() > 0;
+        return CmdCamera.INSTANCE.editor().path().size() > 0;
     }
 
     /// 通过步进采样沿路径均匀取点，生成渲染缓存
     private static void reCache() {
         DIRTY = false;
         DIRTY_SELECTED = false;
-        Path path = CmdCamera.INSTANCE.path();
+        Path path = CmdCamera.INSTANCE.editor().path();
         pathBox(path);
         pathTexts();
         pathLine(path);
@@ -101,7 +102,7 @@ public class PathRender {
 
     private static void reCacheSelected() {
         DIRTY_SELECTED = false;
-        controlPointVisuals(CmdCamera.INSTANCE.path());
+        controlPointVisuals(CmdCamera.INSTANCE.editor().path());
     }
 
     private static void pathLine(Path path) {
@@ -183,7 +184,7 @@ public class PathRender {
         CONTROL_POINT_VERTEX_CACHE.clear();
         CONTROL_POINT_LINE_VERTEX_CACHE.clear();
         CONTROL_POINT_LINE_NORMAL_CACHE.clear();
-        Selected selected = CmdCamera.INSTANCE.selectedPathNode();
+        Selected selected = CmdCamera.INSTANCE.editor().selectedPathNode();
         int selectedIndex = selected.index();
 
         if (selectedIndex < 0 || selectedIndex >= path.size()) {
@@ -342,7 +343,7 @@ public class PathRender {
 
         @Override
         public void render(PoseStack.Pose pose, VertexConsumer buffer) {
-            Selected selected = CmdCamera.INSTANCE.selectedPathNode();
+            Selected selected = CmdCamera.INSTANCE.editor().selectedPathNode();
             int selectedIndex = selected.index();
 
             // 路径点
