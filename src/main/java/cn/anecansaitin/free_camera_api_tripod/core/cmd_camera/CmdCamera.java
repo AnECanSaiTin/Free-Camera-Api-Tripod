@@ -1,5 +1,6 @@
 package cn.anecansaitin.free_camera_api_tripod.core.cmd_camera;
 
+import cn.anecansaitin.free_camera_api_tripod.FreeCameraApiTripod;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.Keyframe;
 import cn.anecansaitin.free_camera_api_tripod.core.animation.Clip;
 import cn.anecansaitin.free_camera_api_tripod.core.animation.Curve;
@@ -14,7 +15,7 @@ import org.joml.Vector3f;
 import org.jspecify.annotations.NullMarked;
 
 @NullMarked
-@Plugin("cmd_camera")
+@Plugin(value = "cmd_camera", modid = FreeCameraApiTripod.MODID)
 public class CmdCamera implements CameraPlugin {
     public static CmdCamera INSTANCE;
     private final CameraModifier modifier;
