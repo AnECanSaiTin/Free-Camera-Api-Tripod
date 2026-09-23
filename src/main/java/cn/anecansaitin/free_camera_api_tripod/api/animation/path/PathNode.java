@@ -1,6 +1,5 @@
-package cn.anecansaitin.free_camera_api_tripod.core.animation;
+package cn.anecansaitin.free_camera_api_tripod.api.animation.path;
 
-import cn.anecansaitin.free_camera_api_tripod.api.animation.PathMode;
 import org.joml.Vector3f;
 import org.joml.Vector3fc;
 import org.jspecify.annotations.NullMarked;
@@ -12,7 +11,7 @@ public class PathNode implements PathNodec {
     private final Vector3f inTangent;
     private final Vector3f outTangent;
     private PathMode pathMode;
-    // 自动平滑
+    /// 自动平滑：默认开启，开启时拖一侧切线另一侧会跟着镜像
     private boolean smooth = true;
 
     public PathNode(Vector3f position) {
@@ -24,7 +23,6 @@ public class PathNode implements PathNodec {
         this.inTangent = inTangent;
         this.outTangent = outTangent;
         this.pathMode = pathMode;
-        smooth = false;
     }
 
     public PathNode(Vector3f position, Vector3f inTangent, PathMode pathMode) {
@@ -107,6 +105,6 @@ public class PathNode implements PathNodec {
     }
 
     public static PathNode catmullRom(Vector3f position) {
-        return new PathNode(position,new Vector3f(), new Vector3f(), PathMode.CATMULL_ROM);
+        return new PathNode(position, new Vector3f(), new Vector3f(), PathMode.CATMULL_ROM);
     }
 }

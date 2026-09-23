@@ -1,6 +1,6 @@
 package cn.anecansaitin.free_camera_api_tripod.mixin.control_scheme;
 
-import cn.anecansaitin.free_camera_api_tripod.api.TripodData;
+import cn.anecansaitin.free_camera_api_tripod.api.camera.TripodData;
 import cn.anecansaitin.free_camera_api_tripod.core.Data;
 import cn.anecansaitin.free_camera_api_tripod.core.control_scheme.ControlSchemeManager;
 import cn.anecansaitin.freecameraapi.ClientUtil;
@@ -15,7 +15,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-import static cn.anecansaitin.free_camera_api_tripod.api.ControlScheme.*;
+import static cn.anecansaitin.free_camera_api_tripod.api.camera.ControlScheme.*;
 
 @Mixin(MouseHandler.class)
 public abstract class MouseHandlerMixin {

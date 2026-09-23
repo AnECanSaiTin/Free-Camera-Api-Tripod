@@ -1,9 +1,10 @@
 package cn.anecansaitin.free_camera_api_tripod.core.cmd_camera;
 
 import cn.anecansaitin.free_camera_api_tripod.FreeCameraApiTripod;
-import cn.anecansaitin.free_camera_api_tripod.core.animation.Path;
-import cn.anecansaitin.free_camera_api_tripod.core.animation.PathNodec;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.path.Pathc;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.path.PathNodec;
 import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.edit.Selected;
+import cn.anecansaitin.free_camera_api_tripod.core.editor.CameraScreens;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.renderer.SubmitNodeCollector;
@@ -86,14 +87,17 @@ public class PathRender {
     }
 
     private static boolean canRender() {
-        return CmdCamera.INSTANCE.editor().path().size() > 0;
+        // 只在编辑界面打开时参与世界渲染：视口是抓整帧画面贴回来的，路径只有画进世界才会出现在视口里；
+        // 而界面关闭后不渲染，则游戏画面里不会残留路径线。
+        // 编辑界面本身不透明，界面之外的区域被遮住，也就不会在 GUI 之外露出路径。
+        return CameraScreens.editing() && CmdCamera.INSTANCE.editor().path().size() > 0;
     }
 
     /// 通过步进采样沿路径均匀取点，生成渲染缓存
     private static void reCache() {
         DIRTY = false;
         DIRTY_SELECTED = false;
-        Path path = CmdCamera.INSTANCE.editor().path();
+        Pathc path = CmdCamera.INSTANCE.editor().path();
         pathBox(path);
         pathTexts();
         pathLine(path);
@@ -105,7 +109,7 @@ public class PathRender {
         controlPointVisuals(CmdCamera.INSTANCE.editor().path());
     }
 
-    private static void pathLine(Path path) {
+    private static void pathLine(Pathc path) {
         int nodeCount = path.size();
         PATH_LINE_VERTEX_CACHE.clear();
         PATH_LINE_NORMAL_CACHE.clear();
@@ -116,7 +120,8 @@ public class PathRender {
 
         double totalLength = path.totalLength();
 
-        if (totalLength <= 0) {
+        // 总长非正或非有限值时不采样：步数会退化成 0 或异常大的值，换算出来的步长也随之失效
+        if (!(totalLength > 0) || !Double.isFinite(totalLength)) {
             return;
         }
 
@@ -153,7 +158,7 @@ public class PathRender {
     }
 
     /// 缓存路径点方块顶点
-    private static void pathBox(Path path) {
+    private static void pathBox(Pathc path) {
         PATH_BOX_VERTEX_CACHE.clear();
         PATH_NODE_POS_CACHE.clear();
 
@@ -180,7 +185,7 @@ public class PathRender {
     }
 
     /// 缓存控制点方块顶点和控制线
-    private static void controlPointVisuals(Path path) {
+    private static void controlPointVisuals(Pathc path) {
         CONTROL_POINT_VERTEX_CACHE.clear();
         CONTROL_POINT_LINE_VERTEX_CACHE.clear();
         CONTROL_POINT_LINE_NORMAL_CACHE.clear();

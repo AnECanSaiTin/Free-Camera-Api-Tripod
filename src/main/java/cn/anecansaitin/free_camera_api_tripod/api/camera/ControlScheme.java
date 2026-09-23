@@ -1,4 +1,4 @@
-package cn.anecansaitin.free_camera_api_tripod.api;
+package cn.anecansaitin.free_camera_api_tripod.api.camera;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;

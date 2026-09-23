@@ -1,4 +1,4 @@
-package cn.anecansaitin.free_camera_api_tripod.api;
+package cn.anecansaitin.free_camera_api_tripod.api.camera;
 
 public enum TripodStates {
     CHUNK_LOADER(1);

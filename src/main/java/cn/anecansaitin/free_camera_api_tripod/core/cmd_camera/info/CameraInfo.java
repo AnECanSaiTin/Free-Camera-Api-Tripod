@@ -1,8 +1,8 @@
 package cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.info;
 
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.AnimationTrack;
-import cn.anecansaitin.free_camera_api_tripod.core.animation.CameraAnimation;
-import cn.anecansaitin.free_camera_api_tripod.core.animation.track.TrackTypeRegistry;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.CameraAnimation;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.track.TrackTypeRegistry;
 import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.CameraPose;
 import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.playback.CameraPlayer;
 import net.minecraft.network.chat.Component;

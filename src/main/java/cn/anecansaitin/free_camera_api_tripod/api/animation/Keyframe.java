@@ -1,6 +1,6 @@
 package cn.anecansaitin.free_camera_api_tripod.api.animation;
 
-import cn.anecansaitin.free_camera_api_tripod.core.animation.MultiKeyframe;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.MultiKeyframe;
 import org.jspecify.annotations.NullMarked;
 
 import java.util.Comparator;

@@ -1,14 +1,18 @@
 package cn.anecansaitin.free_camera_api_tripod.core.cmd_camera;
 
 import cn.anecansaitin.free_camera_api_tripod.FreeCameraApiTripod;
-import cn.anecansaitin.free_camera_api_tripod.core.animation.CameraAnimation;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.CameraAnimation;
 import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.edit.CameraEditorModel;
 import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.info.CameraInfo;
 import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.playback.CameraPlayer;
+import cn.anecansaitin.free_camera_api_tripod.core.editor.CameraScreens;
 import cn.anecansaitin.freecameraapi.api.CameraModifier;
 import cn.anecansaitin.freecameraapi.api.CameraPlugin;
 import cn.anecansaitin.freecameraapi.api.Plugin;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.util.Mth;
+import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.NullMarked;
 
 /// 相机命令插件。
@@ -46,21 +50,39 @@ public class CmdCamera implements CameraPlugin {
             player.tick(deltaSeconds);
         }
 
+        // 主编辑器、路径编辑、世界内查看都属于相机编辑界面，期间相机完全由编辑器驱动。
+        // 漏掉其中任何一个，自由视角就只能改数据、看不到画面变化。
+        boolean editing = CameraScreens.editing();
+
         // 编辑器处于自由视角时不跟随时间轴
-        if (editor.open() && editor.viewMode() == CameraEditorModel.ViewMode.FREE) {
+        if (editing && editor.viewMode() == CameraEditorModel.ViewMode.FREE) {
             pose.set(editor.freePose());
             apply();
             return;
         }
 
         // 编辑器打开时始终驱动相机，以便在视口中预览播放头所在帧
-        if (editor.open() || player.state() != CameraPlayer.State.STOPPED) {
+        if (editing || player.state() != CameraPlayer.State.STOPPED) {
+            // 先把位置对齐到玩家相机：直接坐标模式下没有关键帧的轴会沿用这份值，等价于不修改该轴
+            syncPosePositionFromPlayer();
             player.evaluatePose(pose);
             apply();
             return;
         }
 
         modifier.disable();
+    }
+
+    /// 把待求值姿态的位置分量预先设为玩家眼睛位置，供「没有关键帧的轴」沿用
+    private void syncPosePositionFromPlayer() {
+        LocalPlayer player = Minecraft.getInstance().player;
+
+        if (player == null) {
+            return;
+        }
+
+        Vec3 eye = player.getEyePosition();
+        pose.position().set((float) eye.x, (float) eye.y, (float) eye.z);
     }
 
     private void apply() {

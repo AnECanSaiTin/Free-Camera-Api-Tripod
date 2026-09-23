@@ -1,7 +1,6 @@
-package cn.anecansaitin.free_camera_api_tripod.core.animation;
+package cn.anecansaitin.free_camera_api_tripod.api.animation.curve;
 
 import cn.anecansaitin.free_camera_api_tripod.api.animation.Keyframe;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.WrapMode;
 import net.minecraft.util.Mth;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
@@ -11,7 +10,7 @@ import java.util.Collections;
 import java.util.List;
 
 @NullMarked
-public class Curve {
+public class Curve implements Curvec {
     /// 升序
     private final ArrayList<MultiKeyframe> keys = new ArrayList<>();
     public WrapMode preMode = WrapMode.CLAMP;
@@ -47,6 +46,7 @@ public class Curve {
         this.keys.sort(Keyframe.TIME_COMPARATOR);
     }
 
+    @Override
     public float evaluate(float time) {
         int size = keys.size();
 
@@ -68,6 +68,12 @@ public class Curve {
 
         MultiKeyframe right = keys.get(index + 1);
         float duration = right.time() - left.time();
+
+        // 相邻关键帧时间相同（或数据异常）时，归一化时间与切线缩放都会变成 0/0，
+        // 插值结果随即变成 NaN 并污染整条通道，这里直接退化成取左值
+        if (!(duration > 0)) {
+            return left.value();
+        }
 
         if (Float.isInfinite(left.outTangent()) || Float.isInfinite(right.inTangent())) {
             // 切线为无限，视为Step插值，取左值
@@ -133,6 +139,7 @@ public class Curve {
         return insertIndex;
     }
 
+    @Override
     public @Nullable Keyframe key(int index) {
         if (index < 0 || index >= size()) {
             return null;
@@ -178,11 +185,6 @@ public class Curve {
 
         keys.remove(index);
         return true;
-    }
-
-    public boolean removeKye(float time) {
-        int index = binarySearch(time);
-        return removeKey(index);
     }
 
     public void smoothTangents(float weight) {
@@ -242,6 +244,7 @@ public class Curve {
         current.outTangent(outTangent);
     }
 
+    @Override
     public int size() {
         return keys.size();
     }

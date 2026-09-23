@@ -1,8 +1,7 @@
-package cn.anecansaitin.free_camera_api_tripod.core.animation.track;
+package cn.anecansaitin.free_camera_api_tripod.api.animation.track;
 
 import cn.anecansaitin.free_camera_api_tripod.api.animation.Keyframe;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.track.AnimationTrack;
-import cn.anecansaitin.free_camera_api_tripod.core.animation.Curve;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Curve;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import org.jspecify.annotations.NullMarked;

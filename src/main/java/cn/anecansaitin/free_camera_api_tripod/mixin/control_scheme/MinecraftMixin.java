@@ -1,6 +1,6 @@
 package cn.anecansaitin.free_camera_api_tripod.mixin.control_scheme;
 
-import cn.anecansaitin.free_camera_api_tripod.api.TripodData;
+import cn.anecansaitin.free_camera_api_tripod.api.camera.TripodData;
 import cn.anecansaitin.free_camera_api_tripod.core.Data;
 import cn.anecansaitin.freecameraapi.api.CameraStates;
 import cn.anecansaitin.freecameraapi.core.ModifierManager;
@@ -11,7 +11,7 @@ import net.minecraft.client.MouseHandler;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 
-import static cn.anecansaitin.free_camera_api_tripod.api.ControlScheme.*;
+import static cn.anecansaitin.free_camera_api_tripod.api.camera.ControlScheme.*;
 
 @Mixin(Minecraft.class)
 public abstract class MinecraftMixin {

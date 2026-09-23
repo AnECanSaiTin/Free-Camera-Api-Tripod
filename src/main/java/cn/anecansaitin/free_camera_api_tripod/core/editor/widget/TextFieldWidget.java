@@ -7,55 +7,57 @@ import net.minecraft.client.input.CharacterEvent;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 
-/// 数值输入框：点击进入编辑，双击全选，右键清空，回车提交，Esc 取消，正在编辑时不受外部刷新影响。
-public class NumberFieldWidget extends EditorWidget {
-    @FunctionalInterface
-    public interface FloatSetter {
-        void set(float value);
-    }
+import java.util.function.Consumer;
 
+/// 文本输入框：点击进入编辑，双击全选，右键清空，回车提交，Esc 取消，正在编辑时不受外部刷新影响。
+///
+/// 与 {@link NumberFieldWidget} 的区别在于不限定字符集，供动画名称这类自由文本使用。
+public class TextFieldWidget extends EditorWidget {
     private static final int KEY_ESCAPE = 256;
     private static final int KEY_ENTER = 257;
     private static final int KEY_BACKSPACE = 259;
     private static final int KEY_DELETE = 261;
     private static final int KEY_KP_ENTER = 335;
+    /// 文本长度上限的默认值，避免过长的名称挤满标题栏等展示位置
+    private static final int MAX_LENGTH = 48;
 
-    private final FloatSetter onChange;
-    private float value;
+    private final Consumer<String> onChange;
+    private String value;
     private String text;
-    private int decimals = 3;
     private boolean editing;
+    /// 本控件的文本长度上限，默认 {@link #MAX_LENGTH}；地址栏这类需要长文本的地方可以调大
+    private int maxLength = MAX_LENGTH;
     /// 全选态：下次输入字符或退格时先清空全文（本控件无光标与选区模型，用它代替「选中全部文本」）
     private boolean selectAll;
 
-    public NumberFieldWidget(UiRect rect, float value, FloatSetter onChange) {
+    public TextFieldWidget(UiRect rect, String value, Consumer<String> onChange) {
         super(rect);
         this.onChange = onChange;
         this.value = value;
-        this.text = Draw.num(value, decimals);
+        this.text = value;
     }
 
-    public NumberFieldWidget decimals(int decimals) {
-        this.decimals = decimals;
-        this.text = Draw.num(value, decimals);
-        return this;
-    }
-
-    public float value() {
+    public String value() {
         return value;
     }
 
-    /// 外部同步数值；编辑中不覆盖用户输入
-    public void value(float value) {
+    /// 外部同步文本；编辑中不覆盖用户输入
+    public void value(String value) {
         this.value = value;
 
         if (!editing) {
-            this.text = Draw.num(value, decimals);
+            this.text = value;
         }
     }
 
     public boolean editing() {
         return editing;
+    }
+
+    /// 设置文本长度上限；地址栏这类要填绝对路径的地方需要放宽
+    public TextFieldWidget maxLength(int maxLength) {
+        this.maxLength = Math.max(1, maxLength);
+        return this;
     }
 
     @Override
@@ -79,7 +81,7 @@ public class NumberFieldWidget extends EditorWidget {
     public void render(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
         Draw.field(graphics, rect(), editing || hovered());
 
-        String shown = editing ? text : Draw.num(value, decimals);
+        String shown = editing ? text : value;
 
         // 全选态给文本铺一层高亮，提示下次输入会整体替换
         if (editing && selectAll && !text.isEmpty()) {
@@ -101,8 +103,7 @@ public class NumberFieldWidget extends EditorWidget {
             return false;
         }
 
-        // 右键：清空文本缓冲并进入编辑态，返回 true 让 WidgetHost 把焦点落在本控件上，方便立刻重新输入。
-        // 这里只清空缓冲区、不提交；若清空后未输入就失焦，commit() 解析空串失败会保留原值。
+        // 右键：清空文本缓冲并进入编辑态，返回 true 让 WidgetHost 把焦点落在本控件上，方便立刻重新输入
         if (event.button() == 1) {
             editing = true;
             text = "";
@@ -115,7 +116,7 @@ public class NumberFieldWidget extends EditorWidget {
         }
 
         editing = true;
-        text = Draw.num(value, decimals);
+        text = value;
         // 双击全选：本控件没有光标与选区模型，故用「输入即替换」状态实现，效果等同全选后输入
         selectAll = doubleClick;
         return true;
@@ -129,7 +130,7 @@ public class NumberFieldWidget extends EditorWidget {
 
         char typed = (char) event.codepoint();
 
-        if (Character.isDigit(typed) || typed == '.' || (typed == '-' && (selectAll || text.isEmpty()))) {
+        if (!Character.isISOControl(typed) && text.length() < maxLength) {
             if (selectAll) {
                 // 全选态下首次输入直接替换全部内容
                 text = "";
@@ -152,7 +153,7 @@ public class NumberFieldWidget extends EditorWidget {
             case KEY_ESCAPE -> {
                 editing = false;
                 selectAll = false;
-                text = Draw.num(value, decimals);
+                text = value;
             }
             case KEY_ENTER, KEY_KP_ENTER -> commit();
             case KEY_BACKSPACE -> {
@@ -180,13 +181,12 @@ public class NumberFieldWidget extends EditorWidget {
         editing = false;
         selectAll = false;
 
-        try {
-            value = Float.parseFloat(text);
-        } catch (NumberFormatException ignored) {
-            // 输入非法时保留原值
+        // 空名称没有意义，输入为空时保留原值
+        if (!text.isBlank()) {
+            value = text;
         }
 
-        text = Draw.num(value, decimals);
-        onChange.set(value);
+        text = value;
+        onChange.accept(value);
     }
 }

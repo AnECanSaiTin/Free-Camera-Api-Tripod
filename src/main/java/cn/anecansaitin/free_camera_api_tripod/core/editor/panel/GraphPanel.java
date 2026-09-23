@@ -3,8 +3,8 @@ package cn.anecansaitin.free_camera_api_tripod.core.editor.panel;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.EvaluateMode;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.Keyframe;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.AnimationTrack;
-import cn.anecansaitin.free_camera_api_tripod.core.animation.Curve;
-import cn.anecansaitin.free_camera_api_tripod.core.animation.track.CurveTrack;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Curve;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.track.CurveTrack;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.EditorContext;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.EditorLang;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.layout.UiRect;
@@ -33,12 +33,16 @@ public class GraphPanel extends EditorPanel {
     private final EditorContext context;
     /// 值域缩放系数，1 表示自动适配数据范围
     private float valueSpanScale = 1f;
+    /// 数值视图的纵向平移量（数值单位），由中键拖动改变
+    private float valueOffset;
 
     private enum Drag {
         NONE,
         KEY,
         TANGENT_IN,
-        TANGENT_OUT
+        TANGENT_OUT,
+        /// 中键整体平移视图
+        PAN
     }
 
     private Drag drag = Drag.NONE;
@@ -108,7 +112,7 @@ public class GraphPanel extends EditorPanel {
             max = 1f;
         }
 
-        float center = (min + max) / 2f;
+        float center = (min + max) / 2f + valueOffset;
         float half = Math.max((max - min) / 2f, 0.05f) * valueSpanScale;
         return new float[]{center - half, center + half};
     }
@@ -116,9 +120,21 @@ public class GraphPanel extends EditorPanel {
     @Override
     protected void layoutWidgets(UiRect content) {
         ButtonWidget fit = new ButtonWidget(new UiRect(content.right() - 16, content.y() + 2, 14, 12),
-                Component.literal(Icons.FIT), () -> valueSpanScale = 1f);
+                Component.literal(Icons.FIT), this::fitView);
         fit.tooltip(EditorLang.t("graph.fit"));
         widgets.add(fit);
+    }
+
+    /// 适配视图：把时间视图调整为刚好容纳整段动画，数值范围还原为自动适配。
+    /// 时间视图与时间轴共用同一套状态（{@link EditorContext#pixelsPerSecond()} /
+    /// {@link EditorContext#viewStartTime()}），因此「适配」在曲线图与时间轴上的时间范围一致。
+    private void fitView() {
+        UiRect plot = plotRect(contentRect());
+        float duration = Math.max(0.5f, context.duration());
+        context.pixelsPerSecond((plot.width() - 24f) / duration);
+        context.viewStartTime(-8f / context.pixelsPerSecond());
+        valueSpanScale = 1f;
+        valueOffset = 0f;
     }
 
     @Override
@@ -322,6 +338,12 @@ public class GraphPanel extends EditorPanel {
 
     @Override
     protected boolean contentMouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        // 中键：整体平移视图（左右移动时间、上下移动数值）
+        if (event.button() == 2) {
+            drag = Drag.PAN;
+            return true;
+        }
+
         CurveTrack track = selectedTrack();
 
         if (track == null) {
@@ -379,13 +401,29 @@ public class GraphPanel extends EditorPanel {
 
     @Override
     protected boolean contentMouseDragged(MouseButtonEvent event, double deltaX, double deltaY) {
-        CurveTrack track = selectedTrack();
-
-        if (track == null || drag == Drag.NONE) {
+        if (drag == Drag.NONE) {
             return false;
         }
 
+        CurveTrack track = selectedTrack();
         UiRect plot = plotRect(contentRect());
+
+        // 中键整体平移：不依赖选中的关键帧
+        if (drag == Drag.PAN) {
+            context.viewStartTime(context.viewStartTime() - (float) deltaX / context.pixelsPerSecond());
+
+            if (track != null) {
+                float[] range = valueRange(track);
+                valueOffset += (float) deltaY / plot.height() * (range[1] - range[0]);
+            }
+
+            return true;
+        }
+
+        if (track == null) {
+            return false;
+        }
+
         float[] range = valueRange(track);
         Curve curve = track.curve();
         Keyframe key = dragKey >= 0 && dragKey < curve.size() ? curve.key(dragKey) : null;
@@ -408,10 +446,23 @@ public class GraphPanel extends EditorPanel {
                     movedKey.value(yToValue(plot, event.y(), range[0], range[1]));
                 }
             }
-            case TANGENT_IN ->
-                    key.inTangent((key.value() - yToValue(plot, event.y(), range[0], range[1])) / tangentSpan(plot, track, dragKey, false));
-            case TANGENT_OUT ->
-                    key.outTangent((yToValue(plot, event.y(), range[0], range[1]) - key.value()) / tangentSpan(plot, track, dragKey, true));
+            case TANGENT_IN -> {
+                // 入切线的斜率与出切线同号：对称开启时把出切线一并拉到同一斜率，形成镜像控制点
+                float slope = (key.value() - yToValue(plot, event.y(), range[0], range[1])) / tangentSpan(plot, track, dragKey, false);
+                key.inTangent(slope);
+
+                if (context.bezierSymmetric()) {
+                    key.outTangent(slope);
+                }
+            }
+            case TANGENT_OUT -> {
+                float slope = (yToValue(plot, event.y(), range[0], range[1]) - key.value()) / tangentSpan(plot, track, dragKey, true);
+                key.outTangent(slope);
+
+                if (context.bezierSymmetric()) {
+                    key.inTangent(slope);
+                }
+            }
             default -> {
                 return false;
             }
@@ -433,18 +484,18 @@ public class GraphPanel extends EditorPanel {
 
     @Override
     protected boolean contentMouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        // 滚轮不再改变时间轴比例：仅保留 Ctrl 纵向缩放与 Shift 横向平移
         if (isCtrlDown()) {
             valueSpanScale = Mth.clamp(valueSpanScale * (scrollY > 0 ? 0.85f : 1.18f), 0.05f, 40f);
-        } else if (isShiftDown()) {
-            context.viewStartTime(context.viewStartTime() - (float) scrollY * 20f / context.pixelsPerSecond());
-        } else {
-            UiRect plot = plotRect(contentRect());
-            float timeAtCursor = xToTime(plot, mouseX);
-            context.pixelsPerSecond(context.pixelsPerSecond() * (scrollY > 0 ? 1.15f : 0.87f));
-            context.viewStartTime(timeAtCursor - (float) (mouseX - plot.x()) / context.pixelsPerSecond());
+            return true;
         }
 
-        return true;
+        if (isShiftDown()) {
+            context.viewStartTime(context.viewStartTime() - (float) scrollY * 20f / context.pixelsPerSecond());
+            return true;
+        }
+
+        return false;
     }
 
     private boolean isCtrlDown() {

@@ -1,13 +1,14 @@
 package cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.playback;
 
 import cn.anecansaitin.free_camera_api_tripod.api.animation.Evaluator;
-import cn.anecansaitin.free_camera_api_tripod.core.animation.CameraAnimation;
-import cn.anecansaitin.free_camera_api_tripod.core.animation.Clip;
-import cn.anecansaitin.free_camera_api_tripod.core.animation.Curve;
-import cn.anecansaitin.free_camera_api_tripod.core.animation.Path;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.CameraAnimation;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Clip;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Curve;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.path.Path;
 import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.CameraPose;
 import org.joml.Vector3f;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /// 播放器：只负责时间推进与姿态求值，不持有编辑状态。
 ///
@@ -58,10 +59,43 @@ public class CameraPlayer {
         Clip clip = animation.clip();
         Path path = animation.path();
 
-        if (path.size() > 0) {
-            float distance = clip.evaluate(CameraAnimation.CHANNEL_POSITION, time);
-            dest.position().set(path.evaluate(distance, posCache));
-            dest.positionValid(true);
+        if (animation.motionMode() == CameraAnimation.MotionMode.COORDINATE) {
+            // 直接坐标模式：位置由三个坐标通道给出，与路径无关。
+            // 某个轴上没有关键帧时不接管该轴，让相机沿用原本的坐标（等于不开启该轴的修改）。
+            Curve x = clip.curve(CameraAnimation.CHANNEL_POSITION_X);
+            Curve y = clip.curve(CameraAnimation.CHANNEL_POSITION_Y);
+            Curve z = clip.curve(CameraAnimation.CHANNEL_POSITION_Z);
+            boolean any = hasKeys(x) || hasKeys(y) || hasKeys(z);
+
+            if (any) {
+                Vector3f position = dest.position();
+
+                if (hasKeys(x)) {
+                    position.x = finiteOr(clip.evaluate(CameraAnimation.CHANNEL_POSITION_X, time), position.x);
+                }
+
+                if (hasKeys(y)) {
+                    position.y = finiteOr(clip.evaluate(CameraAnimation.CHANNEL_POSITION_Y, time), position.y);
+                }
+
+                if (hasKeys(z)) {
+                    position.z = finiteOr(clip.evaluate(CameraAnimation.CHANNEL_POSITION_Z, time), position.z);
+                }
+            }
+
+            dest.positionValid(any);
+        } else if (path.size() > 0) {
+            // 位置通道的取值口径由动画决定：绝对距离直接用，百分比先乘总长再采样
+            float distance = animation.distanceToLength(clip.evaluate(CameraAnimation.CHANNEL_POSITION, time));
+            Vector3f evaluated = path.evaluate(distance, posCache);
+
+            // 路径数据异常（总长或切线非有限值）时算出的是 NaN，绝不能把它交给相机
+            if (isFinite(evaluated)) {
+                dest.position().set(evaluated);
+                dest.positionValid(true);
+            } else {
+                dest.positionValid(false);
+            }
         } else {
             dest.positionValid(false);
         }
@@ -78,6 +112,20 @@ public class CameraPlayer {
         }
 
         return dest;
+    }
+
+    /// 曲线是否存在且至少有一个关键帧
+    private static boolean hasKeys(@Nullable Curve curve) {
+        return curve != null && curve.size() > 0;
+    }
+
+    /// 求值结果非有限值时沿用原值：坐标绝不能是 NaN / Infinity，否则相机与渲染都会出问题
+    private static float finiteOr(float value, float fallback) {
+        return Float.isFinite(value) ? value : fallback;
+    }
+
+    private static boolean isFinite(Vector3f vec) {
+        return Float.isFinite(vec.x) && Float.isFinite(vec.y) && Float.isFinite(vec.z);
     }
 
     public void play() {

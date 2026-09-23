@@ -2,6 +2,7 @@ package cn.anecansaitin.free_camera_api_tripod.core.cmd_camera;
 
 import cn.anecansaitin.free_camera_api_tripod.FreeCameraApiTripod;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.CameraEditorScreen;
+import cn.anecansaitin.free_camera_api_tripod.core.editor.PathEditorScreen;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
@@ -32,12 +33,17 @@ public class CmdCameraKeyMapping {
     public static final Lazy<KeyMapping> STOP = Lazy.of(() -> new KeyMapping(
             "key." + FreeCameraApiTripod.MODID + ".stop", KeyConflictContext.IN_GAME,
             InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_F8, CATEGORY));
+    /// 打开路径编辑器
+    public static final Lazy<KeyMapping> OPEN_PATH_EDITOR = Lazy.of(() -> new KeyMapping(
+            "key." + FreeCameraApiTripod.MODID + ".open_path_editor", KeyConflictContext.IN_GAME,
+            InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_F9, CATEGORY));
 
     @SubscribeEvent
     public static void register(RegisterKeyMappingsEvent event) {
         event.register(OPEN_EDITOR.get());
         event.register(PLAY_PAUSE.get());
         event.register(STOP.get());
+        event.register(OPEN_PATH_EDITOR.get());
     }
 
     @SubscribeEvent
@@ -45,6 +51,12 @@ public class CmdCameraKeyMapping {
         while (OPEN_EDITOR.get().consumeClick()) {
             if (Minecraft.getInstance().screen == null) {
                 CameraEditorScreen.open();
+            }
+        }
+
+        while (OPEN_PATH_EDITOR.get().consumeClick()) {
+            if (Minecraft.getInstance().screen == null) {
+                PathEditorScreen.open();
             }
         }
 

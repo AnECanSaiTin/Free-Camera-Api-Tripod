@@ -1,4 +1,4 @@
-package cn.anecansaitin.free_camera_api_tripod.core.animation;
+package cn.anecansaitin.free_camera_api_tripod.api.animation.track;
 
 import net.minecraft.network.chat.Component;
 import org.jspecify.annotations.NullMarked;
@@ -27,7 +27,13 @@ public final class AnimationChannelRegistry {
     static {
         // 旋转的三个轴在时间轴上合并成一个可折叠的分组
         registerGroup("rotation", "camera_channel.group.rotation");
+        // 直接坐标模式下位置由三个坐标通道给出，同样折成一组的三个轴。
+        // 该分组与「位置（路径距离）」通道互斥，两者不会同时出现，因此共用 position 这个名字也不会打架。
+        registerGroup("position", "camera_channel.group.position");
         register("position", "camera_channel.position", 0xFF7CFC9A, 0f);
+        register("position.x", "camera_channel.position_x", 0xFF7CFC9A, 0f, "position");
+        register("position.y", "camera_channel.position_y", 0xFF6BFF8B, 0f, "position");
+        register("position.z", "camera_channel.position_z", 0xFF6BC5FF, 0f, "position");
         register("rotation.x", "camera_channel.rotation_x", 0xFFFF6B6B, 0f, "rotation");
         register("rotation.y", "camera_channel.rotation_y", 0xFF6BFF8B, 0f, "rotation");
         register("rotation.z", "camera_channel.rotation_z", 0xFF6B9BFF, 0f, "rotation");

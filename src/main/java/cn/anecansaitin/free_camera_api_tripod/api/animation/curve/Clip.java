@@ -1,4 +1,4 @@
-package cn.anecansaitin.free_camera_api_tripod.core.animation;
+package cn.anecansaitin.free_camera_api_tripod.api.animation.curve;
 
 import cn.anecansaitin.free_camera_api_tripod.api.animation.Evaluator;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.Keyframe;
@@ -13,8 +13,6 @@ import java.util.Map;
 public class Clip {
     /// 动画片段时长，根据曲线自动计算则为负数，用户设置则为正数
     private float duration;
-    // 循环模式
-//    private WrapMode wrapMode;
     /// 动画名称
     private String name;
     /// 曲线
@@ -129,8 +127,7 @@ public class Clip {
             return false;
         }
 
-        boolean success = curve.key(key) >= 0;
-        return success;
+        return curve.key(key) >= 0;
     }
 
     public boolean removeKey(String property, int index) {

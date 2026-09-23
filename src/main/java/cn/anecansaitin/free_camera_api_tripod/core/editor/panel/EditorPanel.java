@@ -2,6 +2,7 @@ package cn.anecansaitin.free_camera_api_tripod.core.editor.panel;
 
 import cn.anecansaitin.free_camera_api_tripod.core.editor.layout.UiRect;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.theme.Draw;
+import cn.anecansaitin.free_camera_api_tripod.core.editor.theme.Icons;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.ContextMenu;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.WidgetHost;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -18,6 +19,12 @@ import org.jspecify.annotations.Nullable;
 public abstract class EditorPanel {
     /// 标题栏高度
     public static final int HEADER_HEIGHT = 16;
+    /// 标题栏右侧折叠按钮的尺寸
+    private static final int COLLAPSE_BUTTON_SIZE = 11;
+    /// 浮动窗口右下角缩放手柄的尺寸
+    private static final int RESIZE_GRIP_SIZE = 9;
+    /// 字体行高，用于把图标在按钮内垂直居中
+    private static final int FONT_HEIGHT = 9;
 
     /// 面板标识，用于布局持久化与顺序恢复
     private final String id;
@@ -25,6 +32,12 @@ public abstract class EditorPanel {
     private UiRect rect = new UiRect(0, 0, 0, 0);
     private UiRect lastLayoutRect = new UiRect(0, 0, -1, -1);
     private boolean collapsed;
+    /// 是否已脱离停靠布局，成为独立窗口
+    private boolean floating;
+    /// 浮动窗口自身的矩形，停靠布局每帧据此推导面板矩形
+    private UiRect floatingRect = new UiRect(0, 0, 0, 0);
+    /// 折叠按钮已按下但尚未松开
+    private boolean collapsePressed;
     private @Nullable ContextMenu menu;
     private int screenWidth;
     private int screenHeight;
@@ -63,6 +76,33 @@ public abstract class EditorPanel {
         this.collapsed = collapsed;
     }
 
+    /// 是否已成为浮动窗口（脱离停靠布局，绘制在所有停靠面板之上）
+    public boolean floating() {
+        return floating;
+    }
+
+    public void floating(boolean floating) {
+        if (this.floating != floating) {
+            this.floating = floating;
+            invalidateLayout();
+        }
+    }
+
+    /// 浮动窗口的矩形；停靠时无意义
+    public UiRect floatingRect() {
+        return floatingRect;
+    }
+
+    public void floatingRect(UiRect floatingRect) {
+        this.floatingRect = floatingRect;
+    }
+
+    /// 浮动窗口右下角的缩放手柄区域，拖动它可以改变窗口尺寸
+    public UiRect resizeGripRect() {
+        int size = Math.min(RESIZE_GRIP_SIZE, Math.min(rect.width(), rect.height()));
+        return new UiRect(rect.right() - size, rect.bottom() - size, size, size);
+    }
+
     public void toggleCollapsed() {
         this.collapsed = !this.collapsed;
         invalidateLayout();
@@ -72,12 +112,19 @@ public abstract class EditorPanel {
         return new UiRect(rect.x(), rect.y(), rect.width(), HEADER_HEIGHT);
     }
 
+    /// 标题栏右侧的折叠按钮；只有点在这里才展开/收起
+    public UiRect collapseButtonRect() {
+        return new UiRect(rect.right() - COLLAPSE_BUTTON_SIZE - 3, rect.y() + (HEADER_HEIGHT - COLLAPSE_BUTTON_SIZE) / 2, COLLAPSE_BUTTON_SIZE, COLLAPSE_BUTTON_SIZE);
+    }
+
+    /// 内容区；折叠时高度为零
     public UiRect contentRect() {
         if (collapsed) {
             return new UiRect(rect.x(), rect.y() + HEADER_HEIGHT, rect.width(), 0);
         }
 
-        return rect.inset(0, HEADER_HEIGHT, 0, 0);
+        int top = rect.y() + HEADER_HEIGHT;
+        return new UiRect(rect.x(), top, rect.width(), Math.max(0, rect.bottom() - top));
     }
 
     /// 内容区尺寸变化时重建控件
@@ -113,6 +160,19 @@ public abstract class EditorPanel {
         renderContent(graphics, content, mouseX, mouseY);
         widgets.render(graphics, mouseX, mouseY);
         graphics.disableScissor();
+
+        if (floating) {
+            renderFloatGrip(graphics);
+        }
+    }
+
+    /// 浮动窗口右下角的缩放手柄：三条由短到长的斜线
+    private void renderFloatGrip(GuiGraphicsExtractor graphics) {
+        UiRect grip = resizeGripRect();
+
+        for (int i = 1; i <= 3; i++) {
+            Draw.hLine(graphics, grip.right() - i * 3, grip.right(), grip.bottom() - i * 3, Draw.TEXT_DIM);
+        }
     }
 
     /// 面板底色与描边；子类可关掉它以便让内容自己铺满
@@ -124,8 +184,18 @@ public abstract class EditorPanel {
         UiRect header = headerRect();
         Draw.canvas(graphics, header, Draw.PANEL_HEADER_BG);
         Draw.hLine(graphics, header.x(), header.right(), header.bottom() - 1, Draw.BORDER);
-        Draw.text(graphics, title, header.x() + 5, header.y() + 4, Draw.TEXT_DIM);
-        Draw.text(graphics, collapsed ? "▸" : "▾", header.right() - 10, header.y() + 4, Draw.TEXT_DIM);
+        Draw.textEllipsized(graphics, title.getString(), header.x() + 5, header.y() + 4, header.width() - COLLAPSE_BUTTON_SIZE - 12, Draw.TEXT_DIM);
+
+        // 折叠按钮平时只显示箭头，鼠标悬停时才浮现按钮底
+        UiRect button = collapseButtonRect();
+        boolean hovered = button.contains(mouseX, mouseY);
+
+        if (hovered) {
+            Draw.canvas(graphics, button, Draw.BUTTON_BG_HOVER);
+        }
+
+        Draw.textCentered(graphics, collapsed ? Icons.EXPAND : Icons.COLLAPSE, button.centerX(),
+                button.y() + (COLLAPSE_BUTTON_SIZE - FONT_HEIGHT) / 2, hovered ? Draw.TEXT : Draw.TEXT_DIM);
     }
 
     /// 首次布局或内容区尺寸变化时创建/重置控件
@@ -145,7 +215,7 @@ public abstract class EditorPanel {
     }
 
     /// 在鼠标位置打开菜单；贴近屏幕边缘时菜单会朝反方向翻转
-    protected void openMenu(ContextMenu menu, double mouseX, double mouseY) {
+    public void openMenu(ContextMenu menu, double mouseX, double mouseY) {
         this.menu = menu.at(mouseX, mouseY, screenWidth, screenHeight);
     }
 
@@ -156,14 +226,19 @@ public abstract class EditorPanel {
         }
     }
 
-    /// 菜单打开时优先消费点击；点在菜单之外同样关闭菜单
+    /// 菜单打开时优先消费点击；点在菜单之外同样关闭菜单。
+    /// 点到二级菜单的父项时只是展开子菜单，菜单整体保持打开。
     public boolean menuMouseClicked(MouseButtonEvent event) {
         if (menu == null) {
             return false;
         }
 
         menu.mouseClicked(event);
-        menu = null;
+
+        if (!menu.keepOpen()) {
+            menu = null;
+        }
+
         return true;
     }
 
@@ -179,11 +254,14 @@ public abstract class EditorPanel {
             return false;
         }
 
-        if (headerRect().contains(event.x(), event.y())) {
-            if (doubleClick) {
-                toggleCollapsed();
-            }
+        // 只有箭头按钮本身才触发展开/收起，标题栏其余位置留给拖拽重排；
+        // 与其它按钮一致，动作等松开时再执行
+        if (collapseButtonRect().contains(event.x(), event.y())) {
+            collapsePressed = true;
+            return true;
+        }
 
+        if (headerRect().contains(event.x(), event.y())) {
             return true;
         }
 
@@ -199,6 +277,17 @@ public abstract class EditorPanel {
     }
 
     public boolean mouseReleased(MouseButtonEvent event) {
+        // 折叠按钮：按下与松开都落在箭头内才切换
+        if (collapsePressed) {
+            collapsePressed = false;
+
+            if (collapseButtonRect().contains(event.x(), event.y())) {
+                toggleCollapsed();
+            }
+
+            return true;
+        }
+
         return widgets.mouseReleased(event);
     }
 

@@ -3,17 +3,25 @@ package cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.edit;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.Keyframe;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.TrackKey;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.AnimationTrack;
-import cn.anecansaitin.free_camera_api_tripod.core.animation.CameraAnimation;
-import cn.anecansaitin.free_camera_api_tripod.core.animation.Path;
-import cn.anecansaitin.free_camera_api_tripod.core.animation.PathNode;
-import cn.anecansaitin.free_camera_api_tripod.core.animation.track.CurveTrack;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.CameraAnimation;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Curve;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.path.Path;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.path.PathNode;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.track.CurveTrack;
 import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.CameraPose;
 import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.PathRender;
+import cn.anecansaitin.freecameraapi.core.ModifierManager;
 import net.minecraft.util.Mth;
 import org.joml.Vector3f;
 import org.joml.Vector3fc;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 /// 编辑器模型：编辑状态与编辑操作，不参与求值。
 ///
@@ -21,6 +29,9 @@ import org.jspecify.annotations.Nullable;
 /// 共用同一个 {@link CameraAnimation}。
 @NullMarked
 public class CameraEditorModel {
+    /// 录路径点时，新关键帧与上一个关键帧的默认时间间隔（秒）
+    public static final float KEY_INTERVAL_SECONDS = 4f;
+
     /// 视口视角模式
     public enum ViewMode {
         /// 显示播放头所在的动画帧
@@ -30,7 +41,6 @@ public class CameraEditorModel {
     }
 
     private final CameraAnimation animation;
-    private boolean open;
     private ViewMode viewMode = ViewMode.PREVIEW;
 
     private CameraPose freePose = new CameraPose();
@@ -56,14 +66,6 @@ public class CameraEditorModel {
     }
 
     // region 视图状态
-
-    public boolean open() {
-        return open;
-    }
-
-    public void open(boolean open) {
-        this.open = open;
-    }
 
     public ViewMode viewMode() {
         return viewMode;
@@ -183,6 +185,20 @@ public class CameraEditorModel {
     // region 关键帧编辑
 
     public int addKey(AnimationTrack track, float time) {
+        // 直接坐标模式下位置三轴的默认值取相机当前坐标，避免新建的键落在 0 上
+        int axis = positionAxis(track.id());
+
+        if (axis >= 0 && track instanceof CurveTrack curveTrack) {
+            int index = curveTrack.addKey(time, cameraAxis(axis));
+
+            if (index >= 0) {
+                selectTrack(track.id());
+                selectKey(index);
+            }
+
+            return index;
+        }
+
         int index = track.addKey(time);
 
         if (index >= 0) {
@@ -191,6 +207,22 @@ public class CameraEditorModel {
         }
 
         return index;
+    }
+
+    /// 位置三轴的下标（0/1/2），不是位置轴时返回 -1
+    private static int positionAxis(String trackId) {
+        return switch (trackId) {
+            case CameraAnimation.CHANNEL_POSITION_X -> 0;
+            case CameraAnimation.CHANNEL_POSITION_Y -> 1;
+            case CameraAnimation.CHANNEL_POSITION_Z -> 2;
+            default -> -1;
+        };
+    }
+
+    /// 相机当前坐标在指定轴上的分量
+    private static float cameraAxis(int axis) {
+        Vector3fc camera = ModifierManager.INSTANCE.pos();
+        return axis == 0 ? camera.x() : axis == 1 ? camera.y() : camera.z();
     }
 
     public boolean removeKey(AnimationTrack track, int index) {
@@ -226,6 +258,100 @@ public class CameraEditorModel {
         return removeKey(track, selectedKeyIndex);
     }
 
+    /// 时间轴多选用的关键帧引用：轨道 + 该轨道内的关键帧下标
+    public record KeyRef(AnimationTrack track, int index) {
+    }
+
+    /// 批量删除关键帧。
+    ///
+    /// 逐条轨道把下标从大到小删除，避免删除后下标位移；返回实际删除的数量。
+    public int removeKeys(List<KeyRef> keys) {
+        Map<AnimationTrack, List<Integer>> byTrack = new LinkedHashMap<>();
+
+        for (KeyRef key : keys) {
+            byTrack.computeIfAbsent(key.track(), track -> new ArrayList<>()).add(key.index());
+        }
+
+        int removed = 0;
+
+        for (Map.Entry<AnimationTrack, List<Integer>> entry : byTrack.entrySet()) {
+            List<Integer> indices = entry.getValue();
+            indices.sort(Comparator.reverseOrder());
+
+            for (int index : indices) {
+                if (entry.getKey().removeKey(index)) {
+                    removed++;
+                }
+            }
+        }
+
+        return removed;
+    }
+
+    /// 把多个关键帧整体平移到给定时间（框选后的整体拖动）。
+    ///
+    /// newTimes 与 keys 一一对应，是每个键的目标绝对时间。逐条轨道先取出这些键的快照，
+    /// 再按下标从大到小移除，最后按新时间重新插入，从而避免逐个移动时新旧时间相互碰撞。
+    /// 没有底层曲线的轨道不参与平移。
+    /// 返回与 keys 同序的新引用；无法平移的位置下标为 -1。
+    public List<KeyRef> moveKeys(List<KeyRef> keys, List<Float> newTimes) {
+        KeyRef[] result = new KeyRef[keys.size()];
+        Map<AnimationTrack, List<Integer>> byTrack = new LinkedHashMap<>();
+
+        for (int i = 0; i < keys.size(); i++) {
+            byTrack.computeIfAbsent(keys.get(i).track(), track -> new ArrayList<>()).add(i);
+        }
+
+        for (Map.Entry<AnimationTrack, List<Integer>> entry : byTrack.entrySet()) {
+            AnimationTrack track = entry.getKey();
+            List<Integer> positions = entry.getValue();
+
+            if (!(track instanceof CurveTrack curveTrack)) {
+                for (int position : positions) {
+                    result[position] = new KeyRef(track, -1);
+                }
+
+                continue;
+            }
+
+            Curve curve = curveTrack.curve();
+            // 快照：键对象、目标时间，以及它们在传入列表中的位置，三者一一对应
+            List<Keyframe> snapshot = new ArrayList<>(positions.size());
+            List<Float> targets = new ArrayList<>(positions.size());
+            List<Integer> slots = new ArrayList<>(positions.size());
+
+            for (int position : positions) {
+                Keyframe keyframe = curve.key(keys.get(position).index());
+
+                if (keyframe == null) {
+                    result[position] = new KeyRef(track, -1);
+                    continue;
+                }
+
+                snapshot.add(keyframe);
+                targets.add(newTimes.get(position));
+                slots.add(position);
+            }
+
+            // 先按下标从大到小移除，避免删除后下标位移
+            List<Integer> indices = new ArrayList<>(positions);
+            indices.sort(Comparator.reverseOrder());
+
+            for (int index : indices) {
+                curve.removeKey(index);
+            }
+
+            // 再按新时间重新插入
+            for (int i = 0; i < snapshot.size(); i++) {
+                Keyframe keyframe = snapshot.get(i);
+                keyframe.time(Math.max(0f, targets.get(i)));
+                result[slots.get(i)] = new KeyRef(track, curve.key(keyframe));
+            }
+        }
+
+        return List.of(result);
+    }
+
     // endregion
 
     // region 路径编辑
@@ -255,6 +381,19 @@ public class CameraEditorModel {
         return true;
     }
 
+    /// 调整路径点顺序：与相邻节点交换位置（offset 为 ±1），选中项跟着节点一起走
+    public boolean movePathNode(int index, int offset) {
+        int target = index + offset;
+
+        if (!path().moveNode(index, target)) {
+            return false;
+        }
+
+        selectPathNode(new Selected(target, Selected.Type.NODE));
+        PathRender.markDirty();
+        return true;
+    }
+
     public boolean updatePathNode(int index, Path.NodeUpdater updater) {
         if (!path().updateNode(index, updater)) {
             return false;
@@ -269,23 +408,54 @@ public class CameraEditorModel {
         PathRender.markDirty();
     }
 
-    /// 在指定时间把当前相机位置记录为新的路径点。
+    /// 在指定时间把当前相机位置记录为新的路径点，返回新关键帧的时间（调用方据此把播放头挪过去）。
     ///
-    /// 位置通道的取值是沿路径的弧长，因此同时在该时间插入一个取值等于新路径总长的键，
-    /// 让相机随时间沿路径前进。
-    public void addPathNodeAt(Vector3fc position, float time) {
+    /// 位置通道的取值是沿路径的弧长（百分比口径下是 0~1 的进度），因此同时插入一个取值等于
+    /// 新路径总长的键，让相机随时间沿路径前进；新键的时间默认排在上一个键之后 4 秒。
+    public float addPathNodeAt(Vector3fc position, float time) {
+        // 相机位置异常时不记录：NaN 一旦写进路径点，整条路径的弧长与采样都会失效
+        if (!isFinite(position)) {
+            return time;
+        }
+
         path().node(PathNode.catmullRom(new Vector3f(position)));
         selectPathNode(new Selected(path().size() - 1, Selected.Type.NODE));
         CurveTrack positionTrack = animation.track(CameraAnimation.CHANNEL_POSITION);
 
-        if (positionTrack != null) {
-            float distance = (float) path().totalLength();
-            int index = positionTrack.curve().key(Keyframe.create(time, distance));
-            selectTrack(positionTrack.id());
-            selectKey(index);
+        if (positionTrack == null) {
+            PathRender.markDirty();
+            return time;
         }
 
+        float keyTime = nextKeyTime(positionTrack);
+        float value = animation.distanceMode() == CameraAnimation.DistanceMode.PERCENT
+                ? 1f : (float) path().totalLength();
+        int index = positionTrack.curve().key(Keyframe.create(keyTime, value));
+        selectTrack(positionTrack.id());
+        selectKey(index);
         PathRender.markDirty();
+        return keyTime;
+    }
+
+    /// 新关键帧的默认时间：排在已有最后一个键之后 4 秒；还没有键时从 0 秒开始
+    private static float nextKeyTime(CurveTrack track) {
+        int count = track.keyCount();
+
+        if (count == 0) {
+            return 0f;
+        }
+
+        TrackKey last = track.key(count - 1);
+        return last == null ? 0f : last.time() + KEY_INTERVAL_SECONDS;
+    }
+
+    /// 在指定时间把当前相机位置记录到三个坐标通道（直接坐标模式下的取点方式）。
+    ///
+    /// 与路径模式记录路径点对应：那边记的是路径节点，这边记的是位置的三个分量。
+    public void applyRecordedPosition(Vector3fc position, float time) {
+        capture(animation.track(CameraAnimation.CHANNEL_POSITION_X), time, position.x());
+        capture(animation.track(CameraAnimation.CHANNEL_POSITION_Y), time, position.y());
+        capture(animation.track(CameraAnimation.CHANNEL_POSITION_Z), time, position.z());
     }
 
     /// 把当前相机旋转记录到播放头处
@@ -311,13 +481,18 @@ public class CameraEditorModel {
     }
 
     private void capture(@Nullable CurveTrack track, float time, float value) {
-        if (track == null) {
+        // 关键帧的值与时间都必须是有限值，否则求值时会把 NaN 传下去
+        if (track == null || !Float.isFinite(value) || !Float.isFinite(time)) {
             return;
         }
 
         int index = track.curve().key(Keyframe.create(time, value));
         selectTrack(track.id());
         selectKey(index);
+    }
+
+    private static boolean isFinite(Vector3fc vec) {
+        return Float.isFinite(vec.x()) && Float.isFinite(vec.y()) && Float.isFinite(vec.z());
     }
 
     // endregion

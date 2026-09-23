@@ -1,8 +1,8 @@
 package cn.anecansaitin.free_camera_api_tripod.core;
 
-import cn.anecansaitin.free_camera_api_tripod.api.ControlScheme;
-import cn.anecansaitin.free_camera_api_tripod.api.TripodData;
-import cn.anecansaitin.free_camera_api_tripod.api.TripodStates;
+import cn.anecansaitin.free_camera_api_tripod.api.camera.ControlScheme;
+import cn.anecansaitin.free_camera_api_tripod.api.camera.TripodData;
+import cn.anecansaitin.free_camera_api_tripod.api.camera.TripodStates;
 import cn.anecansaitin.freecameraapi.api.CameraDataType;
 
 public class Data implements TripodData {

@@ -1,7 +1,7 @@
 package cn.anecansaitin.free_camera_api_tripod.api.animation.track;
 
 import cn.anecansaitin.free_camera_api_tripod.api.animation.TrackKey;
-import cn.anecansaitin.free_camera_api_tripod.core.animation.Curve;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Curve;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import org.jspecify.annotations.Nullable;
@@ -12,7 +12,7 @@ import org.jspecify.annotations.Nullable;
 /// 事件触发器轨道、后处理特效轨道时无需改动编辑器代码。
 ///
 /// 新增轨道类型时：实现本接口 -> 通过 {@link TrackTypeRegistry} 注册 -> 加入
-/// {@link cn.anecansaitin.free_camera_api_tripod.core.animation.CameraAnimation}。
+/// {@link cn.anecansaitin.free_camera_api_tripod.api.animation.CameraAnimation}。
 @SuppressWarnings("unused")
 public interface AnimationTrack {
     /// 轨道类型 id，见 {@link TrackTypeRegistry}

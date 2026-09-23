@@ -1,10 +1,10 @@
 package cn.anecansaitin.free_camera_api_tripod.core.cmd_camera;
 
 import cn.anecansaitin.free_camera_api_tripod.FreeCameraApiTripod;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.PathMode;
-import cn.anecansaitin.free_camera_api_tripod.core.animation.Path;
-import cn.anecansaitin.free_camera_api_tripod.core.animation.PathNode;
-import cn.anecansaitin.free_camera_api_tripod.core.animation.PathNodec;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.path.Path;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.path.PathMode;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.path.PathNode;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.path.PathNodec;
 import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.edit.CameraEditorModel;
 import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.edit.Selected;
 import cn.anecansaitin.free_camera_api_tripod.util.CommandBuilder;

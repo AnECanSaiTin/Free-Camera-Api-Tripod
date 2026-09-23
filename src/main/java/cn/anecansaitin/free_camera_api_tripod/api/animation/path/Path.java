@@ -1,6 +1,5 @@
-package cn.anecansaitin.free_camera_api_tripod.core.animation;
+package cn.anecansaitin.free_camera_api_tripod.api.animation.path;
 
-import cn.anecansaitin.free_camera_api_tripod.api.animation.PathMode;
 import cn.anecansaitin.free_camera_api_tripod.util.SplineUtils;
 import it.unimi.dsi.fastutil.doubles.DoubleArrayList;
 import it.unimi.dsi.fastutil.floats.FloatArrayList;
@@ -11,7 +10,7 @@ import org.jspecify.annotations.NullMarked;
 import java.util.ArrayList;
 
 @NullMarked
-public class Path {
+public class Path implements Pathc {
     private String name;
     private final ArrayList<PathNode> nodes = new ArrayList<>();
     private final FloatArrayList segmentLengths = new FloatArrayList();
@@ -29,6 +28,7 @@ public class Path {
         this.name = name;
     }
 
+    @Override
     public Vector3f evaluate(float distance, Vector3f dest) {
         int size = nodes.size();
 
@@ -49,7 +49,11 @@ public class Path {
 
         PathNode right = nodes.get(index + 1);
         double preLength = index == 0 ? 0 : cumulativeLengths.getDouble(index - 1);
-        float delta = (float) ((length - preLength) / segmentLengths.getFloat(index));
+        // 线段长度为 0（或数据异常）时归一化参数会变成 0/0，位置随即变成 NaN，
+        // 随后又会以 NaN 的形式进入相机与渲染；这里退化成取线段起点
+        float segment = index < segmentLengths.size() ? segmentLengths.getFloat(index) : 0f;
+        float delta = segment > 0 ? (float) ((length - preLength) / segment) : 0f;
+        delta = Math.clamp(delta, 0f, 1f);
 
         return switch (left.pathMode()) {
             case LINEAR -> dest.set(left.position()).lerp(right.position(), delta);
@@ -88,6 +92,7 @@ public class Path {
         updateArcLengthTable(segmentLengths.size() - 1, segmentLengths.size());
     }
 
+    @Override
     public PathNodec node(int index) {
         if (!validNode(index)) {
             throw new IndexOutOfBoundsException("Invalid node index: " + index);
@@ -128,12 +133,15 @@ public class Path {
             return false;
         }
 
-        if (index == nodes.size() - 1) {
-            segmentLengths.removeFloat(index - 1);
-            cumulativeLengths.removeDouble(index - 1);
-        } else {
-            segmentLengths.removeFloat(index);
-            cumulativeLengths.removeDouble(index);
+        // 只剩一个节点时其下没有任何线段，不能再从弧长表里移除，否则会越界
+        if (nodes.size() >= 2) {
+            if (index == nodes.size() - 1) {
+                segmentLengths.removeFloat(index - 1);
+                cumulativeLengths.removeDouble(index - 1);
+            } else {
+                segmentLengths.removeFloat(index);
+                cumulativeLengths.removeDouble(index);
+            }
         }
 
         nodes.remove(index);
@@ -146,6 +154,19 @@ public class Path {
         }
 
         updateArcLengthTable(Math.max(0, index - 2), Math.min(segmentLengths.size(), index + 2));
+        return true;
+    }
+
+    /// 调整节点顺序：把 from 处的节点移动到 to 处（用于手工排序路径点）。
+    /// 越界或原地不动时返回 false。
+    public boolean moveNode(int from, int to) {
+        if (!validNode(from) || to < 0 || to >= nodes.size() || from == to) {
+            return false;
+        }
+
+        nodes.add(to, nodes.remove(from));
+        // 顺序变了，每段的两端节点都可能不同，弧长表整体重建
+        updateArcLengthTable();
         return true;
     }
 
@@ -227,6 +248,12 @@ public class Path {
 
     private int findFloorIndex(double length) {
         int size = cumulativeLengths.size();
+
+        // 弧长表为空时没有可用的分段，交给调用方按首节点处理
+        if (size == 0) {
+            return 0;
+        }
+
         int maxFloor = size - 1;
 
         if (lastIndex >= 0 && lastIndex < maxFloor) {
@@ -260,6 +287,8 @@ public class Path {
 
         int i = binarySearch(length);
         i = i < 0 ? -i - 1 : i;
+        // 夹到有效分段内：越界索引会让 evaluate 取到不存在的线段，弧长与参数换算随之失效
+        i = Math.max(0, Math.min(maxFloor, i));
         positive = i >= lastIndex;
         return lastIndex = i;
     }
@@ -302,14 +331,17 @@ public class Path {
         }
     }
 
+    @Override
     public double totalLength() {
         return totalLength;
     }
 
+    @Override
     public int size() {
         return nodes.size();
     }
 
+    @Override
     public String name() {
         return name;
     }

@@ -1,8 +1,8 @@
 package cn.anecansaitin.free_camera_api_tripod.core.control_scheme;
 
 import cn.anecansaitin.free_camera_api_tripod.FreeCameraApiTripod;
-import cn.anecansaitin.free_camera_api_tripod.api.ControlScheme;
-import cn.anecansaitin.free_camera_api_tripod.api.TripodData;
+import cn.anecansaitin.free_camera_api_tripod.api.camera.ControlScheme;
+import cn.anecansaitin.free_camera_api_tripod.api.camera.TripodData;
 import cn.anecansaitin.free_camera_api_tripod.core.Data;
 import cn.anecansaitin.freecameraapi.api.CameraStates;
 import cn.anecansaitin.freecameraapi.core.ModifierManager;
@@ -29,7 +29,7 @@ import java.util.Optional;
 
 import static cn.anecansaitin.freecameraapi.ClientUtil.*;
 import static cn.anecansaitin.freecameraapi.api.CameraStates.*;
-import static cn.anecansaitin.free_camera_api_tripod.api.ControlScheme.*;
+import static cn.anecansaitin.free_camera_api_tripod.api.camera.ControlScheme.*;
 
 @EventBusSubscriber(modid = FreeCameraApiTripod.MODID, value = Dist.CLIENT)
 public class ControlSchemeManager {
