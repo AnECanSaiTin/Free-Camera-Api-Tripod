@@ -26,6 +26,8 @@ public final class EditorConfig {
     public static final ModConfigSpec.BooleanValue DEV_TEST_KEYS;
     /// 编辑器是否使用深色主题；在「视图 → 深色模式」里切换
     public static final ModConfigSpec.BooleanValue DARK_MODE;
+    /// 编辑器界面是否优先使用 Modern UI 渲染（客户端装了 Modern UI 时才生效）
+    public static final ModConfigSpec.BooleanValue MODERN_UI_COMPAT;
     public static final ModConfigSpec SPEC;
 
     static {
@@ -50,6 +52,13 @@ public final class EditorConfig {
         DARK_MODE = BUILDER.comment(" Dark theme for the editor UI. Turn it off for the light theme.",
                         " Toggled from the editor menu: View -> Dark Mode.")
                 .define("dark_mode", true);
+        BUILDER.pop();
+
+        BUILDER.comment(" Editor user interface.").push("ui");
+        MODERN_UI_COMPAT = BUILDER.comment(" Render the editor screens with the Modern UI framework when it is installed.",
+                        " Requires Modern UI 3.13+ on the client;",
+                        " without it (or with this off) the editor keeps its built-in renderer.")
+                .define("modern_ui_compat", true);
         BUILDER.pop();
 
         BUILDER.comment(" Developer helpers. Leave everything here off for normal use.").push("dev");

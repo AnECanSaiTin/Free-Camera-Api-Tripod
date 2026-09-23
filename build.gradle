@@ -140,6 +140,9 @@ configurations {
 dependencies {
     implementation files("libs/free_camera_api-neo-26.1.2-5.2.1-beta.jar")
 //    implementation "maven.modrinth:free-camera-api:5.1.1-beta"
+
+    // 现代界面框架（Modern UI）的支持在附属 mod 里：addon-modernui
+    // 主 mod 只在 api.editor 包里提供界面后端接口，不依赖任何具体界面框架。
     // Example optional mod dependency with JEI
     // The JEI API is declared for compile time use, while the full JEI artifact is used at runtime
     // compileOnly "mezz.jei:jei-${mc_version}-common-api:${jei_version}"

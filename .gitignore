@@ -23,4 +23,7 @@ run
 runs
 run-data
 
+# 本地依赖 jar（前置 mod、界面框架）不入库
+libs
+
 repo

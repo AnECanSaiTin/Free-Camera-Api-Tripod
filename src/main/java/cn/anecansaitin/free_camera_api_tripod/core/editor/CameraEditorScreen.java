@@ -15,6 +15,7 @@ import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.CmdCamera;
 import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.edit.CameraEditorModel;
 import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.edit.Selected;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.layout.DockLayout;
+import cn.anecansaitin.free_camera_api_tripod.api.editor.EditorUiHost;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.layout.UiRect;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.panel.AnimationPanel;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.panel.EditorPanel;
@@ -109,9 +110,12 @@ public class CameraEditorScreen extends Screen {
     private boolean firstInit = true;
 
     public CameraEditorScreen() {
+        this(createContext());
+    }
+
+    public CameraEditorScreen(EditorContext context) {
         super(Component.empty());
-        CmdCamera camera = CmdCamera.INSTANCE;
-        this.context = new EditorContext(camera.editor(), camera.player(), camera.animation(), camera.info());
+        this.context = context;
         this.viewportPanel = new ViewportPanel(context);
         this.graphPanel = new GraphPanel(context);
         this.animationPanel = new AnimationPanel(context);
@@ -1073,6 +1077,20 @@ public class CameraEditorScreen extends Screen {
             return;
         }
 
-        Minecraft.getInstance().setScreen(new CameraEditorScreen());
+        EditorContext context = createContext();
+
+        // 有界面后端注册（例如用 Modern UI 渲染的附属 mod）时由它接管界面；
+        // 配置里关掉「现代化界面兼容」则不询问任何后端，直接用内置界面。
+        if (EditorConfig.MODERN_UI_COMPAT.get() && EditorUiHost.open(new BuiltinEditorSession(context))) {
+            return;
+        }
+
+        Minecraft.getInstance().setScreen(new CameraEditorScreen(context));
+    }
+
+    /// 从当前相机命令构造编辑器上下文
+    private static EditorContext createContext() {
+        CmdCamera camera = CmdCamera.INSTANCE;
+        return new EditorContext(camera.editor(), camera.player(), camera.animation(), camera.info());
     }
 }

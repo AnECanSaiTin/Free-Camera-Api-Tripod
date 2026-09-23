@@ -67,10 +67,17 @@ public final class ConfirmDialog {
         }
     }
 
-    /// 用户点了确认：先标记结束再执行动作，动作里即使再弹一个确认框也不会被覆盖
-    private void confirm() {
+    /// 用户点了确认：先标记结束再执行动作，动作里即使再弹一个确认框也不会被覆盖。
+    ///
+    /// 外部界面（例如附属 mod 的 Modern UI 界面）没有这个弹窗，它会自己画提示并直接调用本方法。
+    public void confirm() {
         finished = true;
         onConfirm.run();
+    }
+
+    /// 弹窗正文
+    public Component message() {
+        return message;
     }
 
     public boolean finished() {
