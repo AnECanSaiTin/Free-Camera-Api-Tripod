@@ -103,6 +103,8 @@ public class PathNodePanel extends EditorPanel {
         }
 
         builder.append('|').append(path.size()).append('|').append(Draw.num((float) path.totalLength(), 2));
+        // 路径名要进 revision，绑定或另存为之后面板上的名字才会跟着变
+        builder.append('|').append(path.name());
         return builder.toString();
     }
 
@@ -123,9 +125,7 @@ public class PathNodePanel extends EditorPanel {
         int y = content.y() + 4 - scrollY;
         int fieldWidth = Math.max(30, contentRight - x - LABEL_WIDTH);
 
-        // 路径节点的增删改都在独立界面里，这里放进入口与绑定入口；与是否选中节点无关，始终可用
-        y = actionRow(x, y, contentRight - x);
-        // 区域一：路径整体信息
+        // 区域一：路径整体信息（路径名、进入路径编辑的入口、规模与距离口径）
         y = pathSection(x, y, fieldWidth);
         // 区域二：当前选中节点的信息
         y = nodeSection(x, y, fieldWidth);
@@ -146,6 +146,8 @@ public class PathNodePanel extends EditorPanel {
         }
 
         Path path = context.editor().path();
+        y = openEditorRow(x, y, width);
+        y = textRow(x, y, EditorLang.t("path_editor.name"), Component.literal(path.name()));
         y = textRow(x, y, EditorLang.t("inspector.path.count"), Component.literal(String.valueOf(path.size())));
         y = textRow(x, y, EditorLang.t("inspector.path.length"), Component.literal(Draw.num((float) path.totalLength(), 2)));
         return distanceModeRow(x, y, width);
@@ -165,6 +167,7 @@ public class PathNodePanel extends EditorPanel {
 
         PathNodec node = path.node(index);
         y = nodeDropdownRow(x, y, width, index, node);
+        y = distanceToNodeRow(x, y);
         y = vectorRow(x, y, width, EditorLang.t("inspector.path.position"), node.position(),
                 (axis, value) -> setPosition(index, axis, value), () -> path.node(index).position());
         y = modeRow(x, y, width, index, path);
@@ -217,39 +220,30 @@ public class PathNodePanel extends EditorPanel {
         context.distancePercent(percent);
     }
 
-    /// 进入路径编辑界面；未绑定路径时先给一条空路径，进去就能直接取点
-    private int actionRow(int x, int y, int width) {
-        int gap = 3;
-        int bindWidth = Math.min(64, Math.max(28, width / 3));
-        int editorWidth = Math.max(1, width - bindWidth - gap);
-
-        ButtonWidget editor = new ButtonWidget(new UiRect(x, y + 1, editorWidth, FIELD_HEIGHT),
+    /// 进入路径编辑界面的入口。只在绑定之后才出现：没绑定时这条路径既没有名字也没有文件，
+    /// 进去编辑完也无处可存
+    private int openEditorRow(int x, int y, int width) {
+        ButtonWidget editor = new ButtonWidget(new UiRect(x, y + 1, width, FIELD_HEIGHT),
                 EditorLang.t("inspector.path.open_editor"), this::openPathEditor);
         editor.accent(true);
         widgets.add(editor);
-
-        ButtonWidget bind = new ButtonWidget(new UiRect(x + editorWidth + gap, y + 1, bindWidth, FIELD_HEIGHT),
-                EditorLang.t("inspector.path.bind"), context::chooseAndBindPath);
-        bind.tooltip(EditorLang.t("inspector.path.bind.tip"));
-        widgets.add(bind);
         return y + ROW_HEIGHT;
     }
 
     private void openPathEditor() {
-        Path path = context.editor().path();
-
-        // 未绑定且路径为空时给一条干净的新路径，进去就能直接取点
-        if (!bound() && path.size() == 0) {
-            path.clear();
-            context.editor().pathReplaced();
-        }
-
         Minecraft.getInstance().setScreen(new PathEditorScreen(context));
     }
 
     private int section(int x, int y, Component title) {
         labels.add(new LabelDraw(title, x, y + 2, Draw.ACCENT, -1));
         return y + ROW_HEIGHT;
+    }
+
+    /// 起点沿路径走到该节点的弧长；第 0 个节点恒为 0
+    private int distanceToNodeRow(int x, int y) {
+        int index = context.editor().selectedPathNode().index();
+        return textRow(x, y, EditorLang.t("inspector.path.node_distance"),
+                Component.literal(Draw.num((float) context.editor().path().nodeDistance(index), 2)));
     }
 
     private int textRow(int x, int y, Component label, Component value) {

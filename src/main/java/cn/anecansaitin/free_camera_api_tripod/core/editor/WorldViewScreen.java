@@ -82,6 +82,8 @@ public class WorldViewScreen extends Screen {
     public void removed() {
         // 离开界面时务必放开鼠标，否则光标会被一直锁住
         takeover.release();
+        // 同理要把播放器的暂停态放掉，否则退出后相机继续被动画姿态驱动
+        context.player().release();
         super.removed();
     }
 

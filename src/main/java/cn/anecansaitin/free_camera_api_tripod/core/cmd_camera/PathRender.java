@@ -1,6 +1,7 @@
 package cn.anecansaitin.free_camera_api_tripod.core.cmd_camera;
 
 import cn.anecansaitin.free_camera_api_tripod.FreeCameraApiTripod;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.path.PathMode;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.path.Pathc;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.path.PathNodec;
 import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.edit.Selected;
@@ -184,7 +185,10 @@ public class PathRender {
         }
     }
 
-    /// 缓存控制点方块顶点和控制线
+    /// 缓存控制点方块顶点和控制线。
+    ///
+    /// 控制点（入/出切线）只有贝塞尔节点才有意义：其它模式下节点之间是直线或样条连接，
+    /// 切线并不参与成形，画出来只会误导，因此这里直接不生成。
     private static void controlPointVisuals(Pathc path) {
         CONTROL_POINT_VERTEX_CACHE.clear();
         CONTROL_POINT_LINE_VERTEX_CACHE.clear();
@@ -197,6 +201,11 @@ public class PathRender {
         }
 
         PathNodec node = path.node(selectedIndex);
+
+        if (node.pathMode() != PathMode.BEZIER) {
+            return;
+        }
+
         Vector3fc pos = node.position();
         Vector3f in = new Vector3f(pos).add(node.inTangent());
         Vector3f out = new Vector3f(pos).add(node.outTangent());
@@ -306,10 +315,18 @@ public class PathRender {
             collector.submitNameTag(poseStack, pos, 0, PATH_NODE_TEXT_CACHE.get(i), true, LightCoordsUtil.FULL_BRIGHT, cameraPos.distanceToSqr(pos), cameraRenderState, PATH_TEXT_COLOR, PATH_TEXT_BACKGROUND_COLOR);
         }
 
-        collector.submitNameTag(poseStack, CONTROL_POINT_POS_IN, 0, CONTROL_POINT_TEXT_IN, true, LightCoordsUtil.FULL_BRIGHT, cameraPos.distanceToSqr(CONTROL_POINT_POS_IN), cameraRenderState, CONTROL_TEXT_COLOR, CONTROL_TEXT_BACKGROUND_COLOR);
-        collector.submitNameTag(poseStack, CONTROL_POINT_POS_OUT, 0, CONTROL_POINT_TEXT_OUT, true, LightCoordsUtil.FULL_BRIGHT, cameraPos.distanceToSqr(CONTROL_POINT_POS_OUT), cameraRenderState, CONTROL_TEXT_COLOR, CONTROL_TEXT_BACKGROUND_COLOR);
+        // 控制点标签只在确实画了控制点时提交：没画控制点却留着 IN/OUT 字样，等于凭空多出两个标记
+        if (hasControlPoints()) {
+            collector.submitNameTag(poseStack, CONTROL_POINT_POS_IN, 0, CONTROL_POINT_TEXT_IN, true, LightCoordsUtil.FULL_BRIGHT, cameraPos.distanceToSqr(CONTROL_POINT_POS_IN), cameraRenderState, CONTROL_TEXT_COLOR, CONTROL_TEXT_BACKGROUND_COLOR);
+            collector.submitNameTag(poseStack, CONTROL_POINT_POS_OUT, 0, CONTROL_POINT_TEXT_OUT, true, LightCoordsUtil.FULL_BRIGHT, cameraPos.distanceToSqr(CONTROL_POINT_POS_OUT), cameraRenderState, CONTROL_TEXT_COLOR, CONTROL_TEXT_BACKGROUND_COLOR);
+        }
 
         poseStack.popPose();
+    }
+
+    /// 控制点缓存是否填好了。四块方块各 24 个顶点，缺一块就说明当前选中节点没有控制点
+    private static boolean hasControlPoints() {
+        return CONTROL_POINT_VERTEX_CACHE.size() >= 24 * 4;
     }
 
     private static class LineRenderer implements SubmitNodeCollector.CustomGeometryRenderer {
@@ -357,25 +374,13 @@ public class PathRender {
                         .setColor(PATH_CUBE_COLOR);
             }
 
-            // 控制点外表
-            for (int i = 0; i < 24 * 2; i++) {
-                Vector3f pos = CONTROL_POINT_VERTEX_CACHE.get(i);
-                buffer.addVertex(pose, pos)
-                        .setColor(CONTROL_CUBE_COLOR);
-            }
-
-            // 控制点核心——入
-            for (int i = 24 * 2; i < 24 * 3; i++) {
-                Vector3f pos = CONTROL_POINT_VERTEX_CACHE.get(i);
-                buffer.addVertex(pose, pos)
-                        .setColor(CONTROL_CUBE_COLOR_IN);
-            }
-
-            // 控制点核心——出
-            for (int i = 24 * 3; i < 24 * 4; i++) {
-                Vector3f pos = CONTROL_POINT_VERTEX_CACHE.get(i);
-                buffer.addVertex(pose, pos)
-                        .setColor(CONTROL_CUBE_COLOR_OUT);
+            // 控制点：前两块是入/出的外层方块，后两块是它们的核心。
+            // 非贝塞尔节点不生成控制点，缓存为空时这段自然什么都不画
+            for (int i = 0; i < CONTROL_POINT_VERTEX_CACHE.size(); i++) {
+                int color = i < 24 * 2 ? CONTROL_CUBE_COLOR
+                        : i < 24 * 3 ? CONTROL_CUBE_COLOR_IN : CONTROL_CUBE_COLOR_OUT;
+                buffer.addVertex(pose, CONTROL_POINT_VERTEX_CACHE.get(i))
+                        .setColor(color);
             }
 
             // 选中路径点
@@ -386,14 +391,15 @@ public class PathRender {
                                 .setColor(PATH_CUBE_COLOR_SELECTED);
                     }
                 }
+                // 下面两块的缓存可能不存在（选中的节点不是贝塞尔模式），用缓存长度收住上界
                 case IN -> {
-                    for (int i = 0; i < 24; i++) {
+                    for (int i = 0; i < Math.min(24, CONTROL_POINT_VERTEX_CACHE.size()); i++) {
                         buffer.addVertex(pose, CONTROL_POINT_VERTEX_CACHE.get(i))
                                 .setColor(PATH_CUBE_COLOR_SELECTED);
                     }
                 }
                 case OUT -> {
-                    for (int i = 24; i < 24 * 2; i++) {
+                    for (int i = 24; i < Math.min(24 * 2, CONTROL_POINT_VERTEX_CACHE.size()); i++) {
                         buffer.addVertex(pose, CONTROL_POINT_VERTEX_CACHE.get(i))
                                 .setColor(PATH_CUBE_COLOR_SELECTED);
                     }

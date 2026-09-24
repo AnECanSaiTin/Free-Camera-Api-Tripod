@@ -827,7 +827,16 @@ public class CameraEditorScreen extends Screen {
         ConfirmDialog dialog = context.dialog();
 
         if (dialog != null) {
+            ConfirmDialog current = dialog;
             dialog.mouseReleased(event);
+
+            // 按钮的动作是在「松开」时执行的，所以关闭判断也必须在这里做一遍：
+            // 只在 mouseClicked 里关的话，确认之后弹窗会继续留在屏幕上，
+            // 再点一次它的按钮就会把同一个动作又执行一遍
+            if (dialog.finished() && context.dialog() == current) {
+                context.closeDialog();
+            }
+
             return true;
         }
 

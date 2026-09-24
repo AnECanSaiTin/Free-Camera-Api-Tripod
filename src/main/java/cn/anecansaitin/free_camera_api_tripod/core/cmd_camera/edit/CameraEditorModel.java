@@ -30,7 +30,6 @@ import java.util.Map;
 @NullMarked
 public class CameraEditorModel {
     /// 录路径点时，新关键帧与上一个关键帧的默认时间间隔（秒）
-    public static final float KEY_INTERVAL_SECONDS = 4f;
 
     /// 视口视角模式
     public enum ViewMode {
@@ -408,45 +407,19 @@ public class CameraEditorModel {
         PathRender.markDirty();
     }
 
-    /// 在指定时间把当前相机位置记录为新的路径点，返回新关键帧的时间（调用方据此把播放头挪过去）。
+    /// 把当前相机位置记录为新的路径点，并把选中项切到新点上。
     ///
-    /// 位置通道的取值是沿路径的弧长（百分比口径下是 0~1 的进度），因此同时插入一个取值等于
-    /// 新路径总长的键，让相机随时间沿路径前进；新键的时间默认排在上一个键之后 4 秒。
-    public float addPathNodeAt(Vector3fc position, float time) {
+    /// 只动路径本身，不再顺手往位置通道补关键帧：路径在时间上什么时候走到哪一段，
+    /// 由用户在时间轴上自己排
+    public void addPathNodeAt(Vector3fc position) {
         // 相机位置异常时不记录：NaN 一旦写进路径点，整条路径的弧长与采样都会失效
         if (!isFinite(position)) {
-            return time;
+            return;
         }
 
         path().node(PathNode.catmullRom(new Vector3f(position)));
         selectPathNode(new Selected(path().size() - 1, Selected.Type.NODE));
-        CurveTrack positionTrack = animation.track(CameraAnimation.CHANNEL_POSITION);
-
-        if (positionTrack == null) {
-            PathRender.markDirty();
-            return time;
-        }
-
-        float keyTime = nextKeyTime(positionTrack);
-        float value = animation.distanceMode() == CameraAnimation.DistanceMode.PERCENT
-                ? 1f : (float) path().totalLength();
-        int index = positionTrack.curve().key(Keyframe.create(keyTime, value));
-        selectTrack(positionTrack.id());
-        selectKey(index);
         PathRender.markDirty();
-        return keyTime;
-    }
-
-    /// 新关键帧的默认时间：排在已有最后一个键之后 4 秒；还没有键时从 0 秒开始
-    private static float nextKeyTime(CurveTrack track) {
-        int count = track.keyCount();
-
-        if (count == 0) {
-            return 0f;
-        }
-
-        TrackKey last = track.key(count - 1);
-        return last == null ? 0f : last.time() + KEY_INTERVAL_SECONDS;
     }
 
     /// 在指定时间把当前相机位置记录到三个坐标通道（直接坐标模式下的取点方式）。

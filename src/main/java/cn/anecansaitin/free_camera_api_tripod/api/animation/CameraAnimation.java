@@ -51,7 +51,7 @@ public class CameraAnimation implements CameraAnimationc {
     private String name;
     private final Clip clip = new Clip();
     private Path path;
-    private MotionMode motionMode = MotionMode.PATH;
+    private MotionMode motionMode = MotionMode.COORDINATE;
     private DistanceMode distanceMode = DistanceMode.ABSOLUTE;
     private final LinkedHashMap<String, CurveTrack> tracks = new LinkedHashMap<>();
     private final List<AnimationTrack> extensionTracks = new ArrayList<>();

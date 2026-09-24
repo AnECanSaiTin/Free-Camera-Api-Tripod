@@ -80,6 +80,8 @@ public class PathEditorScreen extends Screen {
     private @Nullable String openMenuKey;
     /// 当前路径对应的本地文件；新建或从存档读取时为 null，「保存」据此决定是直接写回还是转为另存为
     private java.nio.file.@Nullable Path pathFile;
+    /// 当前路径在存档里的名称。与 {@link #pathFile} 互斥，用来判断「保存」该写回哪里
+    private @Nullable String pathStorageName;
 
     private int dragSplitter = -1;
     private int dragStackSplitter = -1;
@@ -194,12 +196,12 @@ public class PathEditorScreen extends Screen {
                                 .item("", EditorLang.t("menu.file.storage"), this::openStorageMenu))
                 .submenu("", EditorLang.t("menu.file.save"),
                         new ContextMenu()
-                                .item("", EditorLang.t("menu.file.local"), this::savePath)
+                                .item("", EditorLang.t("menu.file.local"), this::savePathToLocal)
                                 .item("", EditorLang.t("menu.file.storage"), this::savePathToStorage))
                 .submenu("", EditorLang.t("menu.file.save_as"),
                         new ContextMenu()
                                 .item("", EditorLang.t("menu.file.local"), this::savePathAs)
-                                .item("", EditorLang.t("menu.file.storage"), this::savePathToStorage))
+                                .item("", EditorLang.t("menu.file.storage"), this::savePathToStorageAs))
                 .separator()
                 .item("", EditorLang.t("path_editor.close"), this::onClose);
     }
@@ -262,18 +264,35 @@ public class PathEditorScreen extends Screen {
     private void newPath() {
         context.editor().path().clear();
         context.editor().pathReplaced();
-        // 新路径还没有对应的本地文件
+        // 新路径还没有来源
         pathFile = null;
+        pathStorageName = null;
     }
 
-    /// 保存当前路径：已知对应的本地文件时直接写回，还没有对应文件时转为另存为
+    /// 保存当前路径：按打开时的来源直接写回——来自本地文件就写文件，来自存档就写存档；
+    /// 还没有来源（新建的路径）时转为另存为
     private void savePath() {
-        if (pathFile == null) {
-            savePathAs();
+        if (pathFile != null) {
+            savePathTo(pathFile);
             return;
         }
 
-        savePathTo(pathFile);
+        if (pathStorageName != null) {
+            savePathToStorage(pathStorageName);
+            return;
+        }
+
+        savePathAs();
+    }
+
+    /// 保存到本地文件：来源就是本地文件时直接写回，否则弹出选择界面
+    private void savePathToLocal() {
+        if (pathFile != null) {
+            savePathTo(pathFile);
+            return;
+        }
+
+        savePathAs();
     }
 
     /// 另存为：弹出文件浏览界面挑文件（只列 .path），写出后同时往存档留一份
@@ -284,17 +303,19 @@ public class PathEditorScreen extends Screen {
 
     private void savePathTo(java.nio.file.Path file) {
         file = AnimationFiles.withSuffix(file, AnimationFiles.PATH_SUFFIX);
-        String json = AnimationCodec.pathToJson(context.editor().path());
         String name = AnimationFiles.stem(file);
+
+        // 文件名即路径名，所以先改名再序列化：反过来的话写进文件的是改名之前的旧名字
+        context.editor().path().name(name);
+        String json = AnimationCodec.pathToJson(context.editor().path());
 
         if (!AnimationFiles.saveTo(file, json)) {
             context.notify(EditorLang.t("notify.path_save_failed", name));
             return;
         }
 
-        // 文件名即路径名，保存后让两者保持一致
         pathFile = file;
-        context.editor().path().name(name);
+        pathStorageName = null;
         buildToolBar();
 
         if (AnimationSavedData.get() != null) {
@@ -304,8 +325,18 @@ public class PathEditorScreen extends Screen {
         context.notify(EditorLang.t("notify.path_saved", name));
     }
 
-    /// 保存到存档：先列出存档里已有的全部路径（同名会先确认覆盖），选定名字后写入
+    /// 保存到存档：来源就是存档时直接写回，否则弹出选择界面
     private void savePathToStorage() {
+        if (pathStorageName != null) {
+            savePathToStorage(pathStorageName);
+            return;
+        }
+
+        savePathToStorageAs();
+    }
+
+    /// 另存到存档：一律弹出选择界面
+    private void savePathToStorageAs() {
         if (AnimationSavedData.get() == null) {
             context.notify(EditorLang.t("notify.no_storage"));
             return;
@@ -315,8 +346,13 @@ public class PathEditorScreen extends Screen {
     }
 
     private void savePathToStorage(String name) {
-        AnimationSavedData.savePath(name, AnimationCodec.pathToJson(context.editor().path()));
+        // 同上：先把名字写进路径，序列化出来的 JSON 才带得上它
         context.editor().path().name(name);
+        AnimationSavedData.savePath(name, AnimationCodec.pathToJson(context.editor().path()));
+        // 之后「保存」就写回这个存档名；本地文件的对应关系随之失效
+        pathStorageName = name;
+        pathFile = null;
+        buildToolBar();
         context.notify(EditorLang.t("notify.path_saved", name));
     }
 
@@ -337,7 +373,12 @@ public class PathEditorScreen extends Screen {
             return;
         }
 
-        StorageBrowserScreen.open(false, true, null, name -> applyPath(AnimationSavedData.loadPath(name), name));
+        StorageBrowserScreen.open(false, true, null, name -> {
+            // 记住存档名，之后「保存」就能直接写回它
+            if (applyPath(AnimationSavedData.loadPath(name), name)) {
+                pathStorageName = name;
+            }
+        });
     }
 
     /// 读取成功返回 true；失败时保留当前路径与它的本地文件对应关系
@@ -352,8 +393,9 @@ public class PathEditorScreen extends Screen {
         loaded.name(name);
         context.editor().path(loaded);
         context.editor().pathReplaced();
-        // 换了一条路径，本地文件的对应关系随之失效；知道来源文件的调用方在成功后再补上
+        // 换了一条路径，来源的对应关系随之失效；知道来源的调用方在成功后再补上
         pathFile = null;
+        pathStorageName = null;
 
         context.notify(EditorLang.t("notify.path_bound", name));
         return true;
@@ -364,6 +406,9 @@ public class PathEditorScreen extends Screen {
     @Override
     public void removed() {
         viewportPanel.releaseViewport();
+        // 录点、跳关键帧都会把播放器留在暂停态；不释放的话退出后相机仍被动画姿态驱动，
+        // 表现就是视角拖不动
+        context.player().release();
         super.removed();
     }
 

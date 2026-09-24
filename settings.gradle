@@ -8,6 +8,4 @@ plugins {
     id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
 }
 
-// 主 mod 就是本仓库的根项目；现代化界面支持作为附属 mod 单独构建与发布。
-// 依赖方向是单向的：addon-modernui 依赖主 mod，主 mod 不认识它。
-include 'addon-modernui'
+// 主 mod 就是本仓库的根项目。

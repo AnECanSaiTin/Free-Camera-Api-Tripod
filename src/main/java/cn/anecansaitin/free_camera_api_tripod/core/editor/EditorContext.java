@@ -4,6 +4,7 @@ import cn.anecansaitin.free_camera_api_tripod.api.animation.CameraAnimation;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.path.Path;
 import cn.anecansaitin.free_camera_api_tripod.core.animation.io.AnimationCodec;
 import cn.anecansaitin.free_camera_api_tripod.core.animation.io.AnimationFiles;
+import cn.anecansaitin.free_camera_api_tripod.core.animation.io.AnimationSavedData;
 import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.edit.CameraEditorModel;
 import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.info.CameraInfo;
 import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.playback.CameraPlayer;
@@ -13,6 +14,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import org.joml.Vector3f;
 import org.jspecify.annotations.Nullable;
+
+import java.util.List;
 
 /// 编辑器共享上下文：动画数据、播放器、编辑模型，以及时间轴/曲线图共用的视图参数。
 public final class EditorContext {
@@ -170,6 +173,11 @@ public final class EditorContext {
         this.dialog = new ConfirmDialog(message, action);
     }
 
+    /// 弹出多选一的询问；用户点了某一项才执行对应的动作
+    public void choose(Component message, List<ConfirmDialog.Choice> choices) {
+        this.dialog = new ConfirmDialog(message, choices);
+    }
+
     public @Nullable ConfirmDialog dialog() {
         return dialog;
     }
@@ -182,22 +190,74 @@ public final class EditorContext {
 
     // region 路径绑定与运动模式
 
-    /// 选一条路径并绑定：先弹文件管理界面挑 `.path`，选中后再二次确认，确认才替换路径并切到路径模式
-    public void chooseAndBindPath() {
+    /// 切到路径模式：先问是新建一条还是绑定已有的。
+    ///
+    /// 两种走法都会丢掉位置关键帧（路径模式下位置由路径给出），所以这句问话就充当了那一次二次确认，
+    /// 选定之后不再重复询问。绑定已有的还会再问一次来源（存档 / 本地文件）。
+    public void switchToPathMode() {
+        if (animation.motionMode() == CameraAnimation.MotionMode.PATH) {
+            return;
+        }
+
+        choose(EditorLang.t("inspector.path.switch_mode_prompt"), List.of(
+                new ConfirmDialog.Choice(EditorLang.t("inspector.path.create_new"), this::createNewPath),
+                new ConfirmDialog.Choice(EditorLang.t("inspector.path.bind_existing"), this::chooseBindSource)));
+    }
+
+    /// 新建一条路径并切到路径模式：清掉节点，只重建通道、不补关键帧。
+    /// 与切到坐标模式对称——先切模式，再让模型按新模式重建通道
+    private void createNewPath() {
+        animation.motionMode(CameraAnimation.MotionMode.PATH);
+        editor.path().clear();
+        editor.pathReplaced();
+        notify(EditorLang.t("notify.path_bound", editor.path().name()));
+    }
+
+    /// 绑定已有路径：再问一次从哪里取
+    private void chooseBindSource() {
+        choose(EditorLang.t("inspector.path.bind_source_prompt"), List.of(
+                new ConfirmDialog.Choice(EditorLang.t("menu.file.storage"), this::bindFromStorage),
+                new ConfirmDialog.Choice(EditorLang.t("menu.file.local"), this::bindFromLocal)));
+    }
+
+    /// 从本地 `.path` 文件绑定：先弹文件管理界面挑文件，选中后直接绑定（来源已在上一步问过）
+    private void bindFromLocal() {
         FileBrowserScreen.open(false, AnimationFiles.pathDir(), null, AnimationFiles.PATH_SUFFIX, this::confirmBindPath);
     }
 
-    /// 选好文件后的二次确认；确认才真正绑定
-    public void confirmBindPath(java.nio.file.Path file) {
+    /// 从存档里已有的路径绑定
+    private void bindFromStorage() {
+        if (AnimationSavedData.get() == null) {
+            notify(EditorLang.t("notify.no_storage"));
+            return;
+        }
+
+        StorageBrowserScreen.open(false, true, null, this::confirmBindStorage);
+    }
+
+    /// 选好本地文件后的绑定
+    private void confirmBindPath(java.nio.file.Path file) {
         String json = AnimationFiles.loadPathFrom(file);
         String name = AnimationFiles.stem(file);
 
-        if (json == null || AnimationCodec.pathFromJson(json) == null) {
+        if (json == null) {
             notify(EditorLang.t("notify.path_load_failed", name));
             return;
         }
 
-        confirm(EditorLang.t("notify.delete_position_keys_confirm"), () -> bindPath(json, name));
+        bindPath(json, name);
+    }
+
+    /// 选好存档里的路径后的绑定
+    private void confirmBindStorage(String name) {
+        String json = AnimationSavedData.loadPath(name);
+
+        if (json == null) {
+            notify(EditorLang.t("notify.path_load_failed", name));
+            return;
+        }
+
+        bindPath(json, name);
     }
 
     /// 用已读出的 JSON 绑定路径：替换当前路径、切到路径模式，只重建通道、不补关键帧
@@ -215,15 +275,6 @@ public final class EditorContext {
         animation.motionMode(CameraAnimation.MotionMode.PATH);
         notify(EditorLang.t("notify.path_bound", name));
         return true;
-    }
-
-    /// 切到路径模式：先选路径文件，再二次确认（两步都由 {@link #chooseAndBindPath()} 完成）
-    public void switchToPathMode() {
-        if (animation.motionMode() == CameraAnimation.MotionMode.PATH) {
-            return;
-        }
-
-        chooseAndBindPath();
     }
 
     /// 切到直接坐标模式：会丢掉路径距离关键帧，先二次确认。
@@ -244,11 +295,9 @@ public final class EditorContext {
 
     // region 录路径点
 
-    /// 记录一个路径点：把相机当前位置加入路径、在位置通道上补一个关键帧（时间排在上一个键之后 4 秒），
-    /// 并把播放头挪到新键上，方便立刻看到刚录的点。
+    /// 记录一个路径点：把相机当前位置加入路径，并选中它
     public void recordPathNode() {
-        float keyTime = editor.addPathNodeAt(currentCameraPosition(), player.time());
-        player.seek(keyTime);
+        editor.addPathNodeAt(currentCameraPosition());
         notify(EditorLang.t("notify.path_node_added"));
     }
 

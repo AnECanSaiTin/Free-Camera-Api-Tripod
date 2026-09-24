@@ -119,6 +119,8 @@ public class PathNodeDetailPanel extends EditorPanel {
         PathNodec node = path.node(index);
         y = textRow(x, y, EditorLang.t("inspector.path.node"),
                 Component.literal("#" + index + " " + context.editor().selectedPathNode().type()));
+        y = textRow(x, y, EditorLang.t("inspector.path.node_distance"),
+                Component.literal(Draw.num((float) path.nodeDistance(index), 2)));
         y = vectorRow(x, y, fieldWidth, EditorLang.t("inspector.path.position"), node.position(),
                 (axis, value) -> setPosition(index, axis, value), () -> path.node(index).position());
         y = modeRow(x, y, fieldWidth, index, path);

@@ -74,6 +74,12 @@ public final class Draw {
 
     /// 当前主题；初始为 null，静态块里铺第一套配色时会落下 DARK
     private static @Nullable Theme theme;
+    /// 主题版本：每次真正换主题都递增。
+    ///
+    /// 面板会把配色**固化**进自己的标签缓存（例如 `LabelDraw` 里存着一个 `int color`），
+    /// 那些缓存只在重建时才刷新。界面据此判断该不该重建，否则切主题后颜色要等到
+    /// 面板自己发生别的变化（改尺寸、滚动、数据变化）才会更新。
+    private static int themeRevision;
     /// 文字样式：浅色主题需要显式指定阴影色，深色主题留空以沿用原版
     private static Style textStyle = Style.EMPTY;
 
@@ -90,6 +96,11 @@ public final class Draw {
     /// 当前是否为深色主题
     public static boolean darkMode() {
         return theme == Theme.DARK;
+    }
+
+    /// 当前主题版本；变了就说明配色整体换过一套，缓存的颜色需要重建
+    public static int themeRevision() {
+        return themeRevision;
     }
 
     /// 切换到指定主题；已经是该主题时不做事
@@ -109,6 +120,9 @@ public final class Draw {
         }
 
         theme = target;
+
+        // 换了主题就把版本往前推一格：把颜色固化在字段里的界面会据此重建
+        themeRevision++;
 
         if (target == Theme.DARK) {
             TOOLBAR_BG = 0xFF1B1B21;

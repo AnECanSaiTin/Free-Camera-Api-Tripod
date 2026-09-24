@@ -79,6 +79,19 @@ neoForge {
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
         }
 
+        // 快速测试：客户端起来后直接进入测试存档，跳过主菜单与选档这两步点击。
+        // 启动：./gradlew runClientTest
+        // 换存档：./gradlew runClientTest -PtestWorld=<run/saves 下的文件夹名>
+        // 与上面的 client 共用同一个 run 目录，所以用的是同一批存档与配置。
+        clientTest {
+            client()
+            // 存档文件夹名经 --quickPlaySingleplayer 传给游戏，必须与 run/saves 下的目录名完全一致；
+            // 名字不存在时游戏会退回到选档界面，不会有副作用
+            programArguments.addAll '--quickPlaySingleplayer',
+                    (project.findProperty('testWorld') ?: '新的世界-test2').toString()
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+        }
+
         server {
             server()
             programArgument '--nogui'
@@ -141,7 +154,6 @@ dependencies {
     implementation files("libs/free_camera_api-neo-26.1.2-5.2.1-beta.jar")
 //    implementation "maven.modrinth:free-camera-api:5.1.1-beta"
 
-    // 现代界面框架（Modern UI）的支持在附属 mod 里：addon-modernui
     // 主 mod 只在 api.editor 包里提供界面后端接口，不依赖任何具体界面框架。
     // Example optional mod dependency with JEI
     // The JEI API is declared for compile time use, while the full JEI artifact is used at runtime

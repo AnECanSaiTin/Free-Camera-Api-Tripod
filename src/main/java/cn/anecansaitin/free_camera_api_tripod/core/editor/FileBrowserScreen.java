@@ -860,7 +860,15 @@ public class FileBrowserScreen extends Screen {
     @Override
     public boolean mouseReleased(MouseButtonEvent event) {
         if (dialog != null) {
+            ConfirmDialog current = dialog;
             dialog.mouseReleased(event);
+
+            // 按钮动作在松开时执行，所以关闭判断也要在这里做一遍：
+            // 只在点击时关的话，确认后弹窗会留着，再点一次就把动作又执行一遍
+            if (dialog.finished() && dialog == current) {
+                dialog = null;
+            }
+
             return true;
         }
 

@@ -17,6 +17,9 @@ public interface Pathc {
     /// 沿路径的总长度（单位：格）
     double totalLength();
 
+    /// 从起点沿路径走到第 index 个节点的弧长（单位：格）；第 0 个节点恒为 0
+    double nodeDistance(int index);
+
     /// 取距起点 distance 格处的位置，写入 dest 并返回它；路径为空时抛出 {@link IllegalStateException}
     Vector3f evaluate(float distance, Vector3f dest);
 }

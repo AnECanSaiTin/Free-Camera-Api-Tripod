@@ -249,6 +249,28 @@ public class TimelinePanel extends EditorPanel {
         Draw.text(graphics, readout, x, rulerTop(content) + 3, Draw.TEXT_DIM);
     }
 
+    /// 播放时让可见范围跟着播放头走。
+    ///
+    /// 播放头到达或越过右边界就把视图整体右移，并让它落在约九成宽度的位置：
+    /// 停在正好贴边的话下一帧立刻又越界，看起来会一直在边界上抖。
+    /// 往回放（播放头跑回视图左侧）不处理，用户没要求，贸然跟随反而会打断手动平移。
+    private void followPlayhead(UiRect lane) {
+        float pixelsPerSecond = context.pixelsPerSecond();
+
+        if (!context.player().playing() || lane.width() <= 0 || pixelsPerSecond <= 0f) {
+            return;
+        }
+
+        float visibleSeconds = lane.width() / pixelsPerSecond;
+        float end = context.viewStartTime() + visibleSeconds;
+
+        if (context.player().time() < end) {
+            return;
+        }
+
+        context.viewStartTime(context.player().time() - visibleSeconds * 0.9f);
+    }
+
     private int timeToX(UiRect content, float time) {
         return Math.round(laneRect(content).x() + (time - context.viewStartTime()) * context.pixelsPerSecond());
     }
@@ -459,6 +481,7 @@ public class TimelinePanel extends EditorPanel {
         Draw.canvas(graphics, content, Draw.CANVAS_BG);
         renderPlayBar(graphics, content);
         UiRect lane = laneRect(content);
+        followPlayhead(lane);
         int rulerTop = rulerTop(content);
         validateSelection();
         List<Row> rows = rows();

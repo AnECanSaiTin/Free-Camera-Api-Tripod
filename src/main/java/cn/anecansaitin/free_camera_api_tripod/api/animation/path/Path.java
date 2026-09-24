@@ -336,6 +336,22 @@ public class Path implements Pathc {
         return totalLength;
     }
 
+    /// 从起点沿路径走到第 index 个节点的弧长。
+    ///
+    /// 累计长度表里第 i 项存的是「走到第 i+1 个节点」的总长，所以第 index 个节点取第 index-1 项
+    @Override
+    public double nodeDistance(int index) {
+        if (index <= 0) {
+            return 0;
+        }
+
+        if (index >= nodes.size()) {
+            return totalLength;
+        }
+
+        return cumulativeLengths.getDouble(index - 1);
+    }
+
     @Override
     public int size() {
         return nodes.size();

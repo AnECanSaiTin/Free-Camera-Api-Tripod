@@ -31,6 +31,8 @@ public abstract class EditorPanel {
     private final Component title;
     private UiRect rect = new UiRect(0, 0, 0, 0);
     private UiRect lastLayoutRect = new UiRect(0, 0, -1, -1);
+    /// 上次重建控件时的主题版本。面板的标签缓存会把配色固化进去，换主题必须重建一次
+    private int lastThemeRevision = -1;
     private boolean collapsed;
     /// 是否已脱离停靠布局，成为独立窗口
     private boolean floating;
@@ -149,8 +151,12 @@ public abstract class EditorPanel {
         }
 
         UiRect content = contentRect();
+        int themeRevision = Draw.themeRevision();
 
-        if (!content.equals(lastLayoutRect)) {
+        // 内容区尺寸变化，或者主题换过一套配色，就重建控件与标签。
+        // 标签在构建时把 Draw.TEXT 这类颜色取成了 int 存下来，不重建就一直是旧主题的颜色
+        if (themeRevision != lastThemeRevision || !content.equals(lastLayoutRect)) {
+            lastThemeRevision = themeRevision;
             widgets.clear();
             layoutWidgets(content);
             lastLayoutRect = content;

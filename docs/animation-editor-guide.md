@@ -5,11 +5,8 @@
 
 - 运行环境：NeoForge 26.1.2 / Minecraft 26.1.2，Java 25
 - 主 mod：id `free_camera_api_tripod`，根包 `cn.anecansaitin.free_camera_api_tripod`
-- 附属 mod：id `free_camera_api_tripod_modernui`，gradle 子项目 `addon-modernui`
-- 主 mod 的编辑器是**自绘 GUI**（不依赖原版控件），除语言键外没有资源依赖；
-  附属 mod 用 Modern UI 渲染的界面读的是同一份数据
-- 构建：主 mod `./gradlew build`，附属 mod `./gradlew :addon-modernui:build`；
-  `libs/` 里的前置 jar 不入库（见 `.gitignore`），新克隆的仓库需要自备这些 jar，
+- 编辑器是**自绘 GUI**（不依赖原版控件），除语言键外没有资源依赖
+- 构建：`./gradlew build`；`libs/` 里的前置 jar 不入库（见 `.gitignore`），新克隆的仓库需要自备这些 jar，
   或者把依赖改成配置里注释掉的 maven 坐标
 
 ---
@@ -38,14 +35,11 @@ core/                         内部实现（可以依赖 api，反之不行）
 mixin/                       注入 MC：渲染提交缓存扩展、按键与鼠标接管
 registry/                    Neoforge 注册项：网络载荷、数据附件、命令参数类型
 util/                        通用工具：样条求值/长度、命令构建
-
-addon-modernui/              附属 mod（独立 gradle 子项目）
-└── modernui/                 Modern UI 版编辑器：界面外壳 + 自绘控件 + 逐帧刷新器
 ```
 
 **依赖方向**：`editor / cmd_camera / io` → `api`；`api` 不引用 `core`。
-`addon-modernui` 只允许 import 主 mod 的 `api.*`，禁止碰 `core.*`；
-主 mod 完全不认识附属 mod，反向依赖只有一条：主 mod 的 `EditorUiHost` 会被动接受注册。
+外部界面后端只允许 import 主 mod 的 `api.*`，禁止碰 `core.*`；
+主 mod 完全不认识任何具体后端，反向依赖只有一条：主 mod 的 `EditorUiHost` 会被动接受注册。
 新增公共数据模型请放 `api`，只在编辑器内部用的（面板、控件）放 `core.editor`。
 
 ### 数据流
@@ -54,7 +48,7 @@ addon-modernui/              附属 mod（独立 gradle 子项目）
 F6 ──► CameraEditorScreen.open()
         │
         ├─ EditorConfig.MODERN_UI_COMPAT 开启，且 EditorUiHost 里有已注册的后端
-        │     └─► 后端接管界面（例如 addon-modernui），内置界面不再打开
+        │     └─► 后端接管界面，内置界面不再打开
         │
         └─ 否则
               └─► 打开内置界面 CameraEditorScreen
@@ -282,10 +276,8 @@ F6 ──► CameraEditorScreen.open()
 - 文本统一走 `EditorLang.t(key)`，语言键前缀 `free_camera_api_tripod.editor.`，文件在 `assets/free_camera_api_tripod/lang/{zh_cn,en_us}.json`
 - `EditorConfig`：客户端配置，含布局串 `layout.dock`、下排高度、折叠面板、视口提示收起、深色模式、
   `modern_ui_compat`（是否允许界面后端接管，默认开）、`dev.test_keys`
-- 附属 mod 不再维护自己的语言文件，它按同一个前缀去取主 mod 的键（`ModernUiText`），
-  所以面板标题、按钮、提示这些两边共用一份译文；只有附属 mod 独有的文案用 `modern_ui.` 前缀
 
-### 5.8 界面后端与附属 mod（`api.editor`）
+### 5.8 界面后端（`api.editor`）
 
 主 mod 不依赖任何界面框架。它只给出三个契约，让别人把界面接走：
 
@@ -310,32 +302,8 @@ F6 ──► CameraEditorScreen.open()
 `BuiltinEditorSession` 只是把同一个 `EditorContext` 适配出去给外部用。
 两边拿到的是同一个会话实例，所以状态与编辑进度天然互通。
 
-**为什么共享的是数据而不是绘制**：两套界面的绘制接口不兼容（原版 `GuiGraphicsExtractor`
-对 ModernUI `Canvas`，而且 ModernUI 的 Canvas 没有 `drawText`），能共用的只有时间↔像素
-换算这类薄薄一层，会话上已经给全了。所以抽出来的是**数据与动作**，绘制各自实现。
-
-**附属 mod `addon-modernui`**
-
-| 类 | 职责 |
-| --- | --- |
-| `ModernUiAddon` | mod 入口，构造时 `EditorUiHost.register(new ModernUiEditorBackend())` |
-| `ModernUiEditorBackend` | `priority() = 100`，无条件接管，直接开界面 |
-| `ModernUiEditorScreen` | 界面骨架：菜单条 + 三列主体 + 时间轴 + 状态栏 |
-| `ModernUiPanels` | 各面板的搭建；会变的信息行用 `liveField` 挂到刷新器上 |
-| `ModernRulerView` | 标尺：刻度线、时间标签、播放头，兼水平操作（拖动移动播放头、Ctrl+滚轮缩放、Shift+滚轮平移） |
-| `ModernKeyStripView` | 单轨关键帧条：点选、拖动改时间、右键删除 |
-| `ModernCurveView` | 曲线图：折线 + 关键帧方块，点方块选中对应关键帧 |
-| `ModernUiRefresher` | 逐帧刷新器与脏标记 `Gate` |
-| `ModernUiWidgets` / `ModernUiColors` / `ModernUiText` | 控件工厂 / 配色 / 文案取用 |
-
-**保留模式的刷新模型**：Modern UI 的控件搭好之后不会自己跟数据走，`EditorSession` 也没有
-变化回调通道，所以只能由界面主动去看。`ModernUiRefresher` 用 `View.postOnAnimation` 挂一个
-自我重投的回调，每帧把所有登记的动作跑一遍，但每个动作先过 `Gate.changed(...)`——
-值没变就直接返回，既不 `setText` 也不 `invalidate`。所以「每帧轮询」不等于「每帧重绘」。
-
-- 会变的标量（数值、状态文本、二次确认）走 `liveField` / 各自的 `Gate`
-- 会变的列表（轨道、路径节点）在集合签名（数量 + id / 名称）变化时整体重建
-- 播放中播放头每帧都在动，标尺与关键帧条确实逐帧重绘，这是播放本身的要求，避不掉
+**为什么共享的是数据而不是绘制**：各家界面框架的绘制接口互不兼容，能共用的只有时间↔像素
+换算这类薄薄一层，会话上已经给全了。所以抽出来的是**数据与动作**，绘制由各后端自己实现。
 
 ---
 
@@ -358,7 +326,7 @@ F6 ──► CameraEditorScreen.open()
    只想给内置界面看的就不用管
 
 **接入另一套界面框架（写一个界面后端）**
-1. 新建独立的 gradle 子项目（可参考 `addon-modernui`），依赖主 mod 的 jar，
+1. 新建独立的 gradle 子项目，依赖主 mod 的 jar，
    单向引用主 mod 的 `api.*`，不要碰 `core.*`
 2. 实现 `EditorUiBackend`：`openEditor(session)` 里开自己的界面并返回 true；
    不打算接管时返回 false。多个后端按 `priority()` 从大到小被询问
@@ -381,9 +349,7 @@ F6 ──► CameraEditorScreen.open()
    → `layout/DockLayout` → `widget/*` → `theme/Draw`
 6. **外部界面契约**：`api/editor/EditorSession`（外部能读什么、能做什么）→ `EditorUiBackend` / `EditorUiHost`（怎么接进来）
    → `CameraEditorScreen.open()`（分流点）→ `BuiltinEditorSession`（内置界面怎么把自己适配出去）
-7. **附属 mod**：`ModernUiAddon` → `ModernUiEditorBackend` → `ModernUiEditorScreen` → `ModernUiPanels`
-   → `ModernUiRefresher`（刷新模型，这层是保留模式的关键）→ `ModernRulerView` / `ModernKeyStripView` / `ModernCurveView`
-8. **辅助界面**：`FileBrowserScreen` / `StorageBrowserScreen`（面包屑与列表）、`WorldViewScreen`、`PathHandleDrag`、`ViewportTakeover`
+7. **辅助界面**：`FileBrowserScreen` / `StorageBrowserScreen`（面包屑与列表）、`WorldViewScreen`、`PathHandleDrag`、`ViewportTakeover`
 
 ---
 
@@ -400,7 +366,5 @@ F6 ──► CameraEditorScreen.open()
   外部界面调它们之前得先 `selectTrack(...)`；否则返回 -1 或 false，看起来像"点了没反应"
 - **二次确认必须被呈现**：`switchToPathMode` / `switchToCoordinateMode` 这类动作只是设置了一个待确认项，
   真正执行在 `confirmPending()` 里。外部界面不画 `pendingConfirm()` 就等于永远执行不了
-- **保留模式要自己驱动刷新**：Modern UI 的控件不会跟着数据动，也没有变化回调；
-  忘了挂 `ModernUiRefresher` 的话界面会一直停在打开那一刻的样子
-- **附属 mod 只能 import 主 mod 的 `api.*`**：一旦依赖 `core.*`，主 mod 内部重构就会把附属 mod 一起弄坏，
-  等于把两个 mod 绑死成一个
+- **外部界面后端只能 import 主 mod 的 `api.*`**：一旦依赖 `core.*`，主 mod 内部重构就会把后端一起弄坏，
+  等于把两边的发布绑死成一个
