@@ -19,8 +19,9 @@ import java.util.List;
 public class PathInfoPanel extends EditorPanel {
     public static final String ID = "path_info";
 
-    private static final int ROW_HEIGHT = 15;
-    private static final int FIELD_HEIGHT = 13;
+    /// 行高与行内控件高度：统一取面板基类的值，与其它面板、各栏按钮同高
+    private static final int ROW_HEIGHT = EditorPanel.ROW_HEIGHT;
+    private static final int FIELD_HEIGHT = EditorPanel.CONTROL_HEIGHT;
     private static final int LABEL_WIDTH = 56;
 
     private final EditorContext context;
@@ -88,7 +89,7 @@ public class PathInfoPanel extends EditorPanel {
 
         labels.add(new LabelDraw(EditorLang.t("path_editor.name"), x, y + 3, Draw.TEXT_DIM, -1));
         TextFieldWidget name = new TextFieldWidget(new UiRect(x + LABEL_WIDTH, y + 1, width, FIELD_HEIGHT),
-                path.name(), value -> path.name(value));
+                path.name(), path::name);
         widgets.add(name);
         refreshers.add(() -> name.value(path.name()));
         y += ROW_HEIGHT;

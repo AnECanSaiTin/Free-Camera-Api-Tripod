@@ -209,7 +209,7 @@ public class CameraAnimation implements CameraAnimationc {
             return false;
         }
 
-        int to = Math.max(0, Math.min(order.size() - 1, from + offset));
+        int to = Math.clamp(order.size() - 1, 0, from + offset);
 
         if (to == from) {
             return false;
@@ -240,7 +240,7 @@ public class CameraAnimation implements CameraAnimationc {
         }
 
         int from = order.indexOf(block.getFirst());
-        int target = Math.max(0, Math.min(order.size() - block.size(), from + offset));
+        int target = Math.clamp(order.size() - block.size(), 0, from + offset);
 
         if (target == from) {
             return false;

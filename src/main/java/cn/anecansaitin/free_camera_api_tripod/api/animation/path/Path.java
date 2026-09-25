@@ -288,7 +288,7 @@ public class Path implements Pathc {
         int i = binarySearch(length);
         i = i < 0 ? -i - 1 : i;
         // 夹到有效分段内：越界索引会让 evaluate 取到不存在的线段，弧长与参数换算随之失效
-        i = Math.max(0, Math.min(maxFloor, i));
+        i = Math.clamp(i, 0, maxFloor);
         positive = i >= lastIndex;
         return lastIndex = i;
     }

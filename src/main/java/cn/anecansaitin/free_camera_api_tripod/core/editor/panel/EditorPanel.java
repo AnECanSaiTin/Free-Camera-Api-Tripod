@@ -1,5 +1,6 @@
 package cn.anecansaitin.free_camera_api_tripod.core.editor.panel;
 
+import cn.anecansaitin.free_camera_api_tripod.core.editor.layout.DockLayout;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.layout.UiRect;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.theme.Draw;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.theme.Icons;
@@ -19,6 +20,10 @@ import org.jspecify.annotations.Nullable;
 public abstract class EditorPanel {
     /// 标题栏高度
     public static final int HEADER_HEIGHT = 16;
+    /// 内容区里单行控件的统一高度：与各栏的按钮同高，整个界面里可点控件只有一个高度
+    public static final int CONTROL_HEIGHT = DockLayout.TOOL_BUTTON_HEIGHT;
+    /// 内容区的行高：控件上下各留 1 像素
+    public static final int ROW_HEIGHT = CONTROL_HEIGHT + 2;
     /// 标题栏右侧折叠按钮的尺寸
     private static final int COLLAPSE_BUTTON_SIZE = 11;
     /// 浮动窗口右下角缩放手柄的尺寸

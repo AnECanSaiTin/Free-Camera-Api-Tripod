@@ -62,7 +62,7 @@ public final class ConfirmDialog {
         int textWidth = Draw.font().width(message.getString());
         int buttonsWidth = buttonCount() * BUTTON_WIDTH + (buttonCount() - 1) * BUTTON_GAP;
         int needed = Math.max(textWidth + PADDING * 2, buttonsWidth + PADDING * 2);
-        int width = Math.max(MIN_WIDTH, Math.min(Math.max(MIN_WIDTH, screenWidth - 20), needed));
+        int width = Math.max(MIN_WIDTH, Math.clamp(screenWidth - 20, MIN_WIDTH, needed));
         int height = PADDING * 2 + LINE_HEIGHT + 6 + BUTTON_HEIGHT;
         int x = Math.max(0, (screenWidth - width) / 2);
         int y = Math.max(0, (screenHeight - height) / 2);

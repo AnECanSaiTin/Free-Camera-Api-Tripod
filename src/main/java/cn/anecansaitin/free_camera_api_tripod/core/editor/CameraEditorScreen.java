@@ -58,8 +58,8 @@ import java.util.Set;
 public class CameraEditorScreen extends Screen {
     /// 面板标题栏需要拖出这么多像素才算一次真正的拖拽，避免点一下标题栏就打乱布局
     private static final int DRAG_THRESHOLD = 3;
-    /// 顶部工具栏按钮高度与最小宽度
-    private static final int TOP_BUTTON_HEIGHT = 14;
+    /// 顶部工具栏按钮高度（取全局统一值）与最小宽度
+    private static final int TOP_BUTTON_HEIGHT = DockLayout.TOOL_BUTTON_HEIGHT;
     private static final int TOP_BUTTON_MIN_WIDTH = 30;
     /// 拖拽落点提示条
     private static final int DROP_INDICATOR = 0xFF4EA1FF;
@@ -402,6 +402,8 @@ public class CameraEditorScreen extends Screen {
                                 .item("", EditorLang.t("menu.file.local"), this::saveAnimationAs)
                                 .item("", EditorLang.t("menu.file.storage"), this::saveAnimationToStorage))
                 .separator()
+                .item("", EditorLang.t("menu.file.storage_manage"), this::openStorageManager)
+                .separator()
                 .item("", EditorLang.t("menu.file.reset_layout"), layout::resetLayout)
                 .separator()
                 .item("", EditorLang.t("menu.file.exit"), this::onClose);
@@ -477,6 +479,16 @@ public class CameraEditorScreen extends Screen {
         StorageBrowserScreen.open(false, false, null, name -> loadAnimation(name, true));
     }
 
+    /// 存档数据管理：查看并删除存档里保存的动画与路径
+    private void openStorageManager() {
+        if (AnimationSavedData.get() == null) {
+            context.notify(EditorLang.t("notify.no_storage"));
+            return;
+        }
+
+        StorageManagerScreen.open();
+    }
+
     private void loadAnimation(String name, boolean fromStorage) {
         applyAnimation(fromStorage ? AnimationSavedData.loadAnimation(name) : AnimationFiles.loadAnimation(name), name);
     }
@@ -500,6 +512,8 @@ public class CameraEditorScreen extends Screen {
         context.editor().pathReplaced();
         context.player().stop();
         context.notify(EditorLang.t("notify.animation_loaded", name));
+        // 路径模式的动画不带路径本身（路径是独立保存的），读完先问这条路径从哪来
+        context.choosePathAfterLoad();
         return true;
     }
 
@@ -637,8 +651,8 @@ public class CameraEditorScreen extends Screen {
                         () -> context.snapEnabled(!context.snapEnabled()))
                 .separator()
                 .item(Icons.FIT, EditorLang.t("timeline.fit"), timelinePanel::fitView)
-                .item(Icons.ZOOM_IN, EditorLang.t("timeline.zoom_in"), () -> timelinePanel.zoomIn())
-                .item(Icons.ZOOM_OUT, EditorLang.t("timeline.zoom_out"), () -> timelinePanel.zoomOut());
+                .item(Icons.ZOOM_IN, EditorLang.t("timeline.zoom_in"), timelinePanel::zoomIn)
+                .item(Icons.ZOOM_OUT, EditorLang.t("timeline.zoom_out"), timelinePanel::zoomOut);
     }
 
     private ContextMenu buildHelpMenu() {
@@ -726,10 +740,14 @@ public class CameraEditorScreen extends Screen {
             }
         }
 
-        // 视窗接管中：任意点击先释放接管
+        // 视窗接管中：右键先释放接管再继续往下派发，让视口的右键菜单照常打开（接管时鼠标被锁，
+        // 不这样放行就再也点不到菜单）；左键只负责释放接管，不落到别的面板上
         if (viewportPanel.takingOver()) {
             viewportPanel.releaseViewport();
-            return true;
+
+            if (event.button() != GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
+                return true;
+            }
         }
 
         if (layout.fileBarRect().contains(event.x(), event.y())) {
@@ -984,10 +1002,19 @@ public class CameraEditorScreen extends Screen {
             }
         }
 
-        // 视窗接管中：Esc 只释放接管，不关闭编辑器
-        if (viewportPanel.takingOver() && key == GLFW.GLFW_KEY_ESCAPE) {
-            viewportPanel.releaseViewport();
-            return true;
+        // 视窗接管中：Esc 只释放接管，不关闭编辑器；其余属于飞行的按键（W/A/S/D、Shift、Ctrl、空格）
+        // 一律先由视口消费掉。接管时鼠标被锁定、点不到播放条，若让空格落到下面的播放快捷键分支，
+        // 「上升」就会变成「释放接管并开始播放」，所以这里必须排在面板与快捷键之前。
+        if (viewportPanel.takingOver()) {
+            if (key == GLFW.GLFW_KEY_ESCAPE) {
+                viewportPanel.releaseViewport();
+                return true;
+            }
+
+            if (isMovementKey(key)) {
+                pressedKeys.add(key);
+                return true;
+            }
         }
 
         // 开发用测试按键：默认关闭，只有配置里打开 dev.test_keys 后才识别
@@ -1002,9 +1029,8 @@ public class CameraEditorScreen extends Screen {
         }
 
         // 正在编辑文本时空格属于输入字符，不能同时触发播放/暂停快捷键。
-        // 接管视窗时鼠标被锁住点不到播放条，这里先放开接管再播放。
+        // 接管视窗时空格已在上面被视口当作「上升」消费掉，走不到这里。
         if (key == GLFW.GLFW_KEY_SPACE && !hasFocusedWidget()) {
-            viewportPanel.releaseViewport();
             timelinePanel.togglePlay();
             return true;
         }
@@ -1073,9 +1099,14 @@ public class CameraEditorScreen extends Screen {
         return false;
     }
 
-    private boolean isMovementKey(int key) {
+    /// 视口飞行的按键集合：视窗接管时按这些键由视口驱动相机。
+    ///
+    /// 顺序上必须让视口先消费（见 {@link #keyPressed}）；Shift / Ctrl 也一并算进来，
+    /// 否则 Ctrl 加速（{@code ViewportTakeover} 读的是这一份按键集合）永远拿不到按键。
+    private static boolean isMovementKey(int key) {
         return key == GLFW.GLFW_KEY_W || key == GLFW.GLFW_KEY_A || key == GLFW.GLFW_KEY_S || key == GLFW.GLFW_KEY_D
-                || key == GLFW.GLFW_KEY_SPACE || key == GLFW.GLFW_KEY_LEFT_SHIFT;
+                || key == GLFW.GLFW_KEY_SPACE || key == GLFW.GLFW_KEY_LEFT_SHIFT || key == GLFW.GLFW_KEY_RIGHT_SHIFT
+                || key == GLFW.GLFW_KEY_LEFT_CONTROL || key == GLFW.GLFW_KEY_RIGHT_CONTROL;
     }
 
     // endregion

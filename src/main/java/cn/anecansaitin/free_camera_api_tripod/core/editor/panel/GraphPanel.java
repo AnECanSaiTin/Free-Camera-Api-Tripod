@@ -119,7 +119,8 @@ public class GraphPanel extends EditorPanel {
 
     @Override
     protected void layoutWidgets(UiRect content) {
-        ButtonWidget fit = new ButtonWidget(new UiRect(content.right() - 16, content.y() + 2, 14, 12),
+        ButtonWidget fit = new ButtonWidget(new UiRect(content.right() - CONTROL_HEIGHT - 2, content.y() + 2,
+                CONTROL_HEIGHT, CONTROL_HEIGHT),
                 Component.literal(Icons.FIT), this::fitView);
         fit.tooltip(EditorLang.t("graph.fit"));
         widgets.add(fit);

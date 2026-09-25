@@ -4,6 +4,7 @@ import cn.anecansaitin.free_camera_api_tripod.api.animation.CameraAnimation;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.AnimationTrack;
 import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.edit.CameraEditorModel;
 import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.edit.Selected;
+import cn.anecansaitin.free_camera_api_tripod.core.editor.layout.DockLayout;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.layout.UiRect;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.theme.Draw;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.theme.Icons;
@@ -34,7 +35,8 @@ import java.util.Set;
 /// 边界情况只在本界面内处理，不必在复杂的主界面里到处分支。
 public class WorldViewScreen extends Screen {
     private static final int BUTTON_WIDTH = 20;
-    private static final int BUTTON_HEIGHT = 16;
+    /// 底栏按钮高度：取全局统一值，与其它界面的按钮同高
+    private static final int BUTTON_HEIGHT = DockLayout.TOOL_BUTTON_HEIGHT;
     private static final int BACK_BUTTON_WIDTH = 88;
     /// 按钮之间的水平与换行间隔
     private static final int BUTTON_GAP = 3;
@@ -166,18 +168,14 @@ public class WorldViewScreen extends Screen {
 
     // region 控件
 
-    /// 构建底部操作栏：播放控制对两种来源界面通用，路径点 / 关键帧操作按来源界面分组加入
+    /// 构建底部操作栏：播放控制只在关键帧编辑里出现，路径点 / 关键帧操作按来源界面分组加入。
+    ///
+    /// 路径编辑器进来时不放播放控制：那条流程只关心路径本身，动画什么时候走到哪一段在时间轴上排，
+    /// 底栏留出位置给路径点操作。
     private void buildPlayBar() {
         refreshers.clear();
         playBar.clear();
         List<ButtonWidget> buttons = new ArrayList<>();
-
-        ButtonWidget playPause = barButton(Component.literal(context.player().playing() ? Icons.PAUSE : Icons.PLAY),
-                EditorLang.t("toolbar.play_pause"), BUTTON_WIDTH, this::togglePlay);
-        refreshers.add(() -> playPause.label(Component.literal(context.player().playing() ? Icons.PAUSE : Icons.PLAY)));
-        buttons.add(playPause);
-        buttons.add(barButton(Component.literal(Icons.STOP), EditorLang.t("toolbar.stop"), BUTTON_WIDTH,
-                () -> context.player().stop()));
 
         if (pathMode) {
             buttons.add(barButton(Component.literal(Icons.ADD), EditorLang.t("world_view.add_node"), BUTTON_WIDTH,
@@ -189,6 +187,13 @@ public class WorldViewScreen extends Screen {
             buttons.add(barButton(EditorLang.t("world_view.next_node"), EditorLang.t("world_view.next_node"),
                     BUTTON_WIDTH, () -> stepPathNode(1)));
         } else {
+            ButtonWidget playPause = barButton(Component.literal(context.player().playing() ? Icons.PAUSE : Icons.PLAY),
+                    EditorLang.t("toolbar.play_pause"), BUTTON_WIDTH, this::togglePlay);
+            refreshers.add(() -> playPause.label(Component.literal(context.player().playing() ? Icons.PAUSE : Icons.PLAY)));
+            buttons.add(playPause);
+            buttons.add(barButton(Component.literal(Icons.STOP), EditorLang.t("toolbar.stop"), BUTTON_WIDTH,
+                    () -> context.player().stop()));
+
             buttons.add(barButton(EditorLang.t("world_view.prev_key"), EditorLang.t("world_view.prev_key"),
                     BUTTON_WIDTH, () -> stepKey(-1)));
             buttons.add(barButton(EditorLang.t("world_view.next_key"), EditorLang.t("world_view.next_key"),
@@ -451,7 +456,7 @@ public class WorldViewScreen extends Screen {
 
     private static boolean isMovementKey(int key) {
         return key == GLFW.GLFW_KEY_W || key == GLFW.GLFW_KEY_A || key == GLFW.GLFW_KEY_S || key == GLFW.GLFW_KEY_D
-                || key == GLFW.GLFW_KEY_SPACE || key == GLFW.GLFW_KEY_LEFT_SHIFT
+                || key == GLFW.GLFW_KEY_SPACE || key == GLFW.GLFW_KEY_LEFT_SHIFT || key == GLFW.GLFW_KEY_RIGHT_SHIFT
                 || key == GLFW.GLFW_KEY_LEFT_CONTROL || key == GLFW.GLFW_KEY_RIGHT_CONTROL;
     }
 

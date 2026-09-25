@@ -25,6 +25,11 @@ import java.util.Set;
 public final class DockLayout {
     /// 顶部文件菜单栏高度
     public static final int FILE_BAR_HEIGHT = 18;
+    /// 界面里所有工具栏 / 底栏按钮的统一高度。
+    ///
+    /// 各屏幕的顶栏、播放栏、底栏按钮都取这一个值，再按各自栏高居中，
+    /// 这样界面之间、栏与栏之间不会出现「同样是一排按钮，高度却差一像素」的情况。
+    public static final int TOOL_BUTTON_HEIGHT = 14;
     /// 分隔条厚度
     public static final int SPLITTER_SIZE = 4;
     /// 浮动面板最小宽度
@@ -745,12 +750,12 @@ public final class DockLayout {
 
         // 贴近左右两侧：拆出一个新的并列单元
         if (mouseX < rect.x() + edge) {
-            return new DropTarget(row, cell.panels.get(0), Side.LEFT,
+            return new DropTarget(row, cell.panels.getFirst(), Side.LEFT,
                     new UiRect(Math.max(0, rect.x() - SPLITTER_SIZE), rowRect.y(), SPLITTER_SIZE, rowRect.height()));
         }
 
         if (mouseX >= rect.right() - edge) {
-            return new DropTarget(row, cell.panels.get(0), Side.RIGHT,
+            return new DropTarget(row, cell.panels.getFirst(), Side.RIGHT,
                     new UiRect(rect.right(), rowRect.y(), SPLITTER_SIZE, rowRect.height()));
         }
 
@@ -782,7 +787,7 @@ public final class DockLayout {
             }
         }
 
-        return cell.panels.get(cell.panels.size() - 1);
+        return cell.panels.getLast();
     }
 
     /// 提交一次拖拽：把面板停靠到落点，落点为 null 时改为浮动面板
@@ -997,8 +1002,8 @@ public final class DockLayout {
             return;
         }
 
-        int width = Math.max(MIN_FLOATING_WIDTH, Math.min(DEFAULT_FLOATING_WIDTH, screenWidth / 3));
-        int height = Math.max(MIN_FLOATING_HEIGHT, Math.min(DEFAULT_FLOATING_HEIGHT, screenHeight / 3));
+        int width = Math.clamp(screenWidth / 3, MIN_FLOATING_WIDTH, DEFAULT_FLOATING_WIDTH);
+        int height = Math.clamp(screenHeight / 3, MIN_FLOATING_HEIGHT, DEFAULT_FLOATING_HEIGHT);
         int x = Math.max(0, (screenWidth - width) / 2);
         int y = Math.max(FILE_BAR_HEIGHT, (screenHeight - height) / 2);
         // 位置逐次错开一点，连续打开多个窗口时不会完全重叠

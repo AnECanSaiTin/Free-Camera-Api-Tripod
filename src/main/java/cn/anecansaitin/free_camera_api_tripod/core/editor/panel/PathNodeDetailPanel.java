@@ -26,8 +26,9 @@ import java.util.Locale;
 public class PathNodeDetailPanel extends EditorPanel {
     public static final String ID = "path_detail";
 
-    private static final int ROW_HEIGHT = 15;
-    private static final int FIELD_HEIGHT = 13;
+    /// 行高与行内控件高度：统一取面板基类的值，与其它面板、各栏按钮同高
+    private static final int ROW_HEIGHT = EditorPanel.ROW_HEIGHT;
+    private static final int FIELD_HEIGHT = EditorPanel.CONTROL_HEIGHT;
     private static final int LABEL_WIDTH = 56;
     private static final int SCROLLBAR_WIDTH = 3;
     private static final int SCROLLBAR_MARGIN = 4;
@@ -145,17 +146,19 @@ public class PathNodeDetailPanel extends EditorPanel {
         return y + ROW_HEIGHT;
     }
 
+    /// 三分量数值行：X / Y / Z 各一个输入框，刷新器每帧从节点同步当前值。
+    /// 格间留 2 像素，最后一格吃掉取整余量，右边界与其它行严格对齐
     private int vectorRow(int x, int y, int width, Component label, Vector3fc value, AxisSetter setter, VectorGetter getter) {
         labels.add(new LabelDraw(label, x, y + 3, Draw.TEXT_DIM, -1));
-        int total = width - 4;
-        int cell = Math.max(20, total / 3);
+        int cell = Math.max(20, (width - 4) / 3);
         String[] axes = {"X", "Y", "Z"};
 
         for (int axis = 0; axis < 3; axis++) {
             int cellX = x + LABEL_WIDTH + axis * (cell + 2);
+            int cellWidth = axis == 2 ? Math.max(1, contentRight - cellX) : cell;
             float initial = axis == 0 ? value.x() : axis == 1 ? value.y() : value.z();
             int capturedAxis = axis;
-            NumberFieldWidget field = new NumberFieldWidget(new UiRect(cellX, y + 1, cell, FIELD_HEIGHT), initial, v -> setter.set(capturedAxis, v));
+            NumberFieldWidget field = new NumberFieldWidget(new UiRect(cellX, y + 1, cellWidth, FIELD_HEIGHT), initial, v -> setter.set(capturedAxis, v));
             field.decimals(2);
             widgets.add(field);
             refreshers.add(() -> {
@@ -168,6 +171,7 @@ public class PathNodeDetailPanel extends EditorPanel {
         return y + ROW_HEIGHT;
     }
 
+    /// 路径模式：线性 / 贝塞尔 / 卡蒙罗姆三选一。最后一格吃掉余量，右边界与其它行对齐
     private int modeRow(int x, int y, int width, int index, Path path) {
         labels.add(new LabelDraw(EditorLang.t("inspector.path.mode"), x, y + 3, Draw.TEXT_DIM, -1));
         PathMode[] values = PathMode.values();
@@ -175,7 +179,9 @@ public class PathNodeDetailPanel extends EditorPanel {
 
         for (int i = 0; i < values.length; i++) {
             PathMode value = values[i];
-            ButtonWidget button = new ButtonWidget(new UiRect(x + LABEL_WIDTH + i * (cell + 2), y + 1, cell, FIELD_HEIGHT),
+            int cellX = x + LABEL_WIDTH + i * (cell + 2);
+            int cellWidth = i == values.length - 1 ? Math.max(1, contentRight - cellX) : cell;
+            ButtonWidget button = new ButtonWidget(new UiRect(cellX, y + 1, cellWidth, FIELD_HEIGHT),
                     modeLabel(value), () -> context.editor().updatePathNode(index, node -> node.pathMode(value)));
             widgets.add(button);
             refreshers.add(() -> button.toggled(path.node(index).pathMode() == value));

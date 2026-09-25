@@ -66,7 +66,7 @@ public final class AnimationCodec {
 
     private static final String DEFAULT_ANIMATION_NAME = "Camera";
     private static final String DEFAULT_PATH_NAME = "Path";
-    /// 与 MultiKeyframe 的默认权重保持一致
+    /// 与 Keyframe 的默认权重保持一致
     private static final float DEFAULT_WEIGHT = 1f / 3f;
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -296,13 +296,17 @@ public final class AnimationCodec {
 
     private static PathNode readNode(JsonObject object) {
         PathNode node = new PathNode(readVector(object.get(FIELD_POSITION)));
-        // 新建节点为不自动平滑，先写切线再恢复平滑开关，避免平滑逻辑覆盖对侧切线
+        node.pathMode(enumValue(PathMode.class, object.get(FIELD_PATH_MODE), PathMode.LINEAR));
+        // 缺字段时沿用节点自身的默认值（自动平滑默认开启），所以要在关掉它之前先读出来
+        boolean smooth = booleanValue(object, FIELD_SMOOTH, node.smooth());
+        // 写切线前先把自动平滑关掉：开启状态下写一侧会带着另一侧一起动，
+        // 那样文件里存的对侧切线会被覆盖；开关在最后用 restoreSmooth 原样恢复，不再动切线
+        node.restoreSmooth(false);
         Vector3f inTangent = readVector(object.get(FIELD_IN_TANGENT));
         node.inTangent(inTangent.x, inTangent.y, inTangent.z);
         Vector3f outTangent = readVector(object.get(FIELD_OUT_TANGENT));
         node.outTangent(outTangent.x, outTangent.y, outTangent.z);
-        node.pathMode(enumValue(PathMode.class, object.get(FIELD_PATH_MODE), PathMode.LINEAR));
-        node.smooth(booleanValue(object, FIELD_SMOOTH, node.smooth()));
+        node.restoreSmooth(smooth);
         return node;
     }
 

@@ -17,12 +17,19 @@ public final class EditorConfig {
             "v=2;top=0.3000:viewport:1.0000|0.4000:animation:1.0000+path_node:0.3400+graph:0.6600"
                     + "|0.3000:keyframe:1.0000;bottom=1.0000:timeline:1.0000;float=";
     public static final double DEFAULT_BOTTOM_HEIGHT = 0.28;
+    /// 路径编辑器的默认布局，与 {@code PathEditorScreen} 的初始面板与比例保持一致
+    /// （视口 / 节点列表 / 节点详情 / 路径信息 四列，没有下排）。格式同上。
+    public static final String DEFAULT_PATH_LAYOUT =
+            "v=2;top=0.3000:viewport:1.0000|0.2200:path_nodes:1.0000|0.2800:path_detail:1.0000"
+                    + "|0.2000:path_info:1.0000;bottom=;float=";
 
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
     public static final ModConfigSpec.ConfigValue<String> LAYOUT;
     public static final ModConfigSpec.DoubleValue LAYOUT_BOTTOM_HEIGHT;
     public static final ModConfigSpec.ConfigValue<String> LAYOUT_COLLAPSED;
     public static final ModConfigSpec.BooleanValue VIEWPORT_HINTS_COLLAPSED;
+    public static final ModConfigSpec.ConfigValue<String> PATH_LAYOUT;
+    public static final ModConfigSpec.ConfigValue<String> PATH_LAYOUT_COLLAPSED;
     public static final ModConfigSpec.BooleanValue DEV_TEST_KEYS;
     /// 编辑器是否使用深色主题；在「视图 → 深色模式」里切换
     public static final ModConfigSpec.BooleanValue DARK_MODE;
@@ -49,6 +56,13 @@ public final class EditorConfig {
                 .define("collapsed", "");
         VIEWPORT_HINTS_COLLAPSED = BUILDER.comment(" Whether the viewport hides its operation hint block.")
                 .define("viewport_hints_collapsed", false);
+        PATH_LAYOUT = BUILDER.comment(" The path editor's own layout string, same format as 'dock'.",
+                        " Kept separate from the main editor so the two screens can be arranged independently.",
+                        " Example: " + DEFAULT_PATH_LAYOUT)
+                .define("path_dock", DEFAULT_PATH_LAYOUT);
+        PATH_LAYOUT_COLLAPSED = BUILDER.comment(" Ids of the path editor's collapsed panels, comma separated.",
+                        " Example: path_info,path_detail")
+                .define("path_collapsed", "");
         DARK_MODE = BUILDER.comment(" Dark theme for the editor UI. Turn it off for the light theme.",
                         " Toggled from the editor menu: View -> Dark Mode.")
                 .define("dark_mode", true);

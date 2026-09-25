@@ -1,6 +1,7 @@
 package cn.anecansaitin.free_camera_api_tripod.core.editor;
 
 import cn.anecansaitin.free_camera_api_tripod.api.animation.path.Path;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.path.PathMode;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.path.PathNodec;
 import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.edit.Selected;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.layout.UiRect;
@@ -28,6 +29,8 @@ import org.lwjgl.glfw.GLFW;
 /// 命中优先规则：光标落在路径点命中圈内、且某个控制点与路径点在屏幕上几乎重合时，
 /// 用修饰键区分——Shift 抓入切线、Ctrl 抓出切线、都不按则抓路径点本身（与当前选中类型无关）；
 /// 不重合时控制点只在比路径点更靠近光标时才优先，保证节点旁边挂着控制点时仍抓得住节点。
+///
+/// 控制点只有贝塞尔节点才有，非贝塞尔节点只做路径点的命中判定，与其渲染保持一致。
 public final class PathHandleDrag {
     /// 路径点的命中半径（像素）
     private static final float NODE_HIT_RADIUS = 7f;
@@ -92,8 +95,11 @@ public final class PathHandleDrag {
             return false;
         }
 
-        Vector2f inScreen = project(handlePosition(node, Selected.Type.IN), frame);
-        Vector2f outScreen = project(handlePosition(node, Selected.Type.OUT), frame);
+        // 控制点只有贝塞尔节点才有：其它模式下世界渲染与视口都不画控制点，
+        // 命中测试也必须一起跳过，否则会点到看不见的东西（表现为凭空拖动）
+        boolean bezier = node.pathMode() == PathMode.BEZIER;
+        Vector2f inScreen = bezier ? project(handlePosition(node, Selected.Type.IN), frame) : null;
+        Vector2f outScreen = bezier ? project(handlePosition(node, Selected.Type.OUT), frame) : null;
         Selected.Type type = pickType(nodeScreen, inScreen, outScreen, selected.type(), mouseX, mouseY);
 
         if (type == null) {
@@ -270,7 +276,7 @@ public final class PathHandleDrag {
     }
 
     private static double clamp(double value, double min, double max) {
-        return Math.max(min, Math.min(max, value));
+        return Math.clamp(max, min, value);
     }
 
     private static boolean modifierDown(int leftKey, int rightKey) {

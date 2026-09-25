@@ -41,8 +41,9 @@ public class ViewportPanel extends EditorPanel {
     private static final int HINT_LINE_HEIGHT = 10;
     /// 可收起的提示行数
     private static final int HINT_LINES = 2;
-    /// 机位标签行高度，位于内容区最上方、状态行之上
-    private static final int TAB_ROW_HEIGHT = 12;
+    /// 机位标签行高度，位于内容区最上方、状态行之上。
+    /// 标签自己就是按钮，行高按统一的控件高度上下各留 1 像素，与别处的按钮一样高
+    private static final int TAB_ROW_HEIGHT = ROW_HEIGHT;
     /// 单个机位标签的宽度范围；标签多了就一起压窄
     private static final int TAB_MIN_WIDTH = 26;
     private static final int TAB_MAX_WIDTH = 52;
@@ -193,7 +194,7 @@ public class ViewportPanel extends EditorPanel {
     /// 窗口尺寸异常（尚未初始化）时返回 null，此时既不贴画面也不做任何换算。
     private @Nullable UiRect frameRect() {
         UiRect content = contentRect();
-        int top = Math.min(videoTop, Math.max(content.y(), content.bottom() - 14));
+        int top = Math.clamp(content.y(), content.bottom() - 14, videoTop);
         UiRect area = new UiRect(content.x() + 1, top, Math.max(1, content.width() - 2), Math.max(1, content.bottom() - 14 - top));
 
         int windowWidth = Minecraft.getInstance().getWindow().getWidth();

@@ -12,7 +12,7 @@ import java.util.List;
 @NullMarked
 public class Curve implements Curvec {
     /// 升序
-    private final ArrayList<MultiKeyframe> keys = new ArrayList<>();
+    private final ArrayList<Keyframe> keys = new ArrayList<>();
     public WrapMode preMode = WrapMode.CLAMP;
     public WrapMode postMode = WrapMode.CLAMP;
     /// 索引缓存
@@ -28,7 +28,7 @@ public class Curve implements Curvec {
         }
 
         for (Keyframe key : keys) {
-            this.keys.add(new MultiKeyframe(key));
+            this.keys.add(new Keyframe(key));
         }
 
         this.keys.sort(Keyframe.TIME_COMPARATOR);
@@ -40,7 +40,7 @@ public class Curve implements Curvec {
         }
 
         for (Keyframe key : keys) {
-            this.keys.add(new MultiKeyframe(key));
+            this.keys.add(new Keyframe(key));
         }
 
         this.keys.sort(Keyframe.TIME_COMPARATOR);
@@ -60,13 +60,13 @@ public class Curve implements Curvec {
 
         time = mapTime(time);
         int index = findFloorIndex(time);
-        MultiKeyframe left = keys.get(index);
+        Keyframe left = keys.get(index);
 
         if (index == size - 1) {
             return left.value();
         }
 
-        MultiKeyframe right = keys.get(index + 1);
+        Keyframe right = keys.get(index + 1);
         float duration = right.time() - left.time();
 
         // 相邻关键帧时间相同（或数据异常）时，归一化时间与切线缩放都会变成 0/0，
@@ -90,11 +90,11 @@ public class Curve implements Curvec {
         };
     }
 
-    private float evaluateLinear(MultiKeyframe left, MultiKeyframe right, float time) {
+    private float evaluateLinear(Keyframe left, Keyframe right, float time) {
         return (right.value() - left.value()) * time + left.value();
     }
 
-    private float evaluateHermite(MultiKeyframe left, MultiKeyframe right, float time, float duration) {
+    private float evaluateHermite(Keyframe left, Keyframe right, float time, float duration) {
         // 切线计算
         float leftTangent = left.outTangent();
         float rightTangent = right.inTangent();
@@ -113,7 +113,7 @@ public class Curve implements Curvec {
     }
 
     public int key(float time, float value) {
-        return key(new MultiKeyframe(time, value));
+        return key(new Keyframe(time, value));
     }
 
     /// 添加关键帧，并返回索引
@@ -129,13 +129,13 @@ public class Curve implements Curvec {
 
         if (index >= 0) {
             // 已存在，修改关键帧
-            MultiKeyframe keyframe = keys.get(index);
+            Keyframe keyframe = keys.get(index);
             keyframe.set(key);
             return index;
         }
 
         int insertIndex = -(index + 1);
-        keys.add(insertIndex, new MultiKeyframe(key));
+        keys.add(insertIndex, new Keyframe(key));
         return insertIndex;
     }
 
@@ -157,7 +157,7 @@ public class Curve implements Curvec {
             return -1;
         }
 
-        MultiKeyframe keyframe = keys.get(index);
+        Keyframe keyframe = keys.get(index);
 
         if (keyframe.time() == newTime) {
             return -1;
@@ -199,7 +199,7 @@ public class Curve implements Curvec {
         }
 
         int count = keys.size();
-        MultiKeyframe current = keys.get(index);
+        Keyframe current = keys.get(index);
         weight = Math.clamp(weight, 0, 1);
 
         float inTangent, outTangent;
@@ -372,7 +372,7 @@ public class Curve implements Curvec {
         return lastIndex = i;
     }
 
-    private final MultiKeyframe searchingCache = new MultiKeyframe(0, 0);
+    private final Keyframe searchingCache = new Keyframe(0, 0);
 
     private int binarySearch(float time) {
         return Collections.binarySearch(keys, searchingCache.time(time), Keyframe.TIME_COMPARATOR);
@@ -400,26 +400,26 @@ public class Curve implements Curvec {
 
     public static Curve constant(float timeStart, float timeEnd, float value) {
         if (timeStart == timeEnd) {
-            return new Curve(new MultiKeyframe(timeStart, value, 0, 0));
+            return new Curve(new Keyframe(timeStart, value, 0, 0));
         }
 
-        return new Curve(new MultiKeyframe(timeStart, value), new MultiKeyframe(timeEnd, value));
+        return new Curve(new Keyframe(timeStart, value), new Keyframe(timeEnd, value));
     }
 
     public static Curve easeInOut(float timeStart, float valueStart, float timeEnd, float valueEnd) {
         if (timeStart == timeEnd) {
-            return new Curve(new MultiKeyframe(timeStart, valueStart, 0, 0));
+            return new Curve(new Keyframe(timeStart, valueStart, 0, 0));
         }
 
-        return new Curve(new MultiKeyframe(timeStart, valueStart), new MultiKeyframe(timeEnd, valueEnd));
+        return new Curve(new Keyframe(timeStart, valueStart), new Keyframe(timeEnd, valueEnd));
     }
 
     public static Curve linear(float timeStart, float valueStart, float timeEnd, float valueEnd) {
         if (timeStart == timeEnd) {
-            return new Curve(new MultiKeyframe(timeStart, valueStart, 0, 0));
+            return new Curve(new Keyframe(timeStart, valueStart, 0, 0));
         }
 
         float slope = (valueEnd - valueStart) / (timeEnd - timeStart);
-        return new Curve(new MultiKeyframe(timeStart, valueStart, 0, slope), new MultiKeyframe(timeEnd, valueEnd, slope, 0));
+        return new Curve(new Keyframe(timeStart, valueStart, 0, slope), new Keyframe(timeEnd, valueEnd, slope, 0));
     }
 }

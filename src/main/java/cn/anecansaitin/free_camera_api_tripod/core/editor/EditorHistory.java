@@ -51,7 +51,7 @@ public final class EditorHistory {
 
         // 出现新改动后，原来的重做分支不再可达，先丢掉
         while (snapshots.size() > cursor + 1) {
-            snapshots.remove(snapshots.size() - 1);
+            snapshots.removeLast();
         }
 
         snapshots.add(json);
@@ -59,7 +59,7 @@ public final class EditorHistory {
 
         // 超出上限时丢掉最旧的快照，游标一同前移
         if (snapshots.size() > MAX_SNAPSHOTS) {
-            snapshots.remove(0);
+            snapshots.removeFirst();
             cursor--;
         }
 

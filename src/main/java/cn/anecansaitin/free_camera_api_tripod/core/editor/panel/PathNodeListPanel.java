@@ -23,9 +23,11 @@ import java.util.Locale;
 public class PathNodeListPanel extends EditorPanel {
     public static final String ID = "path_nodes";
 
-    private static final int ROW_HEIGHT = 15;
-    private static final int FIELD_HEIGHT = 13;
-    private static final int ACTION_HEIGHT = 17;
+    /// 行高与行内控件高度：统一取面板基类的值，与其它面板、各栏按钮同高
+    private static final int ROW_HEIGHT = EditorPanel.ROW_HEIGHT;
+    private static final int FIELD_HEIGHT = EditorPanel.CONTROL_HEIGHT;
+    /// 单行动作占的高度：控件 + 行间空隙
+    private static final int ACTION_HEIGHT = ROW_HEIGHT + 1;
     private static final int SCROLLBAR_WIDTH = 3;
     private static final int SCROLLBAR_MARGIN = 4;
 
@@ -132,7 +134,7 @@ public class PathNodeListPanel extends EditorPanel {
     private void buildActions(UiRect content, int width) {
         int y = content.y() + 2;
         int gap = 3;
-        int removeWidth = Math.min(64, Math.max(28, width / 3));
+        int removeWidth = Math.clamp(width / 3, 28, 64);
         int addWidth = Math.max(1, width - removeWidth - gap);
 
         ButtonWidget add = new ButtonWidget(new UiRect(content.x() + 3, y, addWidth, FIELD_HEIGHT),
@@ -149,11 +151,12 @@ public class PathNodeListPanel extends EditorPanel {
         buildOrderActions(content, y + FIELD_HEIGHT + 2, width);
     }
 
-    /// 排序行：把选中节点在路径里上移 / 下移一位
+    /// 排序行：把选中节点在路径里上移 / 下移一位。后一格吃掉取整余量，与上排按钮同一右边界
     private void buildOrderActions(UiRect content, int y, int width) {
         int selected = context.editor().selectedPathNode().index();
         int size = context.editor().path().size();
         int cell = Math.max(1, (width - 2) / 2);
+        int downX = content.x() + 3 + cell + 2;
 
         ButtonWidget up = new ButtonWidget(new UiRect(content.x() + 3, y, cell, FIELD_HEIGHT),
                 EditorLang.t("inspector.path.move_up"), () -> moveSelectedNode(-1));
@@ -161,7 +164,7 @@ public class PathNodeListPanel extends EditorPanel {
         up.enabled(selected > 0 && selected < size);
         widgets.add(up);
 
-        ButtonWidget down = new ButtonWidget(new UiRect(content.x() + 3 + cell + 2, y, cell, FIELD_HEIGHT),
+        ButtonWidget down = new ButtonWidget(new UiRect(downX, y, Math.max(1, content.x() + 3 + width - downX), FIELD_HEIGHT),
                 EditorLang.t("inspector.path.move_down"), () -> moveSelectedNode(1));
         down.tooltip(EditorLang.t("inspector.path.move_down.tip"));
         down.enabled(selected >= 0 && selected < size - 1);

@@ -213,6 +213,20 @@ public final class EditorContext {
         notify(EditorLang.t("notify.path_bound", editor.path().name()));
     }
 
+    /// 读入的动画是路径模式时问一次路径从哪来。
+    ///
+    /// 动画 JSON 里只有「位置取自路径」这个标记，路径本身不存在里面，所以读完动画必须先定下一条路径。
+    /// 问法与切到路径模式完全一致（新建 / 绑定已有的），区别只是模式标记已经就位，不必再切一次。
+    public void choosePathAfterLoad() {
+        if (animation.motionMode() != CameraAnimation.MotionMode.PATH) {
+            return;
+        }
+
+        choose(EditorLang.t("inspector.path.load_prompt"), List.of(
+                new ConfirmDialog.Choice(EditorLang.t("inspector.path.create_new"), this::createNewPath),
+                new ConfirmDialog.Choice(EditorLang.t("inspector.path.bind_existing"), this::chooseBindSource)));
+    }
+
     /// 绑定已有路径：再问一次从哪里取
     private void chooseBindSource() {
         choose(EditorLang.t("inspector.path.bind_source_prompt"), List.of(

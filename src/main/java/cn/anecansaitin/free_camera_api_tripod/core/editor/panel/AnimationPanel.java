@@ -20,8 +20,9 @@ import java.util.Locale;
 public class AnimationPanel extends EditorPanel {
     public static final String ID = "animation";
 
-    private static final int ROW_HEIGHT = 15;
-    private static final int FIELD_HEIGHT = 13;
+    /// 行高与行内控件高度：统一取面板基类的值，与其它面板、各栏按钮同高
+    private static final int ROW_HEIGHT = EditorPanel.ROW_HEIGHT;
+    private static final int FIELD_HEIGHT = EditorPanel.CONTROL_HEIGHT;
     private static final int LABEL_WIDTH = 62;
     private static final int SCROLLBAR_WIDTH = 3;
     private static final int SCROLLBAR_MARGIN = 4;

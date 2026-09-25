@@ -24,8 +24,9 @@ import java.util.List;
 public class KeyframePanel extends EditorPanel {
     public static final String ID = "keyframe";
 
-    private static final int ROW_HEIGHT = 15;
-    private static final int FIELD_HEIGHT = 13;
+    /// 行高与行内控件高度：统一取面板基类的值，与其它面板、各栏按钮同高
+    private static final int ROW_HEIGHT = EditorPanel.ROW_HEIGHT;
+    private static final int FIELD_HEIGHT = EditorPanel.CONTROL_HEIGHT;
     private static final int LABEL_WIDTH = 62;
     /// 一行两个字段时间隔的像素，以及半栏里标签的宽度
     private static final int PAIR_GAP = 6;
@@ -164,7 +165,7 @@ public class KeyframePanel extends EditorPanel {
     }
 
     private void fieldCell(int x, int y, int width, FieldSpec spec) {
-        int labelWidth = Math.min(HALF_LABEL_WIDTH, Math.max(12, width / 2));
+        int labelWidth = Math.clamp(width / 2, 12, HALF_LABEL_WIDTH);
         labels.add(new LabelDraw(spec.label(), x, y + 3, Draw.TEXT_DIM, Math.max(8, labelWidth - 2)));
         NumberFieldWidget field = new NumberFieldWidget(new UiRect(x + labelWidth, y + 1,
                 Math.max(1, width - labelWidth), FIELD_HEIGHT), spec.value(), spec.setter());
@@ -178,13 +179,16 @@ public class KeyframePanel extends EditorPanel {
                              NumberFieldWidget.FloatSetter setter, FloatGetter getter) {
     }
 
+    /// 枚举二选一 / 多选一：最后一格吃掉取整余量，右边界与其它行严格对齐
     private <T extends Enum<T>> int modeRow(int x, int y, int width, Component label, T[] values, T current, java.util.function.Consumer<T> setter) {
         labels.add(new LabelDraw(label, x, y + 3, Draw.TEXT_DIM, -1));
         int cell = Math.max(1, (width - (values.length - 1) * 2) / values.length);
 
         for (int i = 0; i < values.length; i++) {
             T value = values[i];
-            ButtonWidget button = new ButtonWidget(new UiRect(x + LABEL_WIDTH + i * (cell + 2), y + 1, cell, FIELD_HEIGHT), modeLabel(value), () -> setter.accept(value));
+            int cellX = x + LABEL_WIDTH + i * (cell + 2);
+            int cellWidth = i == values.length - 1 ? Math.max(1, contentRight - cellX) : cell;
+            ButtonWidget button = new ButtonWidget(new UiRect(cellX, y + 1, cellWidth, FIELD_HEIGHT), modeLabel(value), () -> setter.accept(value));
             widgets.add(button);
             refreshers.add(() -> button.toggled(value == current));
         }

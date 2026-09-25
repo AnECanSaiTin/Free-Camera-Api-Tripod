@@ -4,7 +4,6 @@ import cn.anecansaitin.free_camera_api_tripod.FreeCameraApiTripod;
 import cn.anecansaitin.free_camera_api_tripod.api.camera.ControlScheme;
 import cn.anecansaitin.free_camera_api_tripod.api.camera.TripodData;
 import cn.anecansaitin.free_camera_api_tripod.core.Data;
-import cn.anecansaitin.freecameraapi.api.CameraStates;
 import cn.anecansaitin.freecameraapi.core.ModifierManager;
 import com.mojang.blaze3d.platform.Window;
 import net.minecraft.client.Minecraft;

@@ -6,9 +6,6 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 
-import java.util.HashMap;
-import java.util.Map;
-
 public sealed interface ControlScheme {
     Vanilla VANILLA = new Vanilla();
     CameraRelative CAMERA_RELATIVE = new CameraRelative();

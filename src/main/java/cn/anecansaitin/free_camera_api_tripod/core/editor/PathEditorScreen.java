@@ -46,11 +46,9 @@ import java.util.Set;
 public class PathEditorScreen extends Screen {
     private static final int TOP_BAR_HEIGHT = DockLayout.FILE_BAR_HEIGHT;
     private static final int DRAG_THRESHOLD = 3;
-    private static final int CLOSE_BUTTON_WIDTH = 16;
-    private static final int CLOSE_BUTTON_HEIGHT = 13;
     private static final int DROP_INDICATOR = 0xFF4EA1FF;
-    /// 工具栏按钮高度与最小宽度
-    private static final int TOOL_BUTTON_HEIGHT = 13;
+    /// 工具栏按钮高度（取全局统一值，与主编辑器同高）与最小宽度
+    private static final int TOOL_BUTTON_HEIGHT = DockLayout.TOOL_BUTTON_HEIGHT;
     private static final int TOOL_BUTTON_MIN_WIDTH = 30;
     /// 状态提示至少要有这么宽才绘制，否则整行都让给工具栏控件
     private static final int STATUS_MIN_WIDTH = 24;
@@ -96,6 +94,7 @@ public class PathEditorScreen extends Screen {
     private @Nullable EditorPanel dragResizePanel;
     private double lastMouseX;
     private double lastMouseY;
+    private boolean firstInit = true;
 
     public PathEditorScreen(EditorContext context) {
         super(EditorLang.t("path_editor.title"));
@@ -121,11 +120,45 @@ public class PathEditorScreen extends Screen {
 
     @Override
     protected void init() {
+        if (firstInit) {
+            firstInit = false;
+            restoreLayout();
+        }
+
         layout.update(width, height);
         // 本界面只做路径编辑，视口右键菜单去掉「记录旋转 / 记录 FOV」
         viewportPanel.pathEditing(true);
         buildToolBar();
     }
+
+    // region 布局持久化
+
+    /// 打开路径编辑器时恢复上次的窗口划分，与主编辑器同一套做法，但独立存一份配置
+    private void restoreLayout() {
+        layout.restore(EditorConfig.PATH_LAYOUT.get());
+        Set<String> collapsed = new HashSet<>(List.of(EditorConfig.PATH_LAYOUT_COLLAPSED.get().split(",")));
+
+        for (EditorPanel panel : panels) {
+            panel.collapsed(collapsed.contains(panel.id()));
+        }
+    }
+
+    private void persistLayout() {
+        EditorConfig.PATH_LAYOUT.set(layout.serialize());
+
+        List<String> collapsed = new ArrayList<>();
+
+        for (EditorPanel panel : panels) {
+            if (panel.collapsed()) {
+                collapsed.add(panel.id());
+            }
+        }
+
+        EditorConfig.PATH_LAYOUT_COLLAPSED.set(String.join(",", collapsed));
+        EditorConfig.save();
+    }
+
+    // endregion
 
     /// 构建顶栏工具栏：标准菜单（文件 / 编辑 / 视图）+ 路径名称输入框 + 添加路径点 + 关闭。
     ///
@@ -135,8 +168,8 @@ public class PathEditorScreen extends Screen {
         topBar.clear();
         topMenu = null;
         menuButtons.clear();
-        closeButtonRect = new UiRect(width - 6 - CLOSE_BUTTON_WIDTH, (TOP_BAR_HEIGHT - CLOSE_BUTTON_HEIGHT) / 2,
-                CLOSE_BUTTON_WIDTH, CLOSE_BUTTON_HEIGHT);
+        closeButtonRect = new UiRect(width - 6 - TOOL_BUTTON_HEIGHT, (TOP_BAR_HEIGHT - TOOL_BUTTON_HEIGHT) / 2,
+                TOOL_BUTTON_HEIGHT, TOOL_BUTTON_HEIGHT);
 
         int y = (TOP_BAR_HEIGHT - TOOL_BUTTON_HEIGHT) / 2;
         int x = 4;
@@ -202,6 +235,8 @@ public class PathEditorScreen extends Screen {
                         new ContextMenu()
                                 .item("", EditorLang.t("menu.file.local"), this::savePathAs)
                                 .item("", EditorLang.t("menu.file.storage"), this::savePathToStorageAs))
+                .separator()
+                .item("", EditorLang.t("menu.file.storage_manage"), this::openStorageManager)
                 .separator()
                 .item("", EditorLang.t("path_editor.close"), this::onClose);
     }
@@ -381,6 +416,16 @@ public class PathEditorScreen extends Screen {
         });
     }
 
+    /// 存档数据管理：查看并删除存档里保存的动画与路径
+    private void openStorageManager() {
+        if (AnimationSavedData.get() == null) {
+            context.notify(EditorLang.t("notify.no_storage"));
+            return;
+        }
+
+        StorageManagerScreen.open();
+    }
+
     /// 读取成功返回 true；失败时保留当前路径与它的本地文件对应关系
     private boolean applyPath(@Nullable String json, String name) {
         Path loaded = json == null ? null : AnimationCodec.pathFromJson(json);
@@ -405,6 +450,7 @@ public class PathEditorScreen extends Screen {
 
     @Override
     public void removed() {
+        persistLayout();
         viewportPanel.releaseViewport();
         // 录点、跳关键帧都会把播放器留在暂停态；不释放的话退出后相机仍被动画姿态驱动，
         // 表现就是视角拖不动
@@ -556,9 +602,14 @@ public class PathEditorScreen extends Screen {
             }
         }
 
+        // 视窗接管中：右键先释放接管再继续往下派发，让视口的右键菜单照常打开（接管时鼠标被锁，
+        // 不这样放行就再也点不到菜单）；左键只负责释放接管，不落到别的面板上
         if (viewportPanel.takingOver()) {
             viewportPanel.releaseViewport();
-            return true;
+
+            if (event.button() != GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
+                return true;
+            }
         }
 
         if (layout.fileBarRect().contains(event.x(), event.y())) {
@@ -771,9 +822,18 @@ public class PathEditorScreen extends Screen {
             }
         }
 
-        if (viewportPanel.takingOver() && key == GLFW.GLFW_KEY_ESCAPE) {
-            viewportPanel.releaseViewport();
-            return true;
+        // 视窗接管中：Esc 只释放接管，不关闭界面；其余属于飞行的按键（W/A/S/D、Shift、Ctrl、空格）
+        // 一律先由视口消费掉，避免被工具栏或面板抢走
+        if (viewportPanel.takingOver()) {
+            if (key == GLFW.GLFW_KEY_ESCAPE) {
+                viewportPanel.releaseViewport();
+                return true;
+            }
+
+            if (isMovementKey(key)) {
+                pressedKeys.add(key);
+                return true;
+            }
         }
 
         // 开发用测试按键：默认关闭，只有配置里打开 dev.test_keys 后才识别
@@ -821,9 +881,14 @@ public class PathEditorScreen extends Screen {
         return false;
     }
 
+    /// 视口飞行的按键集合：视窗接管时按这些键由视口驱动相机。
+    ///
+    /// Shift / Ctrl 也一并算进来：{@code ViewportTakeover} 用 Ctrl 做加速，
+    /// 只有这些键进了按下集合，接管时才拿得到。
     private static boolean isMovementKey(int key) {
         return key == GLFW.GLFW_KEY_W || key == GLFW.GLFW_KEY_A || key == GLFW.GLFW_KEY_S || key == GLFW.GLFW_KEY_D
-                || key == GLFW.GLFW_KEY_SPACE || key == GLFW.GLFW_KEY_LEFT_SHIFT;
+                || key == GLFW.GLFW_KEY_SPACE || key == GLFW.GLFW_KEY_LEFT_SHIFT || key == GLFW.GLFW_KEY_RIGHT_SHIFT
+                || key == GLFW.GLFW_KEY_LEFT_CONTROL || key == GLFW.GLFW_KEY_RIGHT_CONTROL;
     }
 
     /// 开发用测试按键：F10 在鼠标位置补一次右键。

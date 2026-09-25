@@ -86,11 +86,7 @@ public final class WidgetHost {
     }
 
     public boolean mouseDragged(MouseButtonEvent event, double deltaX, double deltaY) {
-        if (focused != null && focused.mouseDragged(event, deltaX, deltaY)) {
-            return true;
-        }
-
-        return false;
+        return focused != null && focused.mouseDragged(event, deltaX, deltaY);
     }
 
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {

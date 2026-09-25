@@ -197,7 +197,6 @@ public class CommandBuilder {
      * 构建命令树并返回根文字参数构建器。
      * 返回的构建器可通过 {@code dispatcher.register(builder.build())} 注册。
      */
-    @SuppressWarnings({"unchecked", "rawtypes"})
     public LiteralArgumentBuilder<CommandSourceStack> build() {
         if (root.children.isEmpty()) {
             throw new IllegalStateException("未注册任何命令");
@@ -207,7 +206,7 @@ public class CommandBuilder {
                     "注册了多个根命令。所有命令必须共享同一个根文字节点。");
         }
 
-        BuilderNode firstChild = root.children.get(0);
+        BuilderNode firstChild = root.children.getFirst();
         if (!firstChild.literal) {
             throw new IllegalStateException("根命令必须是文字节点。");
         }

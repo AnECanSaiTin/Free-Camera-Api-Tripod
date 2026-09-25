@@ -46,7 +46,8 @@ public class TimelinePanel extends EditorPanel {
     /// 播放状态条高度。它属于时间轴面板本身（位于标题栏正下方），面板拖到哪就跟到哪
     private static final int PLAY_BAR_HEIGHT = 22;
     private static final int PLAY_BAR_BUTTON_WIDTH = 20;
-    private static final int PLAY_BAR_BUTTON_HEIGHT = 16;
+    /// 播放栏按钮高度：取面板统一的控件高度，与其它界面按钮一致
+    private static final int PLAY_BAR_BUTTON_HEIGHT = EditorPanel.CONTROL_HEIGHT;
     private static final int KEY_RADIUS = 3;
     private static final int KEY_GRAB_RADIUS = 5;
     private static final int KEY_DELETE = 261;
@@ -592,7 +593,7 @@ public class TimelinePanel extends EditorPanel {
         Draw.text(graphics, collapsed ? Icons.EXPAND : Icons.COLLAPSE, content.x() + indent, centerY - 4,
                 selected ? Draw.TEXT : Draw.TEXT_DIM);
         Draw.textEllipsized(graphics, group.label().getString(), content.x() + indent + GROUP_ARROW_WIDTH, centerY - 4,
-                trackColumnWidth - indent - GROUP_ARROW_WIDTH - 12, selected ? Draw.TEXT : Draw.TEXT);
+                trackColumnWidth - indent - GROUP_ARROW_WIDTH - 12, Draw.TEXT);
         Draw.textRight(graphics, String.valueOf(members.size()), lane.x() - 6, centerY - 4, Draw.TEXT_DISABLED);
 
         graphics.enableScissor(lane.x(), rowsTop(content), lane.right(), content.bottom());
@@ -1016,7 +1017,7 @@ public class TimelinePanel extends EditorPanel {
 
         if (track != null && keyIndex >= 0) {
             // 点在框选范围内时，菜单里的删除等同整体删除
-            boolean batch = isMultiSelected(track, keyIndex) && multiSelection.size() > 0;
+            boolean batch = isMultiSelected(track, keyIndex) && !multiSelection.isEmpty();
 
             menu.item(Icons.REMOVE, EditorLang.t("timeline.remove_key"), () -> {
                 if (batch) {

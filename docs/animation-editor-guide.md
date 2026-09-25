@@ -18,7 +18,7 @@ api/                          对外契约：数据模型 + 扩展点（不依�
 ├── camera/                   相机数据接口：TripodData / TripodStates / ControlScheme
 ├── animation/                动画数据模型
 │   ├── Keyframe/Keyframec/TrackKey/Evaluator/EvaluateMode/WeightedMode
-│   ├── curve/                Curve / Curvec / MultiKeyframe / Clip / WrapMode
+│   ├── curve/                Curve / Curvec / Clip / WrapMode
 │   ├── path/                 Path / Pathc / PathNode / PathNodec / PathMode
 │   └── track/                AnimationTrack / TrackType / CurveTrack
 │                             TrackTypeRegistry / AnimationChannelRegistry
@@ -79,14 +79,14 @@ F6 ──► CameraEditorScreen.open()
 | --- | --- |
 | `TrackKey` | 只读最小契约：`time()`。所有轨道上的键都实现它 |
 | `Keyframec` | 只读关键帧：时间、取值、入/出切线、入/出权重、加权模式、插值模式 |
-| `Keyframe` | 可写关键帧（setter 返回自身，链式）；静态工厂 `create/linear/step/hermite` |
-| `core` 内的实现 | `curve/MultiKeyframe`——`Curve` 内部真正持有的键，可原地 `set(Keyframe)` |
+| `Keyframe` | 可写关键帧（可变类；setter 返回自身可链式）；静态工厂 `create/linear/step/hermite`；`set(Keyframec)` 覆盖式拷贝 |
+| `Keyframec` / `Keyframe` 的分工 | 与 `PathNodec` / `PathNode` 一致：读方只认只读接口，`Curve` 内部直接持有可变的 `Keyframe` |
 
 `EvaluateMode`：`LINEAR` / `STEP` / `HERMITE`；`WeightedMode`：`NONE` / `IN` / `OUT` / `BOTH`。
 
 ### 2.2 曲线 `curve/Curve`
 
-一条 float 曲线，内部是升序的 `MultiKeyframe` 列表。
+一条 float 曲线，内部是升序的 `Keyframe` 列表。
 
 - `key(time, value)` / `key(Keyframe)`：按时间二分查找插入或覆盖，返回索引
 - `moveKey` / `removeKey` / `smoothTangents`：编辑操作；`smoothTangents` 在两端用差分、中间点用 Catmull-Rom 斜率
@@ -108,7 +108,8 @@ F6 ──► CameraEditorScreen.open()
 ### 2.4 路径 `path/`
 
 - `PathNodec`：只读节点（位置、入/出切线、`PathMode`、是否自动平滑）
-- `PathNode`：可写节点；`inTangent/outTangent` 在 `smooth` 开启时互为反向，保证拖动一侧另一侧跟随
+- `PathNode`：可写节点；`inTangent/outTangent` 在 `smooth` 开启时互为反向，保证拖动一侧另一侧跟随；
+  `smooth(true)` 打开开关的瞬间会把出切线对齐到入切线（出 = -入），`restoreSmooth` 只改开关、不动切线（供反序列化）
 - `PathMode`：`LINEAR` / `BEZIER` / `CATMULL_ROM`，**由每段起点节点的模式决定该段插值方式**
 - `Path`：节点表 + **弧长表**（每段长度、累计长度）
   - `node/insertNode/removeNode/moveNode` 后按受影响范围重建弧长表（`updateArcLengthTable(begin, end)` 或整体重建）
@@ -188,6 +189,7 @@ F6 ──► CameraEditorScreen.open()
 - 两个复合标签 `animations` / `paths`，内容为 `全名 → JSON 字符串`
 - **多层级**：全名用 `/` 分隔（如 `分镜/开场`），`listFolders` / `listFiles` 按前缀列出直接子项
 - 空文件夹没有任何条目，`createFolder` 会写入 `.folder` 占位键把层级本身留在存档里（列条目时跳过它）
+- `deleteEntry` 删单个条目，`deleteFolder` 删整个层级（连同其中的条目与占位键）
 - 多人游戏或未进世界时所有静态方法安全返回空列表 / null
 
 ---
@@ -199,10 +201,13 @@ F6 ──► CameraEditorScreen.open()
 | 屏幕 | 说明 |
 | --- | --- |
 | `CameraEditorScreen` | 主编辑器：顶部菜单（文件/编辑/视图/播放/帮助）+ 可拖拽停靠的面板布局；同时是 `F6` 的入口，自己渲染还是交给界面后端由它判断（见 5.8） |
-| `PathEditorScreen` | 路径编辑器：默认「视口 / 节点列表 / 节点详情」三列 + 顶部路径工具栏 |
-| `WorldViewScreen` | 世界内查看：面板全部收起，底部一条操作栏，左键进入环视（Esc 先退出环视再返回） |
-| `FileBrowserScreen` | 资源管理器式的本地文件保存/打开：面包屑（含同级目录下拉）+ 可编辑地址栏 + 列表 |
-| `StorageBrowserScreen` | 存档内数据浏览：同样用面包屑，条目支持 `/` 多层文件夹 |
+| `PathEditorScreen` | 路径编辑器：默认「视口 / 节点列表 / 节点详情」三列 + 顶部路径工具栏；布局与主编辑器同款持久化（`EditorConfig.path_dock`） |
+| `WorldViewScreen` | 世界内查看：面板全部收起，底部一条操作栏，左键进入环视（Esc 先退出环视再返回）；从路径编辑器进来时不放播放控制 |
+| `BrowserScreen` | **浏览界面基类**：标题行 + 面包屑行 + 可选第二行 + 列表 + 底栏 + 提示行，以及选中/滚动/输入分派、新建文件夹；子类只实现数据与语义 |
+| `FileBrowserScreen` | 资源管理器式的本地文件保存/打开：顶栏只有面包屑（点段跳转、段尾箭头选同级目录），列本地目录与符合后缀的文件 |
+| `StorageDataScreen` | **存档数据中间基类**：层级、面包屑、条目避重名与建文件夹——浏览与管理两个界面共用 |
+| `StorageBrowserScreen` | 存档内数据浏览（打开 / 保存）：条目支持 `/` 多层文件夹 |
+| `StorageManagerScreen` | 存档数据管理：第二行切换动画 / 路径，建文件夹与「删除」移除选中条目（文件夹连同内容一起删） |
 | `CameraScreens` | 判定"当前是否在相机编辑界面"，供渲染与输入分流使用（按屏幕实例判断，不受 init 顺序影响） |
 
 ### 5.2 `EditorContext`——一切共享状态
@@ -247,6 +252,11 @@ F6 ──► CameraEditorScreen.open()
 - `DockLayout`：上/下两排 + 排内单元（横向权重）+ 单元内纵向叠放（纵向权重）；
   面板标题栏可拖到任意单元的四侧重新停靠，也可转为悬浮窗口（带最小尺寸与级联偏移）；
   布局序列化为一段字符串存进 `EditorConfig`，串里带 `v=` 版本号，版本不符整串作废并回落默认布局
+- **尺寸只有一处来源**：所有栏内按钮（顶栏 / 播放栏 / 底栏）取 `DockLayout.TOOL_BUTTON_HEIGHT`，
+  面板内容区的行控件取 `EditorPanel.CONTROL_HEIGHT`（与前者同值）与 `EditorPanel.ROW_HEIGHT`（控件 + 2），
+  各自按所在栏 / 行高居中。加新按钮时引用这两个常量，不要再写字面量，否则又会出现「同样是按钮，高度差一像素」
+- 面板内容区的行一律对齐到内容区右边界（有滚动条的面板先扣掉滚动条宽度），
+  多格平分时不整除的余数给最后一格，避免右侧留出几像素的空档
 
 ### 5.5 控件 `widget/`
 
@@ -275,6 +285,7 @@ F6 ──► CameraEditorScreen.open()
 
 - 文本统一走 `EditorLang.t(key)`，语言键前缀 `free_camera_api_tripod.editor.`，文件在 `assets/free_camera_api_tripod/lang/{zh_cn,en_us}.json`
 - `EditorConfig`：客户端配置，含布局串 `layout.dock`、下排高度、折叠面板、视口提示收起、深色模式、
+  `layout.path_dock` / `layout.path_collapsed`（路径编辑器自己的一套布局）、
   `modern_ui_compat`（是否允许界面后端接管，默认开）、`dev.test_keys`
 
 ### 5.8 界面后端（`api.editor`）
@@ -340,7 +351,7 @@ F6 ──► CameraEditorScreen.open()
 
 ## 7. 推荐阅读顺序
 
-1. **数据模型**：`api/animation/curve/Keyframe → MultiKeyframe → Curve`，再 `path/PathNode → Path`
+1. **数据模型**：`api/animation/Keyframe → curve/Curve`，再 `path/PathNode → Path`
    ——先把"键怎么插值、路径怎么按弧长取点"读明白，后面都建立在它上面
 2. **轨道与顶层**：`track/AnimationTrack → CurveTrack → TrackTypeRegistry`，再 `CameraAnimation`（关注两种模式与通道集合）
 3. **持久化**：`AnimationCodec`（JSON 结构）→ `AnimationFiles`（本地）→ `AnimationSavedData`（存档 + 层级）
@@ -358,7 +369,7 @@ F6 ──► CameraEditorScreen.open()
 - **控件生命周期**：面板 `rebuild` 前必须 `widgets.clear()`，否则控件叠加、点哪个都像没反应
 - **动画实例是共享的**：读档只能 `CameraAnimation.copyFrom(...)` 原地更新，不能替换对象（播放器与面板都持有引用）
 - **主题是可变静态字段**：不要缓存 `Draw.XXX` 到 `static final`，切主题后不会更新
-- **键是可变共享对象**：`Curve.key(int)` 返回的是内部 `MultiKeyframe`，直接改它等于改数据（这也是编辑生效的方式）
+- **键是可变共享对象**：`Curve.key(int)` 返回的是内部 `Keyframe`，直接改它等于改数据（这也是编辑生效的方式）
 - **路径索引缓存**：改节点后必须让 `Path` 重建弧长表（用它的增删方法即可，不要绕过它们直接改内部表）
 - **只读场景用只读视图**：渲染、信息展示优先用 `Pathc` / `Curvec` / `CameraAnimationc`，避免误改数据
 - **右键菜单的绘制顺序**：由屏幕在最后统一绘制，面板只持有；否则菜单会被其它面板盖住

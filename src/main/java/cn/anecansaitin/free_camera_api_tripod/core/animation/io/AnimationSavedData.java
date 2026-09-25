@@ -12,6 +12,7 @@ import net.minecraft.world.level.saveddata.SavedDataType;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
@@ -149,6 +150,60 @@ public final class AnimationSavedData extends SavedData {
     public static @Nullable String loadPath(String name) {
         AnimationSavedData data = get();
         return data == null || name == null ? null : data.paths.getString(name).orElse(null);
+    }
+
+    /// 删除一个条目；没找到时返回 false（界面据此提示「什么都没删」）
+    public static boolean deleteEntry(boolean path, String fullName) {
+        AnimationSavedData data = get();
+
+        if (data == null || fullName == null || fullName.isEmpty()) {
+            return false;
+        }
+
+        CompoundTag tag = path ? data.paths : data.animations;
+        List<String> targets = new ArrayList<>();
+
+        for (String key : tag.keySet()) {
+            if (key.equals(fullName)) {
+                targets.add(key);
+            }
+        }
+
+        // 文件夹的占位键（"名字/.folder"）不算条目，这里只删同名的数据条目
+        if (targets.isEmpty()) {
+            return false;
+        }
+
+        targets.forEach(tag::remove);
+        data.setDirty();
+        return true;
+    }
+
+    /// 删除一个文件夹及其中的全部条目（含空文件夹的占位键）。
+    /// 层级本身没有实体，删掉前缀下的所有键就等于删掉了这个文件夹。
+    public static void deleteFolder(boolean path, String fullName) {
+        AnimationSavedData data = get();
+
+        if (data == null || fullName == null || fullName.isEmpty()) {
+            return;
+        }
+
+        CompoundTag tag = path ? data.paths : data.animations;
+        String prefix = fullName + SEPARATOR;
+        List<String> targets = new ArrayList<>();
+
+        for (String key : tag.keySet()) {
+            if (key.startsWith(prefix)) {
+                targets.add(key);
+            }
+        }
+
+        if (targets.isEmpty()) {
+            return;
+        }
+
+        targets.forEach(tag::remove);
+        data.setDirty();
     }
 
     /// 序列化为两个复合标签，编码时会由标签编解码器复制副本

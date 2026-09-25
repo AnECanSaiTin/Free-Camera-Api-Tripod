@@ -282,7 +282,7 @@ public final class Draw {
         int textWidth = font().width(text);
         int boxWidth = textWidth + 6;
         int boxHeight = 14;
-        int x = Math.min(mouseX + 10, Math.max(0, screenWidth - boxWidth - 2));
+        int x = Math.clamp(screenWidth - boxWidth - 2, 0, mouseX + 10);
         int y = mouseY + 14;
 
         if (y + boxHeight > screenHeight) {
@@ -348,7 +348,7 @@ public final class Draw {
         }
 
         // 步数必须有上限：长度异常大时（数据出了问题）按长度取整会让这一帧陷入长时间循环
-        int steps = Math.max(1, Math.min((int) Math.ceil(length), MAX_LINE_STEPS));
+        int steps = Math.clamp((int) Math.ceil(length), 1, MAX_LINE_STEPS);
         float halfThickness = Math.max(0.35f, thickness * 0.5f);
 
         for (int i = 1; i <= steps; i++) {
