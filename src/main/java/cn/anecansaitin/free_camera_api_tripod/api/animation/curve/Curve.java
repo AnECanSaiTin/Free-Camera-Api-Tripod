@@ -3,7 +3,6 @@ package cn.anecansaitin.free_camera_api_tripod.api.animation.curve;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.Keyframe;
 import net.minecraft.util.Mth;
 import org.jspecify.annotations.NullMarked;
-import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -140,9 +139,9 @@ public class Curve implements Curvec {
     }
 
     @Override
-    public @Nullable Keyframe key(int index) {
-        if (index < 0 || index >= size()) {
-            return null;
+    public Keyframe key(int index) {
+        if (validKey(index)) {
+            throw new IndexOutOfBoundsException("Invalid keyframe index: " + index);
         }
 
         return keys.get(index);
@@ -153,7 +152,7 @@ public class Curve implements Curvec {
     /// 如果newTime小于0，则不移动并返回-1
     /// 如果目标时间已有关键帧（且都不是被移动的这一个），则不移动并返回-1
     public int moveKey(int index, float newTime) {
-        if (index < 0 || index >= size() || newTime < 0) {
+        if (validKey(index) || newTime < 0) {
             return -1;
         }
 
@@ -167,19 +166,10 @@ public class Curve implements Curvec {
         return key(keyframe.time(newTime));
     }
 
-    public int moveKey(float oldTime, float newTime) {
-        if (oldTime == newTime) {
-            return -1;
-        }
-
-        int index = binarySearch(oldTime);
-        return moveKey(index, newTime);
-    }
-
     /// 删除关键帧
     /// 如果index不在范围内，则不删除
     public boolean removeKey(int index) {
-        if (index < 0 || index >= size()) {
+        if (validKey(index)) {
             return false;
         }
 
@@ -381,6 +371,10 @@ public class Curve implements Curvec {
     private float computeWeightScale(float weight) {
         // 来自Unity的经验算法，减少计算量
         return weight / (weight + 3.0f);
+    }
+
+    private boolean validKey(int index) {
+        return index < 0 || index >= size();
     }
 
     private float hermite(float p0, float m0, float p1, float m1, float t, float dt) {

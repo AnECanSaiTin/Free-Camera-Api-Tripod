@@ -2,7 +2,6 @@ package cn.anecansaitin.free_camera_api_tripod.api.animation.curve;
 
 import cn.anecansaitin.free_camera_api_tripod.api.animation.Keyframec;
 import org.jspecify.annotations.NullMarked;
-import org.jspecify.annotations.Nullable;
 
 /// 曲线的只读视图。
 ///
@@ -15,6 +14,6 @@ public interface Curvec {
 
     int size();
 
-    /// 第 index 个键的只读视图；越界返回 null
-    @Nullable Keyframec key(int index);
+    /// 第 index 个键的只读视图；越界抛出 {@link IndexOutOfBoundsException}
+    Keyframec key(int index);
 }

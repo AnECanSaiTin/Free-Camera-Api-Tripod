@@ -2,12 +2,9 @@ package cn.anecansaitin.free_camera_api_tripod.api.animation.curve;
 
 import cn.anecansaitin.free_camera_api_tripod.api.animation.Evaluator;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.Keyframe;
-import it.unimi.dsi.fastutil.objects.Object2FloatOpenHashMap;
 import org.jspecify.annotations.NullMarked;
-import org.jspecify.annotations.Nullable;
 
 import java.util.HashMap;
-import java.util.Map;
 
 @NullMarked
 public class Clip {
@@ -36,14 +33,8 @@ public class Clip {
     ///
     /// @param property 属性名称 (例如 "position.x")
     /// @param curve    曲线
-    /// @return 是否添加成功,仅当属性名称为空字符串时返回false
-    public boolean addCurve(String property, Curve curve) {
-        if (property.isEmpty()) {
-            return false;
-        }
-
+    public void addCurve(String property, Curve curve) {
         curves.put(property, curve);
-        return true;
     }
 
     /// 获取曲线
@@ -54,8 +45,8 @@ public class Clip {
         return curves.get(property);
     }
 
-    public @Nullable Curve removeCurve(String property) {
-        return curves.remove(property);
+    public void removeCurve(String property) {
+        curves.remove(property);
     }
 
     public float evaluate(String property, float time) {
@@ -76,16 +67,6 @@ public class Clip {
         return evaluator.build(values);
     }
 
-    private final Object2FloatOpenHashMap<String> evaluateCache = new Object2FloatOpenHashMap<>();
-
-    public Object2FloatOpenHashMap<String> evaluateAll(float time) {
-        for (Map.Entry<String, Curve> entry : curves.entrySet()) {
-            evaluateCache.put(entry.getKey(), entry.getValue().evaluate(time));
-        }
-
-        return evaluateCache;
-    }
-
     /// 动画片段时长。
     ///
     /// 用户显式设置时为正数，直接返回；否则（自动模式）按当前曲线实时计算，
@@ -98,6 +79,11 @@ public class Clip {
         return calculateDuration();
     }
 
+    public Clip duration(float duration) {
+        this.duration = duration;
+        return this;
+    }
+
     private float calculateDuration() {
         float length = 0;
 
@@ -106,7 +92,8 @@ public class Clip {
                 continue;
             }
 
-            length = Math.max(length, curve.key(curve.size() - 1).time());
+            Keyframe key = curve.key(curve.size() - 1);
+            length = Math.max(length, key.time());
         }
 
         return length;

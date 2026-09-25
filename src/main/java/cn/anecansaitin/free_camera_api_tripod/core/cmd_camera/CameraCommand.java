@@ -469,7 +469,7 @@ public class CameraCommand {
         private PathMode mode;
 
         @Override
-        public void update(PathNode node) {
+        public void update(@NonNull PathNode node) {
             node.pathMode(mode);
             mode = null;
         }
@@ -486,7 +486,7 @@ public class CameraCommand {
         private boolean smooth;
 
         @Override
-        public void update(PathNode node) {
+        public void update(@NonNull PathNode node) {
             node.smooth(smooth);
         }
 

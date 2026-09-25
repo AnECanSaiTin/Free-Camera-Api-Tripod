@@ -94,7 +94,7 @@ public class Path implements Pathc {
 
     @Override
     public PathNodec node(int index) {
-        if (!validNode(index)) {
+        if (invalidNode(index)) {
             throw new IndexOutOfBoundsException("Invalid node index: " + index);
         }
 
@@ -107,7 +107,7 @@ public class Path implements Pathc {
     }
 
     public boolean updateNode(int index, NodeUpdater updater) {
-        if (!validNode(index)) {
+        if (invalidNode(index)) {
             return false;
         }
 
@@ -129,7 +129,7 @@ public class Path implements Pathc {
     }
 
     public boolean removeNode(int index) {
-        if (!validNode(index)) {
+        if (invalidNode(index)) {
             return false;
         }
 
@@ -160,7 +160,7 @@ public class Path implements Pathc {
     /// 调整节点顺序：把 from 处的节点移动到 to 处（用于手工排序路径点）。
     /// 越界或原地不动时返回 false。
     public boolean moveNode(int from, int to) {
-        if (!validNode(from) || to < 0 || to >= nodes.size() || from == to) {
+        if (invalidNode(from) || to < 0 || to >= nodes.size() || from == to) {
             return false;
         }
 
@@ -238,8 +238,8 @@ public class Path implements Pathc {
         };
     }
 
-    private boolean validNode(int nodeIndex) {
-        return nodeIndex >= 0 && nodeIndex < nodes.size();
+    private boolean invalidNode(int nodeIndex) {
+        return nodeIndex < 0 || nodeIndex >= nodes.size();
     }
 
     private boolean validSegment(int segmentIndex) {
@@ -287,7 +287,6 @@ public class Path implements Pathc {
 
         int i = binarySearch(length);
         i = i < 0 ? -i - 1 : i;
-        // 夹到有效分段内：越界索引会让 evaluate 取到不存在的线段，弧长与参数换算随之失效
         i = Math.clamp(i, 0, maxFloor);
         positive = i >= lastIndex;
         return lastIndex = i;
@@ -336,9 +335,7 @@ public class Path implements Pathc {
         return totalLength;
     }
 
-    /// 从起点沿路径走到第 index 个节点的弧长。
-    ///
-    /// 累计长度表里第 i 项存的是「走到第 i+1 个节点」的总长，所以第 index 个节点取第 index-1 项
+
     @Override
     public double nodeDistance(int index) {
         if (index <= 0) {
