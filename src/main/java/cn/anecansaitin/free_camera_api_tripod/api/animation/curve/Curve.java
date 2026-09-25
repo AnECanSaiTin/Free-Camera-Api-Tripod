@@ -3,6 +3,7 @@ package cn.anecansaitin.free_camera_api_tripod.api.animation.curve;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.Keyframe;
 import net.minecraft.util.Mth;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -315,6 +316,17 @@ public class Curve implements Curvec {
                 yield localPost <= duration ? timeStart + localPost : timeEnd - localPost + duration;
             }
         };
+    }
+
+    @Nullable
+    public Keyframe preKey(float time) {
+        int index = findFloorIndex(time);
+
+        if (validKey(index)) {
+            return key(index);
+        }
+
+        return null;
     }
 
     private int findFloorIndex(float time) {

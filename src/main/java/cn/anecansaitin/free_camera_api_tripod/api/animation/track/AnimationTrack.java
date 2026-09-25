@@ -2,17 +2,15 @@ package cn.anecansaitin.free_camera_api_tripod.api.animation.track;
 
 import cn.anecansaitin.free_camera_api_tripod.api.animation.TrackKey;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Curve;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.CameraAnimation;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import org.jspecify.annotations.Nullable;
 
 /// 动画轨道抽象。
 ///
-/// 编辑器（时间轴、图表、Inspector）只依赖该接口，因此后续接入
-/// 事件触发器轨道、后处理特效轨道时无需改动编辑器代码。
-///
 /// 新增轨道类型时：实现本接口 -> 通过 {@link TrackTypeRegistry} 注册 -> 加入
-/// {@link cn.anecansaitin.free_camera_api_tripod.api.animation.CameraAnimation}。
+/// {@link CameraAnimation}。
 @SuppressWarnings("unused")
 public interface AnimationTrack {
     /// 轨道类型 id，见 {@link TrackTypeRegistry}
@@ -50,6 +48,6 @@ public interface AnimationTrack {
 
     /// 曲线轨道暴露底层曲线供图表编辑器使用，其他轨道返回 null
     default @Nullable Curve curve() {
-        return null;
+        return null;// todo 是否是必须的，是否可以用泛型
     }
 }

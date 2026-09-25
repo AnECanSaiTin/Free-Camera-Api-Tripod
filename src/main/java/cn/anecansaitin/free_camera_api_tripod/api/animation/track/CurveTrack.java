@@ -66,11 +66,11 @@ public class CurveTrack implements AnimationTrack {
 
         // 新键取该时刻的当前值，并沿用前一个键的插值模式，避免破坏已有曲线形态
         Keyframe key = Keyframe.create(time, curve.evaluate(time));
-        Keyframe previous = previousKey(time);
+        Keyframe pre = curve.preKey(time);
 
-        if (previous != null) {
-            key.evaluateMode(previous.evaluateMode())
-                    .weightedMode(previous.weightedMode());
+        if (pre != null) {
+            key.evaluateMode(pre.evaluateMode())
+                    .weightedMode(pre.weightedMode());
         }
 
         return curve.key(key);
@@ -103,21 +103,5 @@ public class CurveTrack implements AnimationTrack {
     @Override
     public Curve curve() {
         return curve;
-    }
-
-    private @Nullable Keyframe previousKey(float time) {
-        Keyframe found = null;
-
-        for (int i = 0; i < curve.size(); i++) {
-            Keyframe key = curve.key(i);
-
-            if (key == null || key.time() > time) {
-                break;
-            }
-
-            found = key;
-        }
-
-        return found;
     }
 }

@@ -12,11 +12,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /// 轨道类型注册表。
-///
-/// 本期只注册曲线轨道；未来的事件触发器轨道、后处理特效轨道通过
-/// {@link #register(TrackType)} 接入，编辑器会自动在“新建轨道”中列出。
 public final class TrackTypeRegistry {
-    /// 曲线轨道：由 float 关键帧构成，是本期的唯一实现
+    /// 曲线轨道
     public static final Identifier CURVE = Identifier.fromNamespaceAndPath(FreeCameraApiTripod.MODID, "curve");
 
     private static final Map<Identifier, TrackType> TYPES = new LinkedHashMap<>();
@@ -37,7 +34,8 @@ public final class TrackTypeRegistry {
         TYPES.put(type.id(), type);
     }
 
-    public static @Nullable TrackType get(Identifier id) {
+    @Nullable
+    public static TrackType get(Identifier id) {
         return TYPES.get(id);
     }
 

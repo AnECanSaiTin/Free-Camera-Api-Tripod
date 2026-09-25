@@ -315,7 +315,7 @@ public class PathRender {
             collector.submitNameTag(poseStack, pos, 0, PATH_NODE_TEXT_CACHE.get(i), true, LightCoordsUtil.FULL_BRIGHT, cameraPos.distanceToSqr(pos), cameraRenderState, PATH_TEXT_COLOR, PATH_TEXT_BACKGROUND_COLOR);
         }
 
-        // 控制点标签只在确实画了控制点时提交：没画控制点却留着 IN/OUT 字样，等于凭空多出两个标记
+        // 控制点标签只在确实画了控制点时提交：
         if (hasControlPoints()) {
             collector.submitNameTag(poseStack, CONTROL_POINT_POS_IN, 0, CONTROL_POINT_TEXT_IN, true, LightCoordsUtil.FULL_BRIGHT, cameraPos.distanceToSqr(CONTROL_POINT_POS_IN), cameraRenderState, CONTROL_TEXT_COLOR, CONTROL_TEXT_BACKGROUND_COLOR);
             collector.submitNameTag(poseStack, CONTROL_POINT_POS_OUT, 0, CONTROL_POINT_TEXT_OUT, true, LightCoordsUtil.FULL_BRIGHT, cameraPos.distanceToSqr(CONTROL_POINT_POS_OUT), cameraRenderState, CONTROL_TEXT_COLOR, CONTROL_TEXT_BACKGROUND_COLOR);

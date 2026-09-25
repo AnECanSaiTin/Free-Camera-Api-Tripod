@@ -166,6 +166,7 @@ public class Path implements Pathc {
 
         nodes.add(to, nodes.remove(from));
         // 顺序变了，每段的两端节点都可能不同，弧长表整体重建
+        // todo 可以精确到具体的两个范围
         updateArcLengthTable();
         return true;
     }
