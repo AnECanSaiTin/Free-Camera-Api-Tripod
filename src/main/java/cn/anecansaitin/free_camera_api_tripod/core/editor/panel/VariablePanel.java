@@ -39,10 +39,12 @@ public class VariablePanel extends EditorPanel {
     private static final int SCROLLBAR_MARGIN = 4;
     /// 行首选中标记的宽度
     private static final int MARKER_WIDTH = 9;
-    /// 行尾取值列占的宽度：固定值模式下这里放一个数值输入框
+    /// 行尾取值列占的最大宽度：固定值模式下这里放一个数值输入框
     private static final int VALUE_WIDTH = 58;
-    /// 绑定选择器的最小宽度
-    private static final int BINDING_MIN_WIDTH = 34;
+    /// 行内三列之间的间隙
+    private static final int GAP = 2;
+    /// 绑定选择器至少要这么宽才画展开箭头
+    private static final int ARROW_MIN_WIDTH = 16;
     /// 变量名长度上限：名字要手写进公式里，太长没意义
     private static final int NAME_MAX_LENGTH = 24;
     /// 固定值的显示精度
@@ -96,9 +98,14 @@ public class VariablePanel extends EditorPanel {
             Draw.text(graphics, selected ? Icons.MARKED : Icons.UNMARKED, row.marker().x() + 1, row.marker().y() + 3,
                     selected ? Draw.ACCENT : Draw.TEXT_DISABLED);
             Draw.field(graphics, row.binding(), row.binding().contains(mouseX, mouseY));
+            // 选择器太窄时不画箭头，否则箭头会压到右边的取值列上
+            boolean arrow = row.binding().width() >= ARROW_MIN_WIDTH;
             Draw.textEllipsized(graphics, bindingLabel(row.variable()), row.binding().x() + 3, row.binding().y() + 3,
-                    Math.max(8, row.binding().width() - 16), Draw.TEXT);
-            Draw.text(graphics, Icons.COLLAPSE, row.binding().right() - 10, row.binding().y() + 3, Draw.TEXT_DIM);
+                    row.binding().width() - 6 - (arrow ? 10 : 0), Draw.TEXT);
+
+            if (arrow) {
+                Draw.text(graphics, Icons.COLLAPSE, row.binding().right() - 10, row.binding().y() + 3, Draw.TEXT_DIM);
+            }
 
             // 固定值模式下取值列是个输入框，值由它自己显示，这里只画绑定模式的只读预览
             if (row.variable().bound()) {
@@ -114,7 +121,7 @@ public class VariablePanel extends EditorPanel {
                 }
 
                 Draw.textEllipsized(graphics, Float.isNaN(value) ? Icons.INVALID : Draw.num(value, VALUE_DECIMALS),
-                        row.value().x(), row.value().y() + 3, row.value().width(), color);
+                        row.value().x(), row.value().y() + 3, row.value().width() - 3, color);
 
                 if (selfReference && row.value().contains(mouseX, mouseY)) {
                     graphics.setTooltipForNextFrame(Draw.font(), EditorLang.t("variables.self_reference"), mouseX, mouseY);
@@ -195,16 +202,21 @@ public class VariablePanel extends EditorPanel {
         return y + ROW_HEIGHT;
     }
 
-    /// 一个变量：标记 + 名字 + 取值来源 + 取值
+    /// 一个变量：标记 + 名字 + 取值来源 + 取值。
+    ///
+    /// 三列按比例分配、右沿首尾相接：取值列最多占三分之一（再封顶 {@link #VALUE_WIDTH}），
+    /// 剩下的名字与取值来源各一半。面板被拖窄时三列一起收缩，
+    /// 不会出现某一列顶着最小宽度把旁边那列盖掉的情况
     private int variableRow(int x, int y, Variable variable) {
         UiRect marker = new UiRect(x, y + 1, MARKER_WIDTH, FIELD_HEIGHT);
-        // 从右往左分配：取值固定宽度，剩下的一半给名字、一半给取值来源，保证不越出内容区
-        int valueX = Math.max(marker.right() + 30, contentRight - VALUE_WIDTH);
-        UiRect value = new UiRect(valueX, y + 1, Math.max(8, contentRight - valueX), FIELD_HEIGHT);
-        int rest = Math.max(24, valueX - marker.right() - 4);
-        int nameWidth = Math.max(24, rest / 2);
+        int total = Math.max(0, contentRight - marker.right());
+        int valueWidth = Math.min(VALUE_WIDTH, total / 3);
+        int rest = Math.max(0, total - valueWidth - GAP * 2);
+        int nameWidth = rest / 2;
+        int bindingWidth = rest - nameWidth;
         UiRect nameRect = new UiRect(marker.right(), y + 1, nameWidth, FIELD_HEIGHT);
-        UiRect binding = new UiRect(nameRect.right() + 2, y + 1, Math.max(BINDING_MIN_WIDTH, valueX - nameRect.right() - 4), FIELD_HEIGHT);
+        UiRect binding = new UiRect(nameRect.right() + GAP, y + 1, bindingWidth, FIELD_HEIGHT);
+        UiRect value = new UiRect(binding.right() + GAP, y + 1, valueWidth, FIELD_HEIGHT);
         TextFieldWidget field = new TextFieldWidget(nameRect, variable.name(), name -> renameVariable(variable, name));
         field.maxLength(NAME_MAX_LENGTH);
         widgets.add(field);
@@ -269,13 +281,34 @@ public class VariablePanel extends EditorPanel {
     private void removeSelected() {
         Variable variable = selectedVariable();
 
-        if (variable == null || !context.animation().removeVariable(variable.name())) {
+        if (variable == null) {
+            context.notify(EditorLang.t("notify.no_variable_selected"));
+            return;
+        }
+
+        // 记下删除前的位置：删完之后这个下标正好落在"后一个"上
+        int index = indexOf(context.animation().variables(), variable.name());
+
+        if (!context.animation().removeVariable(variable.name())) {
             context.notify(EditorLang.t("notify.no_variable_selected"));
             return;
         }
 
         context.notify(EditorLang.t("notify.variable_removed", variable.name()));
-        selectedName = null;
+        // 自动选中相邻的一个：原来是中间或开头就选后一个（原来的下标位置），
+        // 原来是末尾就落到新的末尾，也就是前一个
+        List<Variable> remaining = context.animation().variables();
+        selectedName = remaining.isEmpty() ? null : remaining.get(Math.clamp(index, 0, remaining.size() - 1)).name();
+    }
+
+    private static int indexOf(List<Variable> variables, String name) {
+        for (int i = 0; i < variables.size(); i++) {
+            if (variables.get(i).name().equals(name)) {
+                return i;
+            }
+        }
+
+        return 0;
     }
 
     /// 改名：空名、重名或写不进公式的名字一律拒绝并提示，保持变化前的名字

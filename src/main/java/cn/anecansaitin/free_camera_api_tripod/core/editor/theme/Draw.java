@@ -72,6 +72,9 @@ public final class Draw {
     /// 浮点线段按像素步进填充的步数上限，防止异常长度把一帧拖死
     private static final int MAX_LINE_STEPS = 4096;
 
+    /// 文本截断时的省略号
+    private static final String ELLIPSIS = "...";
+
     private static final List<TruncatedText> TRUNCATED = new ArrayList<>();
 
     /// 当前主题；初始为 null，静态块里铺第一套配色时会落下 DARK
@@ -265,12 +268,22 @@ public final class Draw {
         text(graphics, text, rightX - font().width(text), y, color);
     }
 
+    /// 超宽时截断成「前几个字 + ...」。
+    ///
+    /// 宽度连省略号都放不下时**什么都不画**：硬画出来的 "..." 会溢出到相邻控件上，
+    /// 把旁边的内容盖住——面板被拖窄时尤其明显
     public static void textEllipsized(GuiGraphicsExtractor graphics, String text, int x, int y, int maxWidth, int color) {
         String value = text;
         boolean clipped = false;
 
         if (font().width(value) > maxWidth) {
-            value = font().plainSubstrByWidth(value, Math.max(0, maxWidth - font().width("..."))) + "...";
+            int room = maxWidth - font().width(ELLIPSIS);
+
+            if (room <= 0) {
+                return;
+            }
+
+            value = font().plainSubstrByWidth(value, room) + ELLIPSIS;
             clipped = true;
         }
 

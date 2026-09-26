@@ -140,17 +140,18 @@ public class KeyframePanel extends EditorPanel {
                 new FieldSpec(EditorLang.t("inspector.key.time"), key.time(), 3,
                         value -> key.time(context.snapTime(value)), key::time, null),
                 new FieldSpec(EditorLang.t("inspector.key.value"), key.value(), 3, key::value, key::value, DynamicField.KEY_VALUE));
-        y = pairRow(x, y, halfWidth, key,
-                new FieldSpec(EditorLang.t("inspector.key.in_tangent"), key.inTangent(), 3, key::inTangent, key::inTangent, DynamicField.KEY_IN_TANGENT),
-                new FieldSpec(EditorLang.t("inspector.key.out_tangent"), key.outTangent(), 3, key::outTangent, key::outTangent, DynamicField.KEY_OUT_TANGENT));
-        y = pairRow(x, y, halfWidth, key,
-                new FieldSpec(EditorLang.t("inspector.key.in_weight"), key.inWeight(), 3, key::inWeight, key::inWeight, DynamicField.KEY_IN_WEIGHT),
-                new FieldSpec(EditorLang.t("inspector.key.out_weight"), key.outWeight(), 3, key::outWeight, key::outWeight, DynamicField.KEY_OUT_WEIGHT));
         y = modeRow(x, y, fieldWidth, EditorLang.t("inspector.key.evaluate"), EvaluateMode.values(), key.evaluateMode(), key::evaluateMode);
         y = modeRow(x, y, fieldWidth, EditorLang.t("inspector.key.weighted"), WeightedMode.values(), key.weightedMode(), key::weightedMode);
 
-        // 只有贝塞尔曲线才会用到控制点，其余插值模式下该开关没有意义
+        // 切线、权重与控制点对称都只服务于贝塞尔（HERMITE）插值：其余模式下求值根本不读这些数，
+        // 摆着只会让人以为改了有用，所以整组一起跟着插值模式出现或消失
         if (key.evaluateMode() == EvaluateMode.HERMITE) {
+            y = pairRow(x, y, halfWidth, key,
+                    new FieldSpec(EditorLang.t("inspector.key.in_tangent"), key.inTangent(), 3, key::inTangent, key::inTangent, DynamicField.KEY_IN_TANGENT),
+                    new FieldSpec(EditorLang.t("inspector.key.out_tangent"), key.outTangent(), 3, key::outTangent, key::outTangent, DynamicField.KEY_OUT_TANGENT));
+            y = pairRow(x, y, halfWidth, key,
+                    new FieldSpec(EditorLang.t("inspector.key.in_weight"), key.inWeight(), 3, key::inWeight, key::inWeight, DynamicField.KEY_IN_WEIGHT),
+                    new FieldSpec(EditorLang.t("inspector.key.out_weight"), key.outWeight(), 3, key::outWeight, key::outWeight, DynamicField.KEY_OUT_WEIGHT));
             y = symmetricRow(x, y, fieldWidth);
         }
 
