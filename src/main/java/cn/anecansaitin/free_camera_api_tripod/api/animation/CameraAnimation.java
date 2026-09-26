@@ -2,24 +2,28 @@ package cn.anecansaitin.free_camera_api_tripod.api.animation;
 
 import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Clip;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Curve;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Expression;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Variable;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.path.Path;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.AnimationChannelRegistry;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.AnimationTrack;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.CurveTrack;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.track.RenamableTrack;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /// 相机动画：编辑器与播放器共用的数据模型。
 ///
 /// 由三部分组成：
 /// - {@link Clip}：float 曲线集合（位置距离、旋转、FOV，以及未来的特效参数）
 /// - {@link Path}：位置通道驱动的三维路径
-/// - 扩展轨道：事件触发器、后处理特效等非曲线轨道，通过 {@link #addExtensionTrack} 接入
+/// - 轨道表：曲线通道与扩展轨道（事件、特效、指令）共用一份有序表，顺序即时间轴上的显示顺序，
+///   也是序列化写出的顺序，因此拖拽排序对两类轨道一视同仁
 @NullMarked
 public class CameraAnimation implements CameraAnimationc {
     /// 位置通道，取值为沿 {@link Path} 的弧长距离
@@ -53,8 +57,9 @@ public class CameraAnimation implements CameraAnimationc {
     private Path path;
     private MotionMode motionMode = MotionMode.COORDINATE;
     private DistanceMode distanceMode = DistanceMode.ABSOLUTE;
-    private final LinkedHashMap<String, CurveTrack> tracks = new LinkedHashMap<>();
-    private final List<AnimationTrack> extensionTracks = new ArrayList<>();
+    private final LinkedHashMap<String, AnimationTrack> tracks = new LinkedHashMap<>();
+    /// 变量表：表达式里按名字引用，值取自它绑定的曲线轨道
+    private final List<Variable> variables = new ArrayList<>();
 
     public CameraAnimation() {
         this("Camera");
@@ -63,22 +68,22 @@ public class CameraAnimation implements CameraAnimationc {
     public CameraAnimation(String name) {
         this.name = name;
         this.path = new Path("Path");
-        addChannel(CHANNEL_POSITION);
+        CurveTrack position = addChannel(CHANNEL_POSITION);
         addChannel(CHANNEL_ROTATION_X);
         addChannel(CHANNEL_ROTATION_Y);
         addChannel(CHANNEL_ROTATION_Z);
         CurveTrack fov = addChannel(CHANNEL_FOV);
         // 位置与 FOV 各放一个初始键，保证新建动画即可直接预览
-        tracks.get(CHANNEL_POSITION).addKey(0f, 0f);
+        position.addKey(0f, 0f);
         fov.addKey(0f, AnimationChannelRegistry.get(CHANNEL_FOV).defaultValue());
     }
 
     /// 添加或获取曲线通道，默认值与颜色取自 {@link AnimationChannelRegistry}
     public CurveTrack addChannel(String property) {
-        CurveTrack existing = tracks.get(property);
+        AnimationTrack existing = tracks.get(property);
 
-        if (existing != null) {
-            return existing;
+        if (existing instanceof CurveTrack curveTrack) {
+            return curveTrack;
         }
 
         AnimationChannelRegistry.Channel channel = AnimationChannelRegistry.get(property);
@@ -89,64 +94,215 @@ public class CameraAnimation implements CameraAnimationc {
         return track;
     }
 
+    /// 移除曲线通道；扩展轨道不归通道管，请用 {@link #removeExtensionTrack(String)}
     public boolean removeChannel(String property) {
-        if (tracks.remove(property) == null) {
+        if (!(tracks.get(property) instanceof CurveTrack)) {
             return false;
         }
 
+        tracks.remove(property);
         clip.removeCurve(property);
+        // 绑定在这条轨道上的变量会变成空指向，一并解绑，免得变量的值莫名其妙恒为 0
+        unbindVariables(property);
         return true;
     }
 
+    /// 取曲线通道；同名的扩展轨道不会被当成通道返回
     public @Nullable CurveTrack track(String property) {
-        return tracks.get(property);
+        return tracks.get(property) instanceof CurveTrack curveTrack ? curveTrack : null;
     }
 
-    /// 按 id 查找任意轨道（含扩展轨道）
+    /// 按 id 查找任意轨道（曲线通道与扩展轨道共用一份顺序表）
     public @Nullable AnimationTrack trackById(String id) {
-        CurveTrack curveTrack = tracks.get(id);
+        return tracks.get(id);
+    }
 
-        if (curveTrack != null) {
-            return curveTrack;
+    /// 全部轨道，顺序即时间轴上的显示顺序
+    @Override
+    public List<AnimationTrack> tracks() {
+        return List.copyOf(tracks.values());
+    }
+
+    @Override
+    public List<CurveTrack> curveTracks() {
+        List<CurveTrack> curves = new ArrayList<>();
+
+        for (AnimationTrack track : tracks.values()) {
+            if (track instanceof CurveTrack curveTrack) {
+                curves.add(curveTrack);
+            }
         }
 
-        for (AnimationTrack track : extensionTracks) {
-            if (track.id().equals(id)) {
-                return track;
+        return List.copyOf(curves);
+    }
+
+    /// 接入事件触发器、后处理特效等扩展轨道，追加到顺序表末尾。
+    /// id 已被占用时拒绝插入：曲线通道与扩展轨道共用同一份 id 空间
+    public boolean addExtensionTrack(AnimationTrack track) {
+        if (tracks.containsKey(track.id())) {
+            return false;
+        }
+
+        tracks.put(track.id(), track);
+        return true;
+    }
+
+    /// 按 id 移除一条扩展轨道；曲线通道请用 {@link #removeChannel(String)}
+    public boolean removeExtensionTrack(String id) {
+        AnimationTrack track = tracks.get(id);
+
+        if (track == null || track instanceof CurveTrack) {
+            return false;
+        }
+
+        tracks.remove(id);
+        return true;
+    }
+
+    /// 给扩展轨道改名（时间轴上的显示名与存档里的 id 是同一个值）。
+    ///
+    /// 只有实现了 {@link RenamableTrack} 的轨道能改名；原 id 不存在、新 id 已占用或没有变化都返回 false。
+    /// 顺序表用 LinkedHashMap 承载，直接换 key 会把轨道挪到末尾，因此这里重建整张表以保住位置
+    public boolean renameExtensionTrack(String id, String newId) {
+        AnimationTrack track = tracks.get(id);
+
+        if (track == null || id.equals(newId) || tracks.containsKey(newId) || !(track instanceof RenamableTrack renamable)) {
+            return false;
+        }
+
+        List<Map.Entry<String, AnimationTrack>> entries = new ArrayList<>(tracks.entrySet());
+        tracks.clear();
+
+        for (Map.Entry<String, AnimationTrack> entry : entries) {
+            if (!entry.getKey().equals(id)) {
+                tracks.put(entry.getKey(), entry.getValue());
+                continue;
+            }
+
+            renamable.rename(newId);
+            tracks.put(newId, entry.getValue());
+        }
+
+        return true;
+    }
+
+    /// 扩展轨道（非曲线轨道），顺序与 {@link #tracks()} 一致
+    public List<AnimationTrack> extensionTracks() {
+        List<AnimationTrack> extensions = new ArrayList<>();
+
+        for (AnimationTrack track : tracks.values()) {
+            if (!(track instanceof CurveTrack)) {
+                extensions.add(track);
+            }
+        }
+
+        return List.copyOf(extensions);
+    }
+
+    // region 变量
+
+    /// 变量表：表达式按名字引用，取值为其绑定轨道在当前时刻的读数
+    @Override
+    public List<Variable> variables() {
+        return List.copyOf(variables);
+    }
+
+    /// 按名字取变量；不存在返回 null
+    public @Nullable Variable variable(String name) {
+        for (Variable variable : variables) {
+            if (variable.name().equals(name)) {
+                return variable;
             }
         }
 
         return null;
     }
 
-    /// 全部轨道（曲线轨道在前，扩展轨道在后），供时间轴按顺序展示
-    @Override
-    public List<AnimationTrack> tracks() {
-        List<AnimationTrack> all = new ArrayList<>(tracks.size() + extensionTracks.size());
-        all.addAll(tracks.values());
-        all.addAll(extensionTracks);
-        return all;
+    /// 新增一个变量；名字为空或已被占用时返回 null。
+    /// 新变量默认不绑定轨道（也就是固定值模式），固定值为 0
+    public @Nullable Variable addVariable(String name) {
+        String trimmed = name == null ? "" : name.strip();
+
+        if (trimmed.isEmpty() || variable(trimmed) != null) {
+            return null;
+        }
+
+        Variable variable = new Variable(trimmed);
+        variables.add(variable);
+        return variable;
     }
 
-    @Override
-    public List<CurveTrack> curveTracks() {
-        return List.copyOf(tracks.values());
+    /// 删除一个变量，返回是否删掉了
+    public boolean removeVariable(String name) {
+        Variable variable = variable(name);
+        return variable != null && variables.remove(variable);
     }
 
-    /// 接入事件触发器、后处理特效等扩展轨道
-    public void addExtensionTrack(AnimationTrack track) {
-        extensionTracks.add(track);
+    /// 把变量名改掉；新名字为空或已被其它变量占用时返回 false。
+    /// 表达式是按名字引用变量的，改名后旧公式里的名字就取不到值了，由调用方提示用户
+    public boolean renameVariable(String name, String newName) {
+        String trimmed = newName == null ? "" : newName.strip();
+        Variable variable = variable(name);
+
+        if (variable == null || trimmed.isEmpty() || name.equals(trimmed)) {
+            return false;
+        }
+
+        Variable occupied = variable(trimmed);
+
+        if (occupied != null && occupied != variable) {
+            return false;
+        }
+
+        variable.name(trimmed);
+        return true;
     }
 
-    public List<AnimationTrack> extensionTracks() {
-        return Collections.unmodifiableList(extensionTracks);
+    /// 把所有指向该轨道的变量解绑（轨道被删掉时调用）
+    private void unbindVariables(String trackId) {
+        for (Variable variable : variables) {
+            if (trackId.equals(variable.trackId())) {
+                variable.trackId("");
+            }
+        }
     }
+
+    /// 变量是否被它自己绑定的轨道引用，也就是自嵌套：该轨道上有关键帧挂了引用这个变量的公式。
+    ///
+    /// 这种写法不会无限递归——变量取轨道读数时走的是静态曲线，公式在这一步被忽略，
+    /// 用的是键上的固定数值（见 {@code ExpressionContext}）。但同一个键
+    /// "作为相机属性播放"与"作为变量被引用"会得出不同的值，界面据此给出提示
+    public boolean selfReferencing(Variable variable) {
+        if (!variable.bound() || !(tracks.get(variable.trackId()) instanceof CurveTrack track)) {
+            return false;
+        }
+
+        Curve curve = track.curve();
+
+        for (int i = 0; i < curve.size(); i++) {
+            Keyframe key = curve.key(i);
+
+            if (key == null) {
+                continue;
+            }
+
+            for (String expression : key.expressions().values()) {
+                if (Expression.references(expression, variable.name())) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    // endregion
 
     @Override
     public float duration() {
         float duration = clip.duration();
 
-        for (AnimationTrack track : extensionTracks) {
+        for (AnimationTrack track : tracks.values()) {
             duration = Math.max(duration, track.duration());
         }
 
@@ -209,7 +365,7 @@ public class CameraAnimation implements CameraAnimationc {
             return false;
         }
 
-        int to = Math.clamp(order.size() - 1, 0, from + offset);
+        int to = Math.clamp(from + offset, 0, order.size() - 1);
 
         if (to == from) {
             return false;
@@ -218,7 +374,7 @@ public class CameraAnimation implements CameraAnimationc {
         order.remove(from);
         order.add(to, id);
 
-        LinkedHashMap<String, CurveTrack> reordered = new LinkedHashMap<>();
+        LinkedHashMap<String, AnimationTrack> reordered = new LinkedHashMap<>();
 
         for (String key : order) {
             reordered.put(key, tracks.get(key));
@@ -240,7 +396,7 @@ public class CameraAnimation implements CameraAnimationc {
         }
 
         int from = order.indexOf(block.getFirst());
-        int target = Math.clamp(order.size() - block.size(), 0, from + offset);
+        int target = Math.clamp(from + offset, 0, order.size() - block.size());
 
         if (target == from) {
             return false;
@@ -249,7 +405,7 @@ public class CameraAnimation implements CameraAnimationc {
         order.removeAll(block);
         order.addAll(target, block);
 
-        LinkedHashMap<String, CurveTrack> reordered = new LinkedHashMap<>();
+        LinkedHashMap<String, AnimationTrack> reordered = new LinkedHashMap<>();
 
         for (String key : order) {
             reordered.put(key, tracks.get(key));
@@ -286,7 +442,7 @@ public class CameraAnimation implements CameraAnimationc {
         double total = path.totalLength();
 
         if (total > 0) {
-            CurveTrack track = tracks.get(CHANNEL_POSITION);
+            CurveTrack track = track(CHANNEL_POSITION);
 
             if (track != null) {
                 Curve curve = track.curve();
@@ -322,13 +478,26 @@ public class CameraAnimation implements CameraAnimationc {
         this.distanceMode = other.distanceMode;
         this.path = other.path;
 
-        for (String property : new ArrayList<>(tracks.keySet())) {
-            removeChannel(property);
+        // 曲线通道要连带清理 clip；扩展轨道不来自通道表，稍后随顺序表一起换掉
+        for (String id : new ArrayList<>(tracks.keySet())) {
+            removeChannel(id);
         }
 
-        for (CurveTrack track : other.curveTracks()) {
+        tracks.clear();
+
+        for (AnimationTrack track : other.tracks()) {
             tracks.put(track.id(), track);
-            clip.addCurve(track.id(), track.curve());
+
+            if (track instanceof CurveTrack curveTrack) {
+                clip.addCurve(curveTrack.id(), curveTrack.curve());
+            }
+        }
+
+        // 变量表整体替换；变量是可变对象，装进来的是副本，避免两份动画共享同一个实例
+        variables.clear();
+
+        for (Variable variable : other.variables()) {
+            variables.add(variable.copy());
         }
     }
 

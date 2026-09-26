@@ -45,7 +45,7 @@ public final class DockLayout {
     ///
     /// 结构或默认布局发生变化时递增，旧版本保存的串会因为版本不符而整体作废，
     /// 从而自动回落到新的默认布局，避免旧布局一直压着新设计。
-    private static final int LAYOUT_VERSION = 2;
+    private static final int LAYOUT_VERSION = 3;
 
     private static final int MIN_CELL_WIDTH = 110;
     private static final int MIN_PANEL_HEIGHT = 30;

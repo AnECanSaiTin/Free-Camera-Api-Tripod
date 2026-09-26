@@ -2,10 +2,14 @@ package cn.anecansaitin.free_camera_api_tripod.core.editor.widget;
 
 import cn.anecansaitin.free_camera_api_tripod.core.editor.layout.UiRect;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.theme.Draw;
+import com.mojang.blaze3d.platform.InputConstants;
+import com.mojang.blaze3d.platform.Window;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.input.CharacterEvent;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.function.Consumer;
 
@@ -18,6 +22,7 @@ public class TextFieldWidget extends EditorWidget {
     private static final int KEY_BACKSPACE = 259;
     private static final int KEY_DELETE = 261;
     private static final int KEY_KP_ENTER = 335;
+    private static final int KEY_V = 86;
     /// 文本长度上限的默认值，避免过长的名称挤满标题栏等展示位置
     private static final int MAX_LENGTH = 48;
 
@@ -58,6 +63,13 @@ public class TextFieldWidget extends EditorWidget {
     public TextFieldWidget maxLength(int maxLength) {
         this.maxLength = Math.max(1, maxLength);
         return this;
+    }
+
+    /// 直接进入编辑态并全选：给「双击就地重命名」这类入口用，省掉再点一次输入框
+    public void edit() {
+        editing = true;
+        selectAll = true;
+        text = value;
     }
 
     @Override
@@ -128,25 +140,48 @@ public class TextFieldWidget extends EditorWidget {
             return false;
         }
 
-        char typed = (char) event.codepoint();
+        int codepoint = event.codepoint();
 
-        if (!Character.isISOControl(typed) && text.length() < maxLength) {
-            if (selectAll) {
-                // 全选态下首次输入直接替换全部内容
-                text = "";
-                selectAll = false;
-            }
-
-            text += typed;
+        // 控制字符（回车、换行等）不进文本；其余按完整码点追加，中文与 BMP 之外的字符都算一个字符
+        if (Character.isISOControl(codepoint)) {
+            return true;
         }
 
+        insert(new String(Character.toChars(codepoint)));
         return true;
+    }
+
+    /// 追加一段文本（逐字输入与 Ctrl+V 粘贴共用），超出长度上限的部分直接丢掉
+    private void insert(String addition) {
+        if (addition.isEmpty()) {
+            return;
+        }
+
+        if (selectAll) {
+            // 全选态下首次输入直接替换全部内容
+            text = "";
+            selectAll = false;
+        }
+
+        int room = maxLength - text.length();
+
+        if (room <= 0) {
+            return;
+        }
+
+        text += addition.length() <= room ? addition : addition.substring(0, room);
     }
 
     @Override
     public boolean keyPressed(KeyEvent event) {
         if (!editing) {
             return false;
+        }
+
+        // Ctrl+V：中文这类不好直接敲的文本可以直接贴进来
+        if (event.key() == KEY_V && ctrlDown()) {
+            insert(Minecraft.getInstance().keyboardHandler.getClipboard().strip());
+            return true;
         }
 
         switch (event.key()) {
@@ -188,5 +223,12 @@ public class TextFieldWidget extends EditorWidget {
 
         text = value;
         onChange.accept(value);
+    }
+
+    /// 左右 Ctrl 是否有一个按下（粘贴用）
+    private static boolean ctrlDown() {
+        Window window = Minecraft.getInstance().getWindow();
+        return InputConstants.isKeyDown(window, GLFW.GLFW_KEY_LEFT_CONTROL)
+                || InputConstants.isKeyDown(window, GLFW.GLFW_KEY_RIGHT_CONTROL);
     }
 }

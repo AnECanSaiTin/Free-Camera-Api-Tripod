@@ -492,7 +492,7 @@ public abstract class BrowserScreen extends Screen {
     /// 暂停世界：浏览数据期间世界不再变化
     @Override
     public boolean isPauseScreen() {
-        return true;
+        return false;
     }
 
     @Override

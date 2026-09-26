@@ -46,6 +46,16 @@ public final class Icons {
     public static final String TRACK = "≣";
     /// 关键帧 ◆
     public static final String KEY = "◆";
+    /// 数值模式 #
+    public static final String NUMBER = "#";
+    /// 动态模式（公式） ƒ
+    public static final String FORMULA = "ƒ";
+    /// 公式非法
+    public static final String INVALID = "!";
+    /// 已选中 ●
+    public static final String MARKED = "●";
+    /// 未选中 ○
+    public static final String UNMARKED = "○";
 
     private Icons() {
     }

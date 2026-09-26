@@ -14,13 +14,13 @@ public final class EditorConfig {
     /// 单元写作 {@code 单元权重:面板:叠放权重+面板:叠放权重}（单元内自上而下叠放）；
     /// {@code float} 表示悬浮窗口，用 {@code ,} 分隔，写作 {@code id:x:y:宽:高}。
     public static final String DEFAULT_LAYOUT =
-            "v=2;top=0.3000:viewport:1.0000|0.4000:animation:1.0000+path_node:0.3400+graph:0.6600"
-                    + "|0.3000:keyframe:1.0000;bottom=1.0000:timeline:1.0000;float=";
+            "v=3;top=0.3000:viewport:1.0000|0.4000:animation:1.0000+path_node:0.3400+graph:0.6600"
+                    + "|0.3000:keyframe:0.6500+variables:0.3500;bottom=1.0000:timeline:1.0000;float=";
     public static final double DEFAULT_BOTTOM_HEIGHT = 0.28;
     /// 路径编辑器的默认布局，与 {@code PathEditorScreen} 的初始面板与比例保持一致
     /// （视口 / 节点列表 / 节点详情 / 路径信息 四列，没有下排）。格式同上。
     public static final String DEFAULT_PATH_LAYOUT =
-            "v=2;top=0.3000:viewport:1.0000|0.2200:path_nodes:1.0000|0.2800:path_detail:1.0000"
+            "v=3;top=0.3000:viewport:1.0000|0.2200:path_nodes:1.0000|0.2800:path_detail:1.0000"
                     + "|0.2000:path_info:1.0000;bottom=;float=";
 
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();

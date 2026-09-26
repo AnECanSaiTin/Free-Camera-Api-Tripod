@@ -1,8 +1,13 @@
 package cn.anecansaitin.free_camera_api_tripod.api.animation.path;
 
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.DynamicField;
 import org.joml.Vector3f;
 import org.joml.Vector3fc;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
+
+import java.util.EnumMap;
+import java.util.Map;
 
 @NullMarked
 public class PathNode implements PathNodec {
@@ -13,6 +18,8 @@ public class PathNode implements PathNodec {
     private PathMode pathMode;
     /// 自动平滑：默认开启，开启时打开开关的瞬间以及之后任一侧切线变动，另一侧都会跟着镜像
     private boolean smooth = true;
+    /// 挂了公式的坐标 / 切线分量：播放时按公式求值，没挂公式的用上面的固定数值
+    private final Map<DynamicField, String> expressions = new EnumMap<>(DynamicField.class);
 
     public PathNode(Vector3f position) {
         this(position, new Vector3f(), new Vector3f(), PathMode.LINEAR);
@@ -101,6 +108,37 @@ public class PathNode implements PathNodec {
         this.smooth = smooth;
         return this;
     }
+
+    // region 动态字段
+
+    /// 该分量挂的公式；没挂返回 null
+    public @Nullable String expression(DynamicField field) {
+        return expressions.get(field);
+    }
+
+    /// 给分量挂公式（null 或空白表示回到固定数值）
+    public PathNode expression(DynamicField field, @Nullable String expression) {
+        if (expression == null || expression.isBlank()) {
+            expressions.remove(field);
+        } else {
+            expressions.put(field, expression.strip());
+        }
+
+        return this;
+    }
+
+    /// 该分量是否挂了公式
+    public boolean dynamic(DynamicField field) {
+        return expressions.containsKey(field);
+    }
+
+    /// 公式表副本，供序列化与界面判断使用
+    @Override
+    public Map<DynamicField, String> expressions() {
+        return Map.copyOf(expressions);
+    }
+
+    // endregion
 
     public static PathNode linear(Vector3f position) {
         return new PathNode(position);

@@ -1,5 +1,6 @@
 package cn.anecansaitin.free_camera_api_tripod.api.animation;
 
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Variable;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.path.Pathc;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.AnimationTrack;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.CurveTrack;
@@ -27,11 +28,17 @@ public interface CameraAnimationc {
     /// 当前绑定的路径
     Pathc path();
 
-    /// 全部轨道（曲线轨道在前，扩展轨道在后）
+    /// 全部轨道，顺序即时间轴上的显示顺序（曲线通道与扩展轨道共用一份有序表）
     List<? extends AnimationTrack> tracks();
 
-    /// 曲线轨道（顺序即时间轴上的显示顺序）
+    /// 曲线轨道
     List<CurveTrack> curveTracks();
+
+    /// 扩展轨道（指令、事件、特效等非曲线轨道）
+    List<? extends AnimationTrack> extensionTracks();
+
+    /// 变量表：表达式里按名字引用，值取自它绑定的曲线轨道
+    List<Variable> variables();
 
     /// 把「位置通道」的取值换算成沿路径的弧长（绝对距离）
     float distanceToLength(float value);

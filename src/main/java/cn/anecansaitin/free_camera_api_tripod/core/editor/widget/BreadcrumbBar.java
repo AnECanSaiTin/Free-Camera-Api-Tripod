@@ -184,7 +184,7 @@ public final class BreadcrumbBar {
         }
 
         menuContentHeight = items.size() * ROW_HEIGHT + MENU_PADDING * 2;
-        menuWidth = Math.clamp(screenWidth - 4, MENU_MIN_WIDTH, menuWidth);
+        menuWidth = Math.min(menuWidth, Math.max(MENU_MIN_WIDTH, screenWidth - 4));
         menuX = Mth.clamp(open.x(), 0, Math.max(0, screenWidth - menuWidth - 2));
         menuY = rect.bottom();
 

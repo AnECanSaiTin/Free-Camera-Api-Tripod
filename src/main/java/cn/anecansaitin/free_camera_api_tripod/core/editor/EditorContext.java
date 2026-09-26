@@ -1,6 +1,7 @@
 package cn.anecansaitin.free_camera_api_tripod.core.editor;
 
 import cn.anecansaitin.free_camera_api_tripod.api.animation.CameraAnimation;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ExpressionContext;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.path.Path;
 import cn.anecansaitin.free_camera_api_tripod.core.animation.io.AnimationCodec;
 import cn.anecansaitin.free_camera_api_tripod.core.animation.io.AnimationFiles;
@@ -16,6 +17,7 @@ import org.joml.Vector3f;
 import org.jspecify.annotations.Nullable;
 
 import java.util.List;
+import java.util.function.Consumer;
 
 /// 编辑器共享上下文：动画数据、播放器、编辑模型，以及时间轴/曲线图共用的视图参数。
 public final class EditorContext {
@@ -35,6 +37,8 @@ public final class EditorContext {
     private long statusUntil;
     /// 当前的二次确认弹窗；由面板发起，屏幕负责绘制与派发点击
     private @Nullable ConfirmDialog dialog;
+    /// 当前的表达式编辑窗口；同样是模态的，与二次确认一样由屏幕在最上层处理
+    private @Nullable ExpressionEditorWindow expressionEditor;
 
     public EditorContext(CameraEditorModel editor, CameraPlayer player, CameraAnimation animation, CameraInfo info) {
         this.editor = editor;
@@ -184,6 +188,48 @@ public final class EditorContext {
 
     public void closeDialog() {
         this.dialog = null;
+    }
+
+    // endregion
+
+    // region 表达式
+
+    /// 本帧共用的求值上下文，由 {@link #beginFrame()} 每帧清空
+    private @Nullable ExpressionContext frameContext;
+
+    /// 每帧渲染开头调用一次。
+    ///
+    /// 表达式求值上下文里缓存着变量的取值，而变量是可以被界面随时改掉的（改名、改固定值、换绑定），
+    /// 暂停时播放头时间又不动，光靠时间没法判断缓存是否过期，所以按帧清：一帧内复用、跨帧重算。
+    /// 漏调不会算错数值，只会让界面预览停在旧值上，因此两个编辑器屏幕都在渲染开头调它
+    public void beginFrame() {
+        this.frameContext = null;
+    }
+
+    /// 打开表达式编辑窗口；窗口自己负责绘制与输入，屏幕只在最上层调用它。
+    /// 同一时刻只留一个，后开的会直接顶掉已有的，不会叠出两层。
+    public void openExpressionEditor(Component label, @Nullable String expression, Consumer<String> onConfirm) {
+        this.expressionEditor = new ExpressionEditorWindow(animation, player, label, expression, onConfirm);
+    }
+
+    public @Nullable ExpressionEditorWindow expressionEditor() {
+        return expressionEditor;
+    }
+
+    public void closeExpressionEditor() {
+        this.expressionEditor = null;
+    }
+
+    /// 按播放头所在时刻求值一段公式；公式非法或引用到取不到值的变量时返回 NaN。
+    ///
+    /// 一帧内的多次调用共用一份上下文，同一个变量因此每帧只算一次——
+    /// 变量面板的每一行、每个挂了公式的输入框都会来问一次，不共用就会重复求值
+    public float evaluateExpression(@Nullable String expression) {
+        if (frameContext == null) {
+            frameContext = new ExpressionContext(animation, player.time());
+        }
+
+        return frameContext.evaluate(expression);
     }
 
     // endregion

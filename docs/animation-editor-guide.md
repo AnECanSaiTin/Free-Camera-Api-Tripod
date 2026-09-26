@@ -84,6 +84,9 @@ F6 ──► CameraEditorScreen.open()
 
 `EvaluateMode`：`LINEAR` / `STEP` / `HERMITE`；`WeightedMode`：`NONE` / `IN` / `OUT` / `BOTH`。
 
+关键帧还可以给取值 / 切线 / 权重**挂公式**（见 2.7）：`expression(DynamicField)` 读、`expression(DynamicField, String)` 写，
+`value(ExpressionContext)` 这一组带上下文的 getter 会先按公式算，算不出来再回退固定数值。
+
 ### 2.2 曲线 `curve/Curve`
 
 一条 float 曲线，内部是升序的 `Keyframe` 列表。
@@ -92,6 +95,7 @@ F6 ──► CameraEditorScreen.open()
 - `moveKey` / `removeKey` / `smoothTangents`：编辑操作；`smoothTangents` 在两端用差分、中间点用 Catmull-Rom 斜率
 - `evaluate(time)`：先按 `preMode` / `postMode`（`WrapMode`：CLAMP / LOOP / PING_PONG）把时间映射进有效区间，
   再取相邻两键按左键的 `EvaluateMode` 插值；HERMITE 分支按 `WeightedMode` 缩放切线（`weight / (weight + 3)`）
+- `evaluate(time, ExpressionContext)`：多带一个求值上下文，挂了公式的字段按公式取值；上下文为 `null` 就是纯固定数值求值
 - **健壮性处理**：相邻键时间相同、线段长度退化、切线为无穷时直接取左值，避免 `0/0` 产生 NaN 污染整条通道
 - 命中位置用 `lastIndex` + 方向标记做局部近似，退化时才回到二分
 
@@ -102,30 +106,38 @@ F6 ──► CameraEditorScreen.open()
 `属性名 → Curve` 的集合，另存片段名与时长：
 
 - `duration()`：显式设置过（> 0）直接用，否则按所有曲线最后一个键的时间实时计算
-- `evaluate(property, time)` / `evaluate(time, Evaluator)`：单个属性或按 `Evaluator.properties()` 批量取值后 `build`
+- `evaluate(property, time [, context])` / `evaluate(time, Evaluator [, context])`：单个属性或按 `Evaluator.properties()` 批量取值后 `build`
 - `evaluateAll(time)`：带缓存的全量求值，播放时避免重复分配
 
 ### 2.4 路径 `path/`
 
-- `PathNodec`：只读节点（位置、入/出切线、`PathMode`、是否自动平滑）
+- `PathNodec`：只读节点（位置、入/出切线、`PathMode`、是否自动平滑、挂了公式的分量 `expressions()`）
 - `PathNode`：可写节点；`inTangent/outTangent` 在 `smooth` 开启时互为反向，保证拖动一侧另一侧跟随；
-  `smooth(true)` 打开开关的瞬间会把出切线对齐到入切线（出 = -入），`restoreSmooth` 只改开关、不动切线（供反序列化）
+  `smooth(true)` 打开开关的瞬间会把出切线对齐到入切线（出 = -入），`restoreSmooth` 只改开关、不动切线（供反序列化）；
+  坐标与切线的每个分量都可以挂公式（`DynamicField.NODE_*`）
 - `PathMode`：`LINEAR` / `BEZIER` / `CATMULL_ROM`，**由每段起点节点的模式决定该段插值方式**
 - `Path`：节点表 + **弧长表**（每段长度、累计长度）
   - `node/insertNode/removeNode/moveNode` 后按受影响范围重建弧长表（`updateArcLengthTable(begin, end)` 或整体重建）
-  - `evaluate(distance, dest)`：按弧长二分定位分段 → 归一化参数 → 按模式调 `util/SplineUtils` 取点
-  - `evaluate(dest, progress)`：按 0~1 进度取点（内部乘总长）
+  - `evaluate(distance, dest [, context])`：按弧长二分定位分段 → 归一化参数 → 按模式调 `util/SplineUtils` 取点
+  - `evaluate(dest, progress [, context])`：按 0~1 进度取点（内部乘总长）
   - 退化保护：线段长度为 0 时参数取 0，索引越界时夹到有效分段
+  - **弧长表一律按固定数值算**，不接求值上下文：弧长是静态度量，否则"路径总长"会随时间变，百分比口径就失去意义
 - `Pathc`：只读视图（`name/size/node/totalLength/evaluate`），渲染等只读场景用它
 
 ### 2.5 轨道抽象 `track/`
 
-编辑器（时间轴、曲线图、关键帧面板）**只依赖 `AnimationTrack` 接口**，以后加事件轨道/特效轨道无需改编辑器：
+编辑器按能力分层依赖：时间轴只认 `AnimationTrack`，曲线图与关键帧面板要改曲线时才认 `CurveTrack`。
+以后加事件轨道 / 特效轨道不必改时间轴，曲线图会对它们显示"无可编辑曲线"：
 
-- `AnimationTrack`：`type/id/label/color/duration/keyCount/key/addKey/removeKey/moveKey`，
-  另有 `valueAt(time)`（不产生 float 的轨道返回 NaN）与 `curve()`（曲线轨道返回底层 `Curve`，其他返回 null）
-- `CurveTrack`：把 `Curve` 适配成轨道的默认实现；`addKey(time)` 会继承前一个键的插值与加权模式
-- `TrackType` + `TrackTypeRegistry`：轨道类型元数据与注册表（当前只注册 `curve`）
+- `AnimationTrack`：`type/id/label/color/duration/keyCount/key/addKey/removeKey/moveKey`。
+  **只放所有轨道都成立的成员**：曲线、指令、事件这类专属能力不进接口——需要"经过即触发"就实现 `TickTrack`，
+  需要交出底层曲线就在自己的实现里提供（`CurveTrack.curve()`），调用方按能力判断
+- `CurveTrack`：把 `Curve` 适配成轨道的默认实现；`addKey(time)` 会继承前一个键的插值与加权模式；
+  取值与取键都走它自己暴露的 `curve()`
+- `TickTrack`：可选能力接口，`advance(fromTime, toTime)` 由播放器每帧带着推进区间调用（命令轨道即此类）
+- `JsonTrack`：可选能力接口，`writeKeys()` / `readKeys(JsonArray)` 由轨道自己决定键的存档形态（不实现就不落盘）
+- `RenamableTrack`：可选能力接口，`rename(id)` 让时间轴可以就地改轨道标识（曲线轨道的标识与相机属性绑定，不实现）
+- `TrackType` + `TrackTypeRegistry`：轨道类型元数据与注册表（当前注册 `curve` 与 `command`）
 - `AnimationChannelRegistry`：**通道元数据**——显示名、时间轴颜色、新建时的默认值、所属折叠分组
   （`position` / `position.x~z` / `rotation.x~z` / `fov` 在静态块注册，未注册的属性回退为"属性名 + 由名字派生的稳定颜色"）
 
@@ -141,8 +153,48 @@ F6 ──► CameraEditorScreen.open()
   - `distanceMode(mode)` 会把已有位置键**换算**到新口径；`restoreDistanceMode` 只改标记
   - `distanceToLength(value)`：把通道取值换算成弧长，播放器取点前调用
 - 轨道顺序就是 `LinkedHashMap` 的顺序（序列化按它写出），`moveTrack` / `moveTracks` 用于拖拽排序
-- `copyFrom(other)`：读档时**原地替换**内容——动画实例被播放器与编辑器各处持有，不能换对象
-- `CameraAnimationc`：只读视图（`name/duration/motionMode/distanceMode/path/tracks/curveTracks/distanceToLength`）
+- **轨道表**：曲线通道与扩展轨道（指令、事件、特效…）共用一份有序表，顺序即时间轴上的显示顺序、
+  也是序列化写出的顺序，`moveTrack` / `moveTracks` 的拖拽排序对两类轨道一视同仁
+- 扩展轨道：`addExtensionTrack(track)` 插入到末尾、`removeExtensionTrack(id)` 移除、
+  `renameExtensionTrack(id, newId)` 改名（只对实现 `RenamableTrack` 的轨道生效，改的是标识本身）；
+  `extensionTracks()` 是它的只读过滤视图
+- 实现了 `JsonTrack` 的轨道随动画一起进 JSON；`copyFrom` 会整体替换轨道表（撤销栈与读档都依赖这一点）
+- `variables()`：变量表（见 2.7），`variable(name)` / `addVariable(name)` / `removeVariable(name)` /
+  `renameVariable(name, newName)` 负责增删改；名字要能被表达式当标识符读（`Expression.validName`），重名与空名一律拒绝
+- `copyFrom(other)`：读档时**原地替换**内容——动画实例被播放器与编辑器各处持有，不能换对象；变量表也一并换成副本
+- `CameraAnimationc`：只读视图（`name/duration/motionMode/distanceMode/path/tracks/curveTracks/extensionTracks/variables/distanceToLength`）
+
+### 2.7 表达式与变量 `expression/`
+
+让"数值"可以随时间变化：一个数值既可以是一个固定的数，也可以挂一条公式，播放时按当前时间算出来。
+
+| 类型 | 职责 |
+| --- | --- |
+| `Expression` | 极简求值器：四则运算、`%`、括号、一元正负、变量、函数 `min/max/sin/cos/random`。每次求值重新扫描字符串（表达式很短，省掉 AST 更划算）；**任何失败一律返回 NaN**，调用方据此回退到固定数值 |
+| `Expression.Resolver` | 变量取值入口：`resolve(name)`，未知变量返回 NaN |
+| `Variable` | 变量 = 名字 + 取值来源。来源二选一：绑定的曲线轨道 id（非空）或固定值 `value`（不绑轨道时用） |
+| `ExpressionContext` | 求值上下文：内置变量 `t`（当前时间）+ 动画里的变量。构造时把变量表索引成 Map，并对本次求值的变量取值做缓存 |
+| `DynamicField` | **可以挂公式的数值字段**的枚举：关键帧的 `KEY_VALUE / KEY_IN_TANGENT / KEY_OUT_TANGENT / KEY_IN_WEIGHT / KEY_OUT_WEIGHT`，路径节点的 `NODE_{X,Y,Z} / NODE_IN_{X,Y,Z} / NODE_OUT_{X,Y,Z}` |
+
+设计要点：
+
+- **公式挂在数据上，不挂在求值链上**：`Keyframe` / `PathNode` 各存一份 `Map<DynamicField, String>`，
+  `Curve` / `Clip` / `Path` 的 `evaluate` 只是多带一个 `@Nullable ExpressionContext`；传 `null` 就是纯固定数值求值
+- **求值失败永远是回退，不是中断**：公式非法、引用了不存在的变量、算出来是 NaN——统统退回原来的固定数值，
+  播放不会因为一条写错的公式而崩掉或整段失效
+- **变量只读静态曲线**：`ExpressionContext` 取变量值时用 `curve().evaluate(time)`（不带上下文）。
+  这顺带把自嵌套挡在门外——"变量 V 绑轨道 A、A 的键又引用 V"不会无限递归，
+  因为求值链在变量处就断了，A 上的公式在这一步被忽略、用键上的固定数值。
+  代价是同一个键"作为相机属性播放"与"作为变量被引用"可能得出不同的值；
+  `CameraAnimation.selfReferencing(variable)` + `Expression.references(source, name)` 就是这套检查，
+  变量面板会把这类变量的取值标成警告色并在悬停时说明
+- **一次求值内每个变量只算一次**：上下文绑定了一个固定时间，变量值在其生命周期内不会变，
+  所以 `resolve` 的结果缓存进 `Map`。同一条公式里写 3 次、或一帧内几十个字段引用同一个变量，都只算一次；
+  上下文是每帧新建的，不存在过期问题。界面侧由 `EditorContext.beginFrame()`（两个编辑器屏幕渲染开头各调一次）
+  提供同一份帧内上下文，跨帧重算——不能只看播放头时间，因为暂停时时间不动而变量随时可能被改
+- **轨道被删时变量自动解绑**：`removeChannel` 会把指向它的变量 `trackId` 清空，变量随即回到固定值模式
+- **时间不进 `DynamicField`**：公式本来就是按时间求值的，时间自己再挂公式只会绕回自己
+
 
 ---
 
@@ -151,7 +203,7 @@ F6 ──► CameraEditorScreen.open()
 | 类 | 职责 |
 | --- | --- |
 | `CmdCamera` | 相机插件入口：持有 `CameraAnimation` / `CameraPlayer` / `CameraEditorModel` / `CameraInfo`，`update(partialTicks)` 每帧把姿态应用到相机修饰器 |
-| `playback/CameraPlayer` | 只做时间推进与姿态求值：`tick(deltaSeconds)`、`evaluatePose(dest)`、`play/pause/toggle/stop/seek/speed/loop` |
+| `playback/CameraPlayer` | 只做时间推进与姿态求值：`tick(deltaSeconds)`、`evaluatePose(dest)`、`play/pause/toggle/stop/seek/speed/loop`；`tick` 会把推进的时间区间分发给实现了 `TickTrack` 的扩展轨道 |
 | `CameraPose` | 位置 + YXZ 旋转 + FOV 的结果结构，带"该分量是否有效"标记（无键的轴不接管，沿用原相机值） |
 | `edit/CameraEditorModel` | 编辑状态与操作：视图模式、自由姿态、选中轨道/关键帧/路径节点，增删改键与路径点、录制相机姿态 |
 | `edit/Selected` | 路径节点的选中项（节点 / 入切线 / 出切线） |
@@ -160,8 +212,9 @@ F6 ──► CameraEditorScreen.open()
 | `CmdCameraKeyMapping` | 快捷键：**F6** 打开编辑器、**F7** 播放/暂停、**F8** 停止、**F9** 打开路径编辑器（均限游戏内） |
 | `CameraCommand` | 客户端命令注册 |
 
-`CameraPlayer.evaluatePose` 的关键分支：坐标模式下逐轴判断"有没有键"，有键才写该轴；
-路径模式下先 `distanceToLength` 再 `Path.evaluate`，并对非有限值做兜底。
+`CameraPlayer.evaluatePose` 的关键分支：每帧先构造一份 `ExpressionContext`（当前时间 + 动画变量），
+再把它传给所有 `evaluate` 重载，挂了公式的关键帧与路径节点由此按当前时刻取值。
+坐标模式下逐轴判断"有没有键"，有键才写该轴；路径模式下先 `distanceToLength` 再 `Path.evaluate`，并对非有限值做兜底。
 
 ---
 
@@ -169,9 +222,17 @@ F6 ──► CameraEditorScreen.open()
 
 ### 4.1 `AnimationCodec`——JSON 编解码
 
-- 顶层字段：`name`、`motionMode`、`distanceMode`、`tracks`（通道数组）、`path`
-- 每个通道：`property`、`preMode`、`postMode`、`keys`
-- 每个键：时间、取值、入/出切线、入/出权重、`evaluateMode`、`weightedMode`
+- 顶层字段：`name`、`motionMode`、`distanceMode`、`tracks`（轨道数组）、`variables`（变量数组）、`path`
+- 轨道数组按动画里的轨道顺序写出（拖拽排序会反映到文件里），两类轨道混排、用 `type` 区分：
+  - 曲线轨道：`type` = `free_camera_api_tripod:curve`，字段为 `id`（相机属性名）、`preMode`、`postMode`、
+    `keys`（每个键含时间、取值、入/出切线、入/出权重、`evaluateMode`、`weightedMode`）
+  - 扩展轨道：`type` = 该类型 id，字段为 `id`（轨道标识）与 `keys`（键的字段由轨道自己定，见 `JsonTrack`）
+- 变量数组：每项含 `name`（表达式里引用的名字）、`track`（绑定的曲线轨道 id，空串表示不绑定）
+  与 `value`（不绑定轨道时用的固定值）
+- 挂了公式的数值字段写在 `expressions` 对象里（键是 `DynamicField` 枚举名、值是公式文本），
+  关键帧与路径节点各带一份；一条公式都没有时不写出该字段
+- 读档按 `type` 分派：curve 走通道与曲线，其余查 `TrackTypeRegistry` 用工厂造实例再交回 `readKeys`；
+  类型未注册、没有工厂、id 重复或不实现 `JsonTrack` 的条目跳过
 - 路径：`name` + `nodes`（位置、入/出切线、`pathMode`、`smooth`）
 - 反序列化一律宽松（字段缺失/类型错误/枚举名非法都回退默认值），只有整份 JSON 解析失败才返回 null
 - **`tracks` 是权威集合**：JSON 里没出现的通道会在读取后被移除，避免构造动画时的默认通道残留
@@ -210,6 +271,8 @@ F6 ──► CameraEditorScreen.open()
 | `StorageManagerScreen` | 存档数据管理：第二行切换动画 / 路径，建文件夹与「删除」移除选中条目（文件夹连同内容一起删） |
 | `CameraScreens` | 判定"当前是否在相机编辑界面"，供渲染与输入分流使用（按屏幕实例判断，不受 init 顺序影响） |
 
+> 这些界面都不暂停游戏（`isPauseScreen()` 返回 false）：取景、取点与播放预览都要在真实运行的世界上进行。
+
 ### 5.2 `EditorContext`——一切共享状态
 
 屏幕与面板都通过它拿数据与公共服务：
@@ -221,6 +284,8 @@ F6 ──► CameraEditorScreen.open()
 - 交互反馈：`notify(Component)` 状态行提示、`confirm(...)` 二次确认弹窗
   ——内置界面由屏幕统一绘制与派发；外部界面从 `EditorSession.pendingConfirm()` 取走自己画，
   确认时调 `confirmPending()`。为此 `ConfirmDialog` 的 `confirm()` 与 `message()` 是公开的
+- 表达式：`openExpressionEditor(label, expression, onConfirm)` / `expressionEditor()` / `evaluateExpression(expr)`
+  ——表达式编辑窗口与二次确认一样是**模态**的，屏幕在最上层绘制并优先派发输入
 - 复合动作：`chooseAndBindPath` / `switchToPathMode` / `switchToCoordinateMode` / `recordPathNode` / `syncFreePoseFromCamera` 等
   ——"先选文件、再确认、才改数据"这类流程都收敛在这里，面板只调一个方法
 
@@ -239,9 +304,10 @@ F6 ──► CameraEditorScreen.open()
 | `PathNodePanel` | `path_node` | 路径节点区：按模式显示入/出切线、自动平滑等 |
 | `PathNodeListPanel` | `path_node_list` | 节点列表：添加/删除节点、上移/下移排序 |
 | `PathNodeDetailPanel` | `path_node_detail` | 当前选中节点的详情与编辑 |
-| `KeyframePanel` | `keyframe` | 选中关键帧的属性、插值模式、贝塞尔对称设置 |
+| `KeyframePanel` | `keyframe` | 选中关键帧的属性、插值模式、贝塞尔对称设置；非曲线键显示时间与轨道自带的内容（如指令文本） |
 | `GraphPanel` | `graph` | 曲线图：取值曲线与切线手柄的绘制与拖拽 |
-| `TimelinePanel` | `timeline` | 时间轴：轨道行、折叠分组、播放头、键的拖拽与右键菜单 |
+| `TimelinePanel` | `timeline` | 时间轴：轨道行、折叠分组、播放头、键的拖拽与右键菜单（「插入轨道 ▸」、重命名、删除扩展轨道；名称列双击可改名） |
+| `VariablePanel` | `variables` | 变量表：新建/删除变量、改名、选择取值来源（固定值 / 某条曲线轨道），并实时显示取值 |
 
 > 新增面板：继承 `EditorPanel`，实现 `layoutWidgets` 与 `renderContent`；
 > 重建控件前必须 `widgets.clear()`（`WidgetHost` 不会自动清理，否则控件会叠加）。
@@ -267,9 +333,15 @@ F6 ──► CameraEditorScreen.open()
 | `ButtonWidget` | 按钮：**按下再抬起且指针仍在按钮上才触发**；默认文字色随主题取 |
 | `TextFieldWidget` | 文本输入：点击进入编辑、双击全选、右键清空、回车提交、Esc 取消；编辑中不被外部刷新覆盖 |
 | `NumberFieldWidget` | 数值输入：拖拽/输入，用于坐标、FOV 等 |
+| `ExpressionFieldWidget` | 数值输入 + 模式切换按钮：默认数值模式，可切成动态模式挂公式；动态模式下数值框变成预览框（公式 + 当前取值），点击打开表达式编辑窗口。时间这类不允许动态的字段仍用 `NumberFieldWidget` |
 | `ContextMenu` | 自绘右键菜单：图标 + 文本、勾选项、分隔线、二级菜单（悬停展开且不会移开即消失） |
 | `ConfirmDialog` | 二次确认弹窗（覆盖确认、模式切换确认等） |
 | `BreadcrumbBar` | 路径面包屑：每段可点击跳转，段尾箭头展开**同级目录下拉**（可滚动、点空白收起），与资源管理器地址栏一致 |
+
+> `ExpressionEditorWindow`（在 `core.editor` 下）是表达式编辑窗口（模态）：第一行窗口标题 + 实时求值结果，
+> 第二行「属性：xxx」说明在给哪个数值写公式；下面左栏是公式输入区，右栏上为变量表（带 `+` / `−`，点名字插进公式）、
+> 下为函数表（点一下插入模板并把光标停进括号）。输入区上界与变量区顶部齐平、下界与函数表底部齐平，
+> 三块区域都在内容超出时显示滚动条。它不自绘到面板里，而是由屏幕在最上层绘制并优先派发输入。
 
 ### 5.6 绘制与主题 `theme/`、`render/`
 
@@ -325,9 +397,17 @@ F6 ──► CameraEditorScreen.open()
 2. 需要参与求值时，在 `CameraPlayer.evaluatePose` 里加分支，或让外部通过 `Evaluator` 取值
 
 **加一种轨道类型**（事件触发器、后处理特效等）
-1. 实现 `api.animation.track.AnimationTrack`（`type/id/label/color/duration/key/addKey/removeKey/moveKey`）
-2. 定义 `TrackType` 并在 `TrackTypeRegistry.register` 注册（也可留 `factory = null` 只作占位）
-3. 用 `CameraAnimation.addExtensionTrack(...)` 接入；时间轴、曲线图、关键帧面板会自动识别
+1. 实现 `api.animation.track.AnimationTrack`（`type/id/label/color/duration/key/addKey/removeKey/moveKey`）；
+   属于"播放经过就触发"的一类（指令、事件、特效）再实现 `TickTrack`，播放器每帧把推进区间交给它；
+   想让键进存档再实现 `JsonTrack`（自己决定 `keys` 数组里放哪些字段）；
+   想支持时间轴上的就地改名再实现 `RenamableTrack`（标识即显示名，改名等于换标识）
+2. 定义 `TrackType` 并在 `TrackTypeRegistry.register` 注册。`factory` 只在"能凭空造出一条空轨道"时才有意义：
+   轨道身份不是属性名、键里存的不是浮点值的类型必须给（写成构造器引用即可），
+   曲线通道那种由 `addChannel` 按属性名创建的轨道留 `null`。
+   注册调用要放在能引用到实现类的模块入口（api 不依赖 core，内置的命令轨道就在主 mod 客户端入口注册）
+3. 编辑器不用改：不提供工厂的类型不会出现在插入菜单里，给了工厂的类型会被时间轴的
+   「插入轨道 ▸」子菜单列出，插入后出现在时间轴末尾，可加键、可在关键帧面板里编辑内容。
+   内置示例：`core.animation.track.CommandTrack`（指令键 + 到点触发 + 以 `JsonTrack` 存 `time`/`command`）
 
 **加一个面板**
 1. 继承 `EditorPanel`，给出 `id`（语言键、布局串都按 id 索引）与标题

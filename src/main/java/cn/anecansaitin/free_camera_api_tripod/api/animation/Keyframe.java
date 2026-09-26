@@ -1,8 +1,13 @@
 package cn.anecansaitin.free_camera_api_tripod.api.animation;
 
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.DynamicField;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ExpressionContext;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 import java.util.Comparator;
+import java.util.EnumMap;
+import java.util.Map;
 
 /// 曲线上的一个关键帧：时间 + 值，以及决定插值的切线、权重与求值模式。
 ///
@@ -28,6 +33,8 @@ public class Keyframe implements Keyframec {
     private float outWeight;
     private WeightedMode weightedMode;
     private EvaluateMode evaluateMode;
+    /// 挂了公式的字段：播放时按公式求值，没挂公式的字段用上面的固定数值
+    private final Map<DynamicField, String> expressions = new EnumMap<>(DynamicField.class);
 
     public Keyframe(float time, float value) {
         this(time, value, 0, 0);
@@ -53,6 +60,10 @@ public class Keyframe implements Keyframec {
     public Keyframe(Keyframec keyframe) {
         this(keyframe.time(), keyframe.value(), keyframe.inTangent(), keyframe.inWeight(),
                 keyframe.outTangent(), keyframe.outWeight(), keyframe.weightedMode(), keyframe.evaluateMode());
+
+        if (keyframe instanceof Keyframe source) {
+            expressions.putAll(source.expressions);
+        }
     }
 
     // region 读写
@@ -147,7 +158,75 @@ public class Keyframe implements Keyframec {
         this.outWeight = keyframe.outWeight();
         this.weightedMode = keyframe.weightedMode();
         this.evaluateMode = keyframe.evaluateMode();
+        expressions.clear();
+
+        if (keyframe instanceof Keyframe source) {
+            expressions.putAll(source.expressions);
+        }
+
         return this;
+    }
+
+    // endregion
+
+    // region 动态字段
+
+    /// 该字段挂的公式；没挂返回 null
+    public @Nullable String expression(DynamicField field) {
+        return expressions.get(field);
+    }
+
+    /// 给字段挂公式（null 或空白表示回到固定数值）
+    public Keyframe expression(DynamicField field, @Nullable String expression) {
+        if (expression == null || expression.isBlank()) {
+            expressions.remove(field);
+        } else {
+            expressions.put(field, expression.strip());
+        }
+
+        return this;
+    }
+
+    /// 该字段是否挂了公式
+    public boolean dynamic(DynamicField field) {
+        return expressions.containsKey(field);
+    }
+
+    /// 公式表副本，供序列化与界面判断使用
+    public Map<DynamicField, String> expressions() {
+        return Map.copyOf(expressions);
+    }
+
+    /// 求值时的取值：挂了公式就按公式算，算不出来（公式非法或变量缺失）回退固定值
+    public float value(ExpressionContext context) {
+        return resolve(DynamicField.KEY_VALUE, value, context);
+    }
+
+    public float inTangent(ExpressionContext context) {
+        return resolve(DynamicField.KEY_IN_TANGENT, inTangent, context);
+    }
+
+    public float outTangent(ExpressionContext context) {
+        return resolve(DynamicField.KEY_OUT_TANGENT, outTangent, context);
+    }
+
+    public float inWeight(ExpressionContext context) {
+        return resolve(DynamicField.KEY_IN_WEIGHT, inWeight, context);
+    }
+
+    public float outWeight(ExpressionContext context) {
+        return resolve(DynamicField.KEY_OUT_WEIGHT, outWeight, context);
+    }
+
+    private float resolve(DynamicField field, float fallback, ExpressionContext context) {
+        String expression = expressions.get(field);
+
+        if (expression == null) {
+            return fallback;
+        }
+
+        float evaluated = context.evaluate(expression);
+        return Float.isNaN(evaluated) ? fallback : evaluated;
     }
 
     // endregion

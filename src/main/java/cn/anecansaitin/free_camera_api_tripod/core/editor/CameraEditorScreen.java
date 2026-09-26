@@ -23,6 +23,7 @@ import cn.anecansaitin.free_camera_api_tripod.core.editor.panel.GraphPanel;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.panel.KeyframePanel;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.panel.PathNodePanel;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.panel.TimelinePanel;
+import cn.anecansaitin.free_camera_api_tripod.core.editor.panel.VariablePanel;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.panel.ViewportPanel;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.theme.Draw;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.theme.Icons;
@@ -72,6 +73,7 @@ public class CameraEditorScreen extends Screen {
     private final KeyframePanel keyframePanel;
     private final PathNodePanel pathNodePanel;
     private final TimelinePanel timelinePanel;
+    private final VariablePanel variablePanel;
     private final WidgetHost fileBar = new WidgetHost();
     private final List<EditorPanel> panels = new ArrayList<>();
     private @Nullable ContextMenu fileMenu;
@@ -122,13 +124,15 @@ public class CameraEditorScreen extends Screen {
         this.keyframePanel = new KeyframePanel(context);
         this.pathNodePanel = new PathNodePanel(context);
         this.timelinePanel = new TimelinePanel(context);
+        this.variablePanel = new VariablePanel(context);
 
-        // 默认布局：视口 / 「动画 + 路径 + 曲线图」/ 关键帧 三列，时间轴在底部
+        // 默认布局：视口 / 「动画 + 路径 + 曲线图」/ 「关键帧 + 变量」 三列，时间轴在底部
         layout.addColumn(viewportPanel, 0.30f);
         layout.addColumn(animationPanel, 0.40f);
         layout.stackUnder(animationPanel, pathNodePanel, 0.34f);
         layout.stackUnder(animationPanel, graphPanel, 0.66f);
         layout.addColumn(keyframePanel, 0.30f);
+        layout.stackUnder(keyframePanel, variablePanel, 0.35f);
         layout.bottom(timelinePanel);
         // 记住初始结构，供文件菜单的「重置布局」恢复
         layout.captureDefaults();
@@ -138,6 +142,7 @@ public class CameraEditorScreen extends Screen {
         panels.add(animationPanel);
         panels.add(keyframePanel);
         panels.add(pathNodePanel);
+        panels.add(variablePanel);
         panels.add(timelinePanel);
     }
 
@@ -209,16 +214,17 @@ public class CameraEditorScreen extends Screen {
         return true;
     }
 
-    /// 编辑期间暂停世界：避免世界在作者编辑时继续变化，同时也不会因持续存档而打扰。
-    /// 动画预览与播放使用真实时间推进，因此仍然可以正常预览。
+    /// 编辑器不暂停游戏：相机的取景与播放都要在真实运行的世界上预览
     @Override
     public boolean isPauseScreen() {
-        return true;
+        return false;
     }
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float a) {
         Draw.beginFrame();
+        // 表达式求值上下文按帧复用，这里先清一次，界面改动过的变量当帧就能生效
+        context.beginFrame();
         // 每帧喂一次当前动画内容，内部按时间节流并只在内容变化时压栈
         history.capture(context.animation());
         // 先铺一层不透明底：面板收起或留缝时露出的也是界面底色，而不是游戏画面
@@ -252,7 +258,14 @@ public class CameraEditorScreen extends Screen {
 
         renderOverlays(graphics, mouseX, mouseY);
 
-        // 二次确认弹窗必须盖在所有东西之上
+        // 表达式编辑窗口与二次确认都是模态的，必须盖在所有东西之上
+        ExpressionEditorWindow expressionEditor = context.expressionEditor();
+
+        if (expressionEditor != null) {
+            expressionEditor.update(width, height);
+            expressionEditor.render(graphics, mouseX, mouseY);
+        }
+
         ConfirmDialog dialog = context.dialog();
 
         if (dialog != null) {
@@ -732,6 +745,20 @@ public class CameraEditorScreen extends Screen {
             return true;
         }
 
+        // 表达式编辑窗口同样是模态的，排在二次确认之后、面板之前
+        ExpressionEditorWindow expressionEditor = context.expressionEditor();
+
+        if (expressionEditor != null) {
+            ExpressionEditorWindow current = expressionEditor;
+            expressionEditor.mouseClicked(event, doubleClick);
+
+            if (expressionEditor.finished() && context.expressionEditor() == current) {
+                context.closeExpressionEditor();
+            }
+
+            return true;
+        }
+
         // 有菜单打开时，点击先交给菜单，避免穿透到面板
         for (EditorPanel panel : panels) {
             if (panel.contextMenu() != null) {
@@ -858,6 +885,20 @@ public class CameraEditorScreen extends Screen {
             return true;
         }
 
+        ExpressionEditorWindow expressionEditor = context.expressionEditor();
+
+        if (expressionEditor != null) {
+            ExpressionEditorWindow current = expressionEditor;
+            expressionEditor.mouseReleased(event);
+
+            // 同上：确定 / 取消的动作也在松开时执行
+            if (expressionEditor.finished() && context.expressionEditor() == current) {
+                context.closeExpressionEditor();
+            }
+
+            return true;
+        }
+
         if (dragPanel != null) {
             EditorPanel panel = dragPanel;
 
@@ -901,6 +942,11 @@ public class CameraEditorScreen extends Screen {
         double deltaY = event.y() - lastMouseY;
         lastMouseX = event.x();
         lastMouseY = event.y();
+
+        // 模态窗口打开时，拖拽不落到面板上触发误操作
+        if (context.expressionEditor() != null || context.dialog() != null) {
+            return true;
+        }
 
         if (dragSplitter >= 0) {
             layout.resizeVertical(dragSplitter, Mth.floor(event.x()));
@@ -954,6 +1000,12 @@ public class CameraEditorScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        ExpressionEditorWindow expressionEditor = context.expressionEditor();
+
+        if (expressionEditor != null) {
+            return expressionEditor.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+        }
+
         EditorPanel floating = layout.floatingPanelAt(mouseX, mouseY);
 
         if (floating != null) {
@@ -986,6 +1038,20 @@ public class CameraEditorScreen extends Screen {
         if (context.dialog() != null) {
             if (key == GLFW.GLFW_KEY_ESCAPE) {
                 context.closeDialog();
+            }
+
+            return true;
+        }
+
+        // 表达式编辑窗口：按键全部归它，Esc 关闭且不写回
+        ExpressionEditorWindow expressionEditor = context.expressionEditor();
+
+        if (expressionEditor != null) {
+            ExpressionEditorWindow current = expressionEditor;
+            expressionEditor.keyPressed(event);
+
+            if (expressionEditor.finished() && context.expressionEditor() == current) {
+                context.closeExpressionEditor();
             }
 
             return true;
@@ -1090,6 +1156,12 @@ public class CameraEditorScreen extends Screen {
 
     @Override
     public boolean charTyped(CharacterEvent event) {
+        ExpressionEditorWindow expressionEditor = context.expressionEditor();
+
+        if (expressionEditor != null) {
+            return expressionEditor.charTyped(event);
+        }
+
         for (EditorPanel panel : panels) {
             if (panel.charTyped(event)) {
                 return true;

@@ -1,6 +1,7 @@
 package cn.anecansaitin.free_camera_api_tripod.api.animation.curve;
 
 import cn.anecansaitin.free_camera_api_tripod.api.animation.Keyframe;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ExpressionContext;
 import net.minecraft.util.Mth;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
@@ -48,6 +49,12 @@ public class Curve implements Curvec {
 
     @Override
     public float evaluate(float time) {
+        return evaluate(time, null);
+    }
+
+    /// 带上下文的求值：挂了公式的字段按公式算（见 {@link Keyframe#value(ExpressionContext)}），
+    /// 上下文为 null 或字段没挂公式时就是普通的固定数值求值
+    public float evaluate(float time, @Nullable ExpressionContext context) {
         int size = keys.size();
 
         if (size == 0) {
@@ -55,7 +62,7 @@ public class Curve implements Curvec {
         }
 
         if (size == 1) {
-            return keys.getFirst().value();
+            return value(keys.getFirst(), context);
         }
 
         time = mapTime(time);
@@ -63,7 +70,7 @@ public class Curve implements Curvec {
         Keyframe left = keys.get(index);
 
         if (index == size - 1) {
-            return left.value();
+            return value(left, context);
         }
 
         Keyframe right = keys.get(index + 1);
@@ -72,44 +79,66 @@ public class Curve implements Curvec {
         // 相邻关键帧时间相同（或数据异常）时，归一化时间与切线缩放都会变成 0/0，
         // 插值结果随即变成 NaN 并污染整条通道，这里直接退化成取左值
         if (!(duration > 0)) {
-            return left.value();
+            return value(left, context);
         }
 
-        if (Float.isInfinite(left.outTangent()) || Float.isInfinite(right.inTangent())) {
+        if (Float.isInfinite(outTangent(left, context)) || Float.isInfinite(inTangent(right, context))) {
             // 切线为无限，视为Step插值，取左值
-            return left.value();
+            return value(left, context);
         }
 
         // 归一化时间
         time = Math.clamp((time - left.time()) / duration, 0, 1);
 
         return switch (left.evaluateMode()) {
-            case LINEAR -> evaluateLinear(left, right, time);
-            case STEP -> left.value();
-            case HERMITE -> evaluateHermite(left, right, time, duration);
+            case LINEAR -> evaluateLinear(left, right, time, context);
+            case STEP -> value(left, context);
+            case HERMITE -> evaluateHermite(left, right, time, duration, context);
         };
     }
 
-    private float evaluateLinear(Keyframe left, Keyframe right, float time) {
-        return (right.value() - left.value()) * time + left.value();
+    private float evaluateLinear(Keyframe left, Keyframe right, float time, @Nullable ExpressionContext context) {
+        float leftValue = value(left, context);
+        return (value(right, context) - leftValue) * time + leftValue;
     }
 
-    private float evaluateHermite(Keyframe left, Keyframe right, float time, float duration) {
+    private float evaluateHermite(Keyframe left, Keyframe right, float time, float duration, @Nullable ExpressionContext context) {
         // 切线计算
-        float leftTangent = left.outTangent();
-        float rightTangent = right.inTangent();
+        float leftTangent = outTangent(left, context);
+        float rightTangent = inTangent(right, context);
 
         leftTangent = switch (left.weightedMode()) {
             case NONE, IN -> leftTangent;
-            case OUT, BOTH -> leftTangent * computeWeightScale(left.outWeight());
+            case OUT, BOTH -> leftTangent * computeWeightScale(outWeight(left, context));
         };
 
         rightTangent = switch (right.weightedMode()) {
             case NONE, OUT -> rightTangent;
-            case IN, BOTH -> rightTangent * computeWeightScale(right.inWeight());
+            case IN, BOTH -> rightTangent * computeWeightScale(inWeight(right, context));
         };
 
-        return hermite(left.value(), leftTangent, right.value(), rightTangent, time, duration);
+        return hermite(value(left, context), leftTangent, value(right, context), rightTangent, time, duration);
+    }
+
+    /// 取值 / 切线 / 权重的统一出口：没有上下文时读固定数值，省得求值链上到处写判断
+    private static float value(Keyframe key, @Nullable ExpressionContext context) {
+        return context == null ? key.value() : key.value(context);
+    }
+
+    private static float inTangent(Keyframe key, @Nullable ExpressionContext context) {
+        return context == null ? key.inTangent() : key.inTangent(context);
+    }
+
+    private static float outTangent(Keyframe key, @Nullable ExpressionContext context) {
+        return context == null ? key.outTangent() : key.outTangent(context);
+    }
+
+    private static float inWeight(Keyframe key, @Nullable ExpressionContext context) {
+        return context == null ? key.inWeight() : key.inWeight(context);
+    }
+
+    private static float outWeight(Keyframe key, @Nullable ExpressionContext context) {
+        return context == null ? key.outWeight() : key.outWeight(context);
     }
 
     public int key(float time, float value) {

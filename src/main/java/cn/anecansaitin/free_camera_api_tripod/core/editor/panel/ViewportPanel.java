@@ -194,7 +194,10 @@ public class ViewportPanel extends EditorPanel {
     /// 窗口尺寸异常（尚未初始化）时返回 null，此时既不贴画面也不做任何换算。
     private @Nullable UiRect frameRect() {
         UiRect content = contentRect();
-        int top = Math.clamp(content.y(), content.bottom() - 14, videoTop);
+        // 上沿取 videoTop，但不越过内容区底边（面板太矮时抬到内容区上沿）。
+        // videoTop 为 0 表示本次布局还没算出画面顶边（首帧），直接退到内容区上沿；
+        // 这里用 min/max 组合而不是 Math.clamp：clamp 要求下限不大于上限，边界颠倒会直接抛异常
+        int top = videoTop > 0 ? Math.min(videoTop, Math.max(content.y(), content.bottom() - 14)) : content.y();
         UiRect area = new UiRect(content.x() + 1, top, Math.max(1, content.width() - 2), Math.max(1, content.bottom() - 14 - top));
 
         int windowWidth = Minecraft.getInstance().getWindow().getWidth();

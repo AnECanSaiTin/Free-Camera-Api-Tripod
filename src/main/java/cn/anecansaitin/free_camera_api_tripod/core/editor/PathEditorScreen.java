@@ -470,15 +470,17 @@ public class PathEditorScreen extends Screen {
         return true;
     }
 
-    /// 暂停世界，避免编辑期间路径随动画移动
+    /// 路径编辑器不暂停游戏：取点时要看着世界里正在发生的事
     @Override
     public boolean isPauseScreen() {
-        return true;
+        return false;
     }
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float a) {
         Draw.beginFrame();
+        // 表达式求值上下文按帧复用，这里先清一次，界面改动过的变量当帧就能生效
+        context.beginFrame();
         // 铺一层不透明底：路径只在视口内可见，界面之外不再露出世界与路径
         graphics.fill(0, 0, width, height, Draw.SCREEN_BG);
 
@@ -509,6 +511,14 @@ public class PathEditorScreen extends Screen {
 
         if (truncated != null) {
             Draw.tooltip(graphics, truncated.text(), mouseX, mouseY, width, height);
+        }
+
+        // 表达式编辑窗口是模态的，画在所有面板与菜单之上
+        ExpressionEditorWindow expressionEditor = context.expressionEditor();
+
+        if (expressionEditor != null) {
+            expressionEditor.update(width, height);
+            expressionEditor.render(graphics, mouseX, mouseY);
         }
     }
 
@@ -581,6 +591,20 @@ public class PathEditorScreen extends Screen {
         lastMouseX = event.x();
         lastMouseY = event.y();
         clearWidgetFocus();
+
+        // 表达式编辑窗口是模态的，优先接住所有点击
+        ExpressionEditorWindow expressionEditor = context.expressionEditor();
+
+        if (expressionEditor != null) {
+            ExpressionEditorWindow current = expressionEditor;
+            expressionEditor.mouseClicked(event, doubleClick);
+
+            if (expressionEditor.finished() && context.expressionEditor() == current) {
+                context.closeExpressionEditor();
+            }
+
+            return true;
+        }
 
         // 工具栏菜单打开时，点击先交给它，避免穿透到面板；
         // 点到二级菜单的父项时只是展开子菜单，菜单整体保持打开
@@ -701,6 +725,20 @@ public class PathEditorScreen extends Screen {
 
     @Override
     public boolean mouseReleased(MouseButtonEvent event) {
+        ExpressionEditorWindow expressionEditor = context.expressionEditor();
+
+        if (expressionEditor != null) {
+            ExpressionEditorWindow current = expressionEditor;
+            expressionEditor.mouseReleased(event);
+
+            // 确定 / 取消的动作在松开时执行，所以关闭判断也要在这里做一遍
+            if (expressionEditor.finished() && context.expressionEditor() == current) {
+                context.closeExpressionEditor();
+            }
+
+            return true;
+        }
+
         if (dragPanel != null) {
             EditorPanel panel = dragPanel;
 
@@ -784,6 +822,12 @@ public class PathEditorScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        ExpressionEditorWindow expressionEditor = context.expressionEditor();
+
+        if (expressionEditor != null) {
+            return expressionEditor.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+        }
+
         EditorPanel floating = layout.floatingPanelAt(mouseX, mouseY);
 
         if (floating != null) {
@@ -802,6 +846,20 @@ public class PathEditorScreen extends Screen {
     @Override
     public boolean keyPressed(KeyEvent event) {
         int key = event.key();
+
+        // 表达式编辑窗口是模态的，按键全部归它（Esc 关闭且不写回）
+        ExpressionEditorWindow expressionEditor = context.expressionEditor();
+
+        if (expressionEditor != null) {
+            ExpressionEditorWindow current = expressionEditor;
+            expressionEditor.keyPressed(event);
+
+            if (expressionEditor.finished() && context.expressionEditor() == current) {
+                context.closeExpressionEditor();
+            }
+
+            return true;
+        }
 
         // 工具栏菜单打开时：Esc 只关菜单
         if (topMenu != null) {
@@ -868,6 +926,12 @@ public class PathEditorScreen extends Screen {
 
     @Override
     public boolean charTyped(CharacterEvent event) {
+        ExpressionEditorWindow expressionEditor = context.expressionEditor();
+
+        if (expressionEditor != null) {
+            return expressionEditor.charTyped(event);
+        }
+
         if (topBar.charTyped(event)) {
             return true;
         }

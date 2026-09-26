@@ -52,6 +52,8 @@ public final class Draw {
     public static int SELECTED;
     public static int PLAYHEAD;
     public static int PATH_NODE;
+    /// 警告色：公式非法这类需要立刻被看见的提示
+    public static int WARNING;
 
     public static int BUTTON_BG;
     public static int BUTTON_BG_HOVER;
@@ -144,6 +146,7 @@ public final class Draw {
             SELECTED = 0xFFFFB74D;
             PLAYHEAD = 0xFFFF5252;
             PATH_NODE = 0xFF7CFC9A;
+            WARNING = 0xFFFF6B6B;
             BUTTON_BG = 0xFF2A2A33;
             BUTTON_BG_HOVER = 0xFF3A3A48;
             BUTTON_BG_ACTIVE = 0xFF2F5F9F;
@@ -175,6 +178,7 @@ public final class Draw {
             SELECTED = 0xFFD98200;
             PLAYHEAD = 0xFFD93025;
             PATH_NODE = 0xFF1E8E3E;
+            WARNING = 0xFFC5221F;
             BUTTON_BG = 0xFFE8E8EF;
             BUTTON_BG_HOVER = 0xFFD4D4DF;
             BUTTON_BG_ACTIVE = 0xFFB9D2F6;
@@ -282,7 +286,7 @@ public final class Draw {
         int textWidth = font().width(text);
         int boxWidth = textWidth + 6;
         int boxHeight = 14;
-        int x = Math.clamp(screenWidth - boxWidth - 2, 0, mouseX + 10);
+        int x = Math.min(mouseX + 10, Math.max(0, screenWidth - boxWidth - 2));
         int y = mouseY + 14;
 
         if (y + boxHeight > screenHeight) {

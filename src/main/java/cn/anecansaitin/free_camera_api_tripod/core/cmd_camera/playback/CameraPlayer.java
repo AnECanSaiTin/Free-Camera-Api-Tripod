@@ -4,7 +4,10 @@ import cn.anecansaitin.free_camera_api_tripod.api.animation.Evaluator;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.CameraAnimation;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Clip;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Curve;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ExpressionContext;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.path.Path;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.track.AnimationTrack;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.track.TickTrack;
 import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.CameraPose;
 import org.joml.Vector3f;
 import org.jspecify.annotations.NullMarked;
@@ -34,23 +37,46 @@ public class CameraPlayer {
     }
 
     /// 推进时间；仅在播放状态下生效
+    ///
+    /// 推进时把这一帧走过的时间区间交给「经过即触发」的扩展轨道（命令、事件等），
+    /// 循环回绕与末尾停住都不会漏掉或重复触发端点上的键
     public void tick(float deltaSeconds) {
         if (state != State.PLAYING) {
             return;
         }
 
         float duration = Math.max(animation.duration(), 0f);
+        float previous = time;
         time += deltaSeconds * speed;
 
         if (time < duration) {
+            advanceTracks(previous, time);
             return;
         }
 
         if (loop && duration > 0) {
             time %= duration;
+            // 回绕：先走到结尾，再从头走到新位置，跨过 0 的键不会被跳过
+            advanceTracks(previous, duration);
+            advanceTracks(0f, time);
         } else {
             time = duration;
             state = State.PAUSED;
+            // 停在末尾前把最后一段走完，末尾那一帧的键仍会触发
+            advanceTracks(previous, duration);
+        }
+    }
+
+    /// 把时间区间分发给实现了 {@link TickTrack} 的扩展轨道
+    private void advanceTracks(float fromTime, float toTime) {
+        if (!(toTime > fromTime)) {
+            return;
+        }
+
+        for (AnimationTrack track : animation.extensionTracks()) {
+            if (track instanceof TickTrack tickTrack) {
+                tickTrack.advance(fromTime, toTime);
+            }
         }
     }
 
@@ -58,6 +84,8 @@ public class CameraPlayer {
     public CameraPose evaluatePose(CameraPose dest) {
         Clip clip = animation.clip();
         Path path = animation.path();
+        // 每帧一份求值上下文：挂了公式的关键帧 / 路径节点按当前时间算，变量也按当前时间取轨道读数
+        ExpressionContext expression = new ExpressionContext(animation, time);
 
         if (animation.motionMode() == CameraAnimation.MotionMode.COORDINATE) {
             // 直接坐标模式：位置由三个坐标通道给出，与路径无关。
@@ -71,23 +99,23 @@ public class CameraPlayer {
                 Vector3f position = dest.position();
 
                 if (hasKeys(x)) {
-                    position.x = finiteOr(clip.evaluate(CameraAnimation.CHANNEL_POSITION_X, time), position.x);
+                    position.x = finiteOr(clip.evaluate(CameraAnimation.CHANNEL_POSITION_X, time, expression), position.x);
                 }
 
                 if (hasKeys(y)) {
-                    position.y = finiteOr(clip.evaluate(CameraAnimation.CHANNEL_POSITION_Y, time), position.y);
+                    position.y = finiteOr(clip.evaluate(CameraAnimation.CHANNEL_POSITION_Y, time, expression), position.y);
                 }
 
                 if (hasKeys(z)) {
-                    position.z = finiteOr(clip.evaluate(CameraAnimation.CHANNEL_POSITION_Z, time), position.z);
+                    position.z = finiteOr(clip.evaluate(CameraAnimation.CHANNEL_POSITION_Z, time, expression), position.z);
                 }
             }
 
             dest.positionValid(any);
         } else if (path.size() > 0) {
             // 位置通道的取值口径由动画决定：绝对距离直接用，百分比先乘总长再采样
-            float distance = animation.distanceToLength(clip.evaluate(CameraAnimation.CHANNEL_POSITION, time));
-            Vector3f evaluated = path.evaluate(distance, posCache);
+            float distance = animation.distanceToLength(clip.evaluate(CameraAnimation.CHANNEL_POSITION, time, expression));
+            Vector3f evaluated = path.evaluate(distance, posCache, expression);
 
             // 路径数据异常（总长或切线非有限值）时算出的是 NaN，绝不能把它交给相机
             if (isFinite(evaluated)) {
@@ -100,11 +128,11 @@ public class CameraPlayer {
             dest.positionValid(false);
         }
 
-        dest.rotation().set(clip.evaluate(time, rotEvaluator));
+        dest.rotation().set(clip.evaluate(time, rotEvaluator, expression));
         Curve fovCurve = clip.curve(CameraAnimation.CHANNEL_FOV);
 
         if (fovCurve != null && fovCurve.size() > 0) {
-            dest.fov(clip.evaluate(CameraAnimation.CHANNEL_FOV, time));
+            dest.fov(clip.evaluate(CameraAnimation.CHANNEL_FOV, time, expression));
             dest.fovValid(true);
         } else {
             // fov 通道没有关键帧时求值会得到 0，会把画面压成一个点；交给原版沿用玩家自己的 FOV

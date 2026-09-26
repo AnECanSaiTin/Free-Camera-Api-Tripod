@@ -109,10 +109,10 @@ public class WorldViewScreen extends Screen {
         return true;
     }
 
-    /// 暂停世界：查看期间世界不再变化，动画预览使用真实时间推进，不受影响
+    /// 世界内查看不暂停游戏：它就是用来一边看世界一边调相机的
     @Override
     public boolean isPauseScreen() {
-        return true;
+        return false;
     }
 
     @Override

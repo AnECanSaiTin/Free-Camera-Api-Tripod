@@ -4,6 +4,10 @@ import cn.anecansaitin.free_camera_api_tripod.api.animation.TrackKey;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.AnimationTrack;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.CameraAnimation;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.AnimationChannelRegistry;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.track.CurveTrack;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.track.RenamableTrack;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.track.TrackType;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.track.TrackTypeRegistry;
 import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.edit.CameraEditorModel;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.EditorContext;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.EditorLang;
@@ -12,6 +16,7 @@ import cn.anecansaitin.free_camera_api_tripod.core.editor.theme.Draw;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.theme.Icons;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.ButtonWidget;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.ContextMenu;
+import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.TextFieldWidget;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -43,6 +48,8 @@ public class TimelinePanel extends EditorPanel {
     private static final int COLUMN_GRAB_RADIUS = 3;
     private static final int RULER_HEIGHT = 14;
     private static final int ROW_HEIGHT = 16;
+    /// 轨道名长度上限：名称要在名称列里放得下
+    private static final int RENAME_MAX_LENGTH = 32;
     /// 播放状态条高度。它属于时间轴面板本身（位于标题栏正下方），面板拖到哪就跟到哪
     private static final int PLAY_BAR_HEIGHT = 22;
     private static final int PLAY_BAR_BUTTON_WIDTH = 20;
@@ -91,6 +98,10 @@ public class TimelinePanel extends EditorPanel {
     private String dragGroupPath;
     /// 当前选中的分组路径（折叠轴）；选中轨道时为 null
     private String selectedGroupPath;
+    /// 正在就地重命名的轨道 id；不在重命名时为 null
+    private String renamingTrackId;
+    /// 名称列的就地重命名输入框，随面板控件一起创建，未重命名时隐藏
+    private TextFieldWidget renameField;
     /// 排序拖拽的纵向累计位移：每满半个行高交换一次，交换后扣掉一个行高
     private double trackOrderAccum;
     /// 名称列宽度，可由分割线拖动调整
@@ -141,6 +152,11 @@ public class TimelinePanel extends EditorPanel {
         addBarButton(x, y, Component.literal(Icons.ZOOM_IN), this::zoomIn, EditorLang.t("timeline.zoom_in"));
         addBarButton(x, y, Component.literal(Icons.FIT), this::fitView, EditorLang.t("timeline.fit"));
         barEndX = x[0];
+
+        // 就地重命名输入框：正常不显示，进入重命名时由 updateRenameField 每帧摆到轨道行名称列上
+        renameField = widgets.add(new TextFieldWidget(new UiRect(bar.x(), bar.y(), 1, ROW_HEIGHT - 2), "", this::commitRename));
+        renameField.maxLength(RENAME_MAX_LENGTH);
+        renameField.visible(false);
     }
 
     /// 以可视区中心为基准放大时间轴
@@ -481,6 +497,7 @@ public class TimelinePanel extends EditorPanel {
     protected void renderContent(GuiGraphicsExtractor graphics, UiRect content, int mouseX, int mouseY) {
         Draw.canvas(graphics, content, Draw.CANVAS_BG);
         renderPlayBar(graphics, content);
+        updateRenameField(content);
         UiRect lane = laneRect(content);
         followPlayhead(lane);
         int rulerTop = rulerTop(content);
@@ -782,8 +799,14 @@ public class TimelinePanel extends EditorPanel {
         // 分割线的命中优先级在它之上，因此这里只可能落在 TrackRow 或空白处
         if (event.x() < content.x() + trackColumnWidth) {
             if (track != null) {
-                selectedGroupPath = null;
-                context.editor().selectTrack(track.id());
+                selectTrackRow(track);
+
+                // 双击名称列：能改标识的轨道就地重命名，不进排序拖拽
+                if (doubleClick && track instanceof RenamableTrack) {
+                    beginRename(track);
+                    return true;
+                }
+
                 drag = Drag.TRACK_ORDER;
                 dragTrackId = track.id();
                 trackOrderAccum = 0;
@@ -807,7 +830,7 @@ public class TimelinePanel extends EditorPanel {
             }
 
             clearMultiSelection();
-            context.editor().selectTrack(track.id());
+            selectTrackRow(track);
             context.editor().selectKey(keyIndex);
             drag = Drag.KEY;
             dragRow = index;
@@ -826,7 +849,7 @@ public class TimelinePanel extends EditorPanel {
         // 双击空白处：在该时间加关键帧
         if (doubleClick && track != null) {
             clearMultiSelection();
-            context.editor().selectTrack(track.id());
+            selectTrackRow(track);
             float time = context.snapTime(xToTime(content, event.x()));
 
             if (context.editor().addKey(track, time) >= 0) {
@@ -838,7 +861,7 @@ public class TimelinePanel extends EditorPanel {
 
         // 空白处：开始框选；单击而不拖动即等于清空已有框选
         if (track != null) {
-            context.editor().selectTrack(track.id());
+            selectTrackRow(track);
         }
 
         clearMultiSelection();
@@ -1034,10 +1057,20 @@ public class TimelinePanel extends EditorPanel {
             });
         }
 
+        // 扩展轨道（指令、事件等）由使用者自行插入、改名与移除；曲线轨道跟着通道走，不在菜单里动
+        if (track != null && !(track instanceof CurveTrack)) {
+            if (track instanceof RenamableTrack) {
+                menu.item("", EditorLang.t("timeline.rename_track"), () -> beginRename(track));
+            }
+
+            menu.item(Icons.REMOVE, EditorLang.t("timeline.remove_track"), () -> removeTrack(track));
+        }
+
         if (track != null) {
             menu.separator();
         }
 
+        menu.submenu(Icons.ADD, EditorLang.t("timeline.insert_track"), insertTrackMenu());
         menu.item(Icons.FIT, EditorLang.t("timeline.fit"), this::fitView);
         menu.item(Icons.ZOOM_IN, EditorLang.t("timeline.zoom_in"), () -> zoomAt(lane.centerX(), 1.25f));
         menu.item(Icons.ZOOM_OUT, EditorLang.t("timeline.zoom_out"), () -> zoomAt(lane.centerX(), 0.8f));
@@ -1046,6 +1079,158 @@ public class TimelinePanel extends EditorPanel {
                 context::snapEnabled, () -> context.snapEnabled(!context.snapEnabled()));
         menu.item(Icons.RESET, EditorLang.t("timeline.reset_column"), this::resetColumnWidth);
         return menu;
+    }
+
+    /// 插入轨道的子菜单：只列提供工厂的类型（没有工厂的类型只作占位，造不出实例）
+    private ContextMenu insertTrackMenu() {
+        ContextMenu menu = new ContextMenu();
+        boolean any = false;
+
+        for (TrackType type : TrackTypeRegistry.all()) {
+            TrackType.TrackFactory factory = type.factory();
+
+            if (factory == null) {
+                continue;
+            }
+
+            any = true;
+            menu.item(Icons.ADD, type.label(), () -> insertTrack(type, factory));
+        }
+
+        if (!any) {
+            menu.item("", EditorLang.t("timeline.no_insertable_track"), () -> {
+            });
+        }
+
+        return menu;
+    }
+
+    /// 新建一条扩展轨道并选中它；id 在动画内保持唯一（command、command_2 …）
+    private void insertTrack(TrackType type, TrackType.TrackFactory factory) {
+        String id = uniqueTrackId(type);
+        context.animation().addExtensionTrack(factory.create(id));
+        context.editor().selectTrack(id);
+        context.notify(EditorLang.t("notify.track_inserted", type.label()));
+    }
+
+    /// 移除一条扩展轨道；调用方已保证它不属于曲线通道
+    private void removeTrack(AnimationTrack track) {
+        if (!context.animation().removeExtensionTrack(track.id())) {
+            return;
+        }
+
+        clearMultiSelection();
+        context.editor().selectTrack(null);
+        context.notify(EditorLang.t("notify.track_removed", track.label()));
+    }
+
+    /// 选中某条轨道：分组选中与轨道选中互斥，避免两处同时高亮
+    private void selectTrackRow(AnimationTrack track) {
+        selectedGroupPath = null;
+        context.editor().selectTrack(track.id());
+    }
+
+    /// 进入就地重命名：只有能改标识的轨道（扩展轨道）响应，同时把它选中
+    private void beginRename(AnimationTrack track) {
+        if (!(track instanceof RenamableTrack) || renameField == null) {
+            return;
+        }
+
+        selectTrackRow(track);
+        renamingTrackId = track.id();
+        renameField.value(track.id());
+        renameField.visible(true);
+        renameField.edit();
+        widgets.focus(renameField);
+    }
+
+    /// 重命名输入框：每帧摆到目标轨道行的名称列上；行滚出视口或编辑结束时收起
+    private void updateRenameField(UiRect content) {
+        if (renamingTrackId == null || renameField == null) {
+            return;
+        }
+
+        if (!renameField.editing()) {
+            renamingTrackId = null;
+            renameField.visible(false);
+            return;
+        }
+
+        List<Row> rows = rows();
+        int index = -1;
+        int indent = 0;
+
+        for (int i = 0; i < rows.size(); i++) {
+            if (rows.get(i) instanceof TrackRow trackRow && trackRow.track().id().equals(renamingTrackId)) {
+                index = i;
+                indent = 4 + trackRow.depth() * INDENT_STEP;
+                break;
+            }
+        }
+
+        if (index < 0) {
+            // 轨道没了（被删或被读档换掉），直接收起
+            renamingTrackId = null;
+            renameField.visible(false);
+            return;
+        }
+
+        int y = rowY(content, index);
+
+        if (y + ROW_HEIGHT <= rowsTop(content) || y >= content.bottom()) {
+            // 行不在视口内：先藏起来，编辑状态保留，滚回来还能接着改
+            renameField.visible(false);
+            return;
+        }
+
+        int x = content.x() + indent + 2;
+        int width = Math.max(20, content.x() + trackColumnWidth - 4 - x);
+        renameField.rect(new UiRect(x, y + 1, width, ROW_HEIGHT - 2));
+        renameField.visible(true);
+    }
+
+    /// 重命名提交（回车或失焦）：写回轨道标识；新名字非法或已占用时保持原名并提示
+    private void commitRename(String value) {
+        String id = renamingTrackId;
+        renamingTrackId = null;
+
+        if (renameField != null) {
+            renameField.visible(false);
+        }
+
+        if (id == null) {
+            return;
+        }
+
+        String name = value.strip();
+
+        if (name.isEmpty() || name.equals(id)) {
+            return;
+        }
+
+        if (!context.animation().renameExtensionTrack(id, name)) {
+            context.notify(EditorLang.t("notify.track_rename_failed", name));
+            return;
+        }
+
+        // 选中状态跟着换到新标识，否则面板会认为"没有选中轨道"
+        if (id.equals(context.editor().selectedTrackId())) {
+            context.editor().selectTrack(name);
+        }
+
+        context.notify(EditorLang.t("notify.track_renamed", name));
+    }
+
+    /// 与动画内已有轨道不重名的名字：默认取类型的显示名（已本地化），重名时挂递增后缀
+    private String uniqueTrackId(TrackType type) {
+        String base = type.label().getString();
+        String id = base;
+
+        for (int suffix = 2; context.animation().trackById(id) != null; suffix++) {
+            id = base + "_" + suffix;
+        }
+
+        return id;
     }
 
     /// 名称列宽度恢复默认

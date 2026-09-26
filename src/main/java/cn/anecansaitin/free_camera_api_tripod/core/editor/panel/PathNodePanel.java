@@ -1,6 +1,7 @@
 package cn.anecansaitin.free_camera_api_tripod.core.editor.panel;
 
 import cn.anecansaitin.free_camera_api_tripod.api.animation.CameraAnimation;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.DynamicField;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.path.Path;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.path.PathMode;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.path.PathNodec;
@@ -13,7 +14,7 @@ import cn.anecansaitin.free_camera_api_tripod.core.editor.theme.Draw;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.theme.Icons;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.ButtonWidget;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.ContextMenu;
-import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.NumberFieldWidget;
+import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.ExpressionFieldWidget;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -180,16 +181,19 @@ public class PathNodePanel extends EditorPanel {
         PathNodec node = path.node(index);
         y = nodeDropdownRow(x, y, index, node);
         y = distanceToNodeRow(x, y);
-        y = vectorRow(x, y, width, EditorLang.t("inspector.path.position"), node.position(),
-                (axis, value) -> setPosition(index, axis, value), () -> path.node(index).position());
+        y = vectorRow(x, y, width, EditorLang.t("inspector.path.position"),
+                (axis, value) -> setPosition(index, axis, value), () -> path.node(index).position(),
+                new DynamicField[]{DynamicField.NODE_X, DynamicField.NODE_Y, DynamicField.NODE_Z});
         y = modeRow(x, y, width, index, path);
 
         // 切线与自动平滑只对贝塞尔段有意义，其它模式下隐藏，避免摆一堆不起作用的输入框
         if (node.pathMode() == PathMode.BEZIER) {
-            y = vectorRow(x, y, width, EditorLang.t("inspector.path.in_tangent"), node.inTangent(),
-                    (axis, value) -> setTangent(index, true, axis, value), () -> path.node(index).inTangent());
-            y = vectorRow(x, y, width, EditorLang.t("inspector.path.out_tangent"), node.outTangent(),
-                    (axis, value) -> setTangent(index, false, axis, value), () -> path.node(index).outTangent());
+            y = vectorRow(x, y, width, EditorLang.t("inspector.path.in_tangent"),
+                    (axis, value) -> setTangent(index, true, axis, value), () -> path.node(index).inTangent(),
+                    new DynamicField[]{DynamicField.NODE_IN_X, DynamicField.NODE_IN_Y, DynamicField.NODE_IN_Z});
+            y = vectorRow(x, y, width, EditorLang.t("inspector.path.out_tangent"),
+                    (axis, value) -> setTangent(index, false, axis, value), () -> path.node(index).outTangent(),
+                    new DynamicField[]{DynamicField.NODE_OUT_X, DynamicField.NODE_OUT_Y, DynamicField.NODE_OUT_Z});
             y = smoothRow(x, y, width, index, path);
         }
 
@@ -275,9 +279,10 @@ public class PathNodePanel extends EditorPanel {
         return y + ROW_HEIGHT;
     }
 
-    /// 三分量数值行：X / Y / Z 各一个输入框，刷新器每帧从节点同步当前值。
-    /// 格间留 2 像素，最后一格吃掉取整余量，右边界与其它行严格对齐
-    private int vectorRow(int x, int y, int width, Component label, Vector3fc value, AxisSetter setter, VectorGetter getter) {
+    /// 三分量数值行：X / Y / Z 各一个输入框，右侧都带数值 / 动态模式切换按钮，
+    /// 刷新器每帧从节点同步当前值。格间留 2 像素，最后一格吃掉取整余量，右边界与其它行严格对齐
+    private int vectorRow(int x, int y, int width, Component label, AxisSetter setter,
+                          VectorGetter getter, DynamicField[] fields) {
         labels.add(new LabelDraw(label, x, y + 3, Draw.TEXT_DIM, -1));
         int cell = Math.max(20, (width - 4) / 3);
         String[] axes = {"X", "Y", "Z"};
@@ -285,19 +290,45 @@ public class PathNodePanel extends EditorPanel {
         for (int axis = 0; axis < 3; axis++) {
             int cellX = x + LABEL_WIDTH + axis * (cell + 2);
             int cellWidth = axis == 2 ? Math.max(1, contentRight - cellX) : cell;
-            float initial = axis == 0 ? value.x() : axis == 1 ? value.y() : value.z();
-            int capturedAxis = axis;
-            NumberFieldWidget field = new NumberFieldWidget(new UiRect(cellX, y + 1, cellWidth, FIELD_HEIGHT), initial, v -> setter.set(capturedAxis, v));
+            Component title = Component.empty().append(label).append(" " + axes[axis]);
+            ExpressionFieldWidget field = new ExpressionFieldWidget(context,
+                    new UiRect(cellX, y + 1, cellWidth, FIELD_HEIGHT), title,
+                    nodeAccessor(context.editor().selectedPathNode().index(), axis, fields[axis], setter, getter));
             field.decimals(2);
             widgets.add(field);
-            refreshers.add(() -> {
-                Vector3fc current = getter.get();
-                field.value(capturedAxis == 0 ? current.x() : capturedAxis == 1 ? current.y() : current.z());
-            });
+            refreshers.add(field::refresh);
             labels.add(new LabelDraw(Component.literal(axes[axis]), cellX + 2, y + 3, Draw.TEXT_DISABLED, -1));
         }
 
         return y + ROW_HEIGHT;
+    }
+
+    /// 路径节点某个分量的读写入口：固定数值走面板原有的 getter / setter，公式存在节点自己身上
+    private ExpressionFieldWidget.Accessor nodeAccessor(int index, int axis, DynamicField field,
+                                                        AxisSetter setter, VectorGetter getter) {
+        return new ExpressionFieldWidget.Accessor() {
+            @Override
+            public float value() {
+                Vector3fc current = getter.get();
+                return axis == 0 ? current.x() : axis == 1 ? current.y() : current.z();
+            }
+
+            @Override
+            public void value(float value) {
+                setter.set(axis, value);
+            }
+
+            @Override
+            public @Nullable String expression() {
+                Path path = context.editor().path();
+                return index >= 0 && index < path.size() ? path.node(index).expressions().get(field) : null;
+            }
+
+            @Override
+            public void expression(@Nullable String expression) {
+                context.editor().updatePathNode(index, node -> node.expression(field, expression));
+            }
+        };
     }
 
     /// 路径模式：线性 / 贝塞尔 / 卡蒙罗姆三选一。最后一格吃掉余量，右边界与其它行对齐

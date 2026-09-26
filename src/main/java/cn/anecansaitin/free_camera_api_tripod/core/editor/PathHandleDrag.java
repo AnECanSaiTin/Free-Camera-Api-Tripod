@@ -275,8 +275,10 @@ public final class PathHandleDrag {
         return Mth.sqrt(deltaX * deltaX + deltaY * deltaY);
     }
 
+    /// 夹取到 [min, max]。写成 max/min 组合而不是 Math.clamp：调用方可能在画面被压扁时给出 min > max，
+    /// 那种情况下 clamp 会直接抛异常
     private static double clamp(double value, double min, double max) {
-        return Math.clamp(max, min, value);
+        return Math.max(min, Math.min(max, value));
     }
 
     private static boolean modifierDown(int leftKey, int rightKey) {

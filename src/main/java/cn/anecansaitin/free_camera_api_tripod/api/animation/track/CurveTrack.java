@@ -95,12 +95,7 @@ public class CurveTrack implements AnimationTrack {
         return curve.moveKey(index, newTime);
     }
 
-    @Override
-    public float valueAt(float time) {
-        return curve.evaluate(time);
-    }
-
-    @Override
+    /// 底层曲线：图表编辑器与序列化都从这里取值 / 取键
     public Curve curve() {
         return curve;
     }

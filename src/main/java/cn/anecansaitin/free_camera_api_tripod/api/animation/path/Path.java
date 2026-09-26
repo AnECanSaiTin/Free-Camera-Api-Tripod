@@ -1,11 +1,14 @@
 package cn.anecansaitin.free_camera_api_tripod.api.animation.path;
 
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.DynamicField;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ExpressionContext;
 import cn.anecansaitin.free_camera_api_tripod.util.SplineUtils;
 import it.unimi.dsi.fastutil.doubles.DoubleArrayList;
 import it.unimi.dsi.fastutil.floats.FloatArrayList;
 import org.joml.Vector3f;
 import org.joml.Vector3fc;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 
@@ -30,12 +33,17 @@ public class Path implements Pathc {
 
     @Override
     public Vector3f evaluate(float distance, Vector3f dest) {
+        return evaluate(distance, dest, null);
+    }
+
+    /// 带上下文的求值：节点上挂了公式的坐标 / 切线分量按公式算，其余用固定数值
+    public Vector3f evaluate(float distance, Vector3f dest, @Nullable ExpressionContext context) {
         int size = nodes.size();
 
         switch (size) {
             case 0 -> throw new IllegalStateException("Cannot evaluate path: no path nodes available");
             case 1 -> {
-                return dest.set(nodes.getFirst().position());
+                return dest.set(position(nodes.getFirst(), context));
             }
         }
 
@@ -44,7 +52,7 @@ public class Path implements Pathc {
         PathNode left = nodes.get(index);
 
         if (index == size - 1) {
-            return dest.set(left.position());
+            return dest.set(position(left, context));
         }
 
         PathNode right = nodes.get(index + 1);
@@ -56,20 +64,20 @@ public class Path implements Pathc {
         delta = Math.clamp(delta, 0f, 1f);
 
         return switch (left.pathMode()) {
-            case LINEAR -> dest.set(left.position()).lerp(right.position(), delta);
+            case LINEAR -> dest.set(position(left, context)).lerp(position(right, context), delta);
             case BEZIER -> SplineUtils.bezier(
-                    left.position(),
-                    left.position().add(left.outTangent(), new Vector3f()),
-                    right.position().add(right.inTangent(), new Vector3f()),
-                    right.position(),
+                    position(left, context),
+                    position(left, context).add(outTangent(left, context), new Vector3f()),
+                    position(right, context).add(inTangent(right, context), new Vector3f()),
+                    position(right, context),
                     delta,
                     dest
             );
             case CATMULL_ROM -> SplineUtils.catmullRom(
-                    catmullRomP1(index),
-                    left.position(),
-                    right.position(),
-                    catmullRomP4(index),
+                    catmullRomP1(index, context),
+                    position(left, context),
+                    position(right, context),
+                    catmullRomP4(index, context),
                     delta,
                     dest
             );
@@ -78,6 +86,52 @@ public class Path implements Pathc {
 
     public Vector3f evaluate(Vector3f dest, float progress) {
         return evaluate((float) (progress * totalLength), dest);
+    }
+
+    public Vector3f evaluate(Vector3f dest, float progress, @Nullable ExpressionContext context) {
+        return evaluate((float) (progress * totalLength), dest, context);
+    }
+
+    /// 节点位置：挂了公式的分量按公式算，其余用固定值
+    private static Vector3fc position(PathNodec node, @Nullable ExpressionContext context) {
+        return resolve(node, node.position(), DynamicField.NODE_X, DynamicField.NODE_Y, DynamicField.NODE_Z, context);
+    }
+
+    private static Vector3fc inTangent(PathNodec node, @Nullable ExpressionContext context) {
+        return resolve(node, node.inTangent(), DynamicField.NODE_IN_X, DynamicField.NODE_IN_Y, DynamicField.NODE_IN_Z, context);
+    }
+
+    private static Vector3fc outTangent(PathNodec node, @Nullable ExpressionContext context) {
+        return resolve(node, node.outTangent(), DynamicField.NODE_OUT_X, DynamicField.NODE_OUT_Y, DynamicField.NODE_OUT_Z, context);
+    }
+
+    /// 按公式覆盖向量的三个分量；没有上下文或该向量一个分量都没挂公式时直接返回原向量，不产生临时对象
+    private static Vector3fc resolve(PathNodec node, Vector3fc source, DynamicField x, DynamicField y, DynamicField z,
+                                     @Nullable ExpressionContext context) {
+        if (context == null || !(node instanceof PathNode pathNode)) {
+            return source;
+        }
+
+        if (!pathNode.dynamic(x) && !pathNode.dynamic(y) && !pathNode.dynamic(z)) {
+            return source;
+        }
+
+        return new Vector3f(
+                component(pathNode, x, source.x(), context),
+                component(pathNode, y, source.y(), context),
+                component(pathNode, z, source.z(), context));
+    }
+
+    /// 单个分量：挂了公式按公式算，算不出来（公式非法或变量缺失）回退固定值
+    private static float component(PathNode node, DynamicField field, float fallback, ExpressionContext context) {
+        String expression = node.expression(field);
+
+        if (expression == null) {
+            return fallback;
+        }
+
+        float evaluated = context.evaluate(expression);
+        return Float.isNaN(evaluated) ? fallback : evaluated;
     }
 
     public void node(PathNode node) {
@@ -231,10 +285,12 @@ public class Path implements Pathc {
                     post.position()
             );
             case CATMULL_ROM -> SplineUtils.catmullRomLength(
-                    catmullRomP1(currentIndex),
+                    // 弧长是静态度量：一律按固定数值算，不接求值上下文。
+                    // 否则「路径总长」会随时间变化，百分比口径与「百分比 → 弧长」的换算就无从谈起
+                    catmullRomP1(currentIndex, null),
                     pre.position(),
                     post.position(),
-                    catmullRomP4(currentIndex)
+                    catmullRomP4(currentIndex, null)
             );
         };
     }
@@ -313,21 +369,21 @@ public class Path implements Pathc {
         return -(low + 1);
     }
 
-    private Vector3fc catmullRomP1(int currentIndex) {
+    private Vector3fc catmullRomP1(int currentIndex, @Nullable ExpressionContext context) {
         if (currentIndex > 0) {
             PathNode node = nodes.get(currentIndex - 1);
-            return node.pathMode() == PathMode.CATMULL_ROM ? node.position() : nodes.get(currentIndex).position();
+            return node.pathMode() == PathMode.CATMULL_ROM ? position(node, context) : position(nodes.get(currentIndex), context);
         } else {
-            return nodes.get(currentIndex).position();
+            return position(nodes.get(currentIndex), context);
         }
     }
 
-    private Vector3fc catmullRomP4(int currentIndex) {
+    private Vector3fc catmullRomP4(int currentIndex, @Nullable ExpressionContext context) {
         if (currentIndex < size() - 2) {
             PathNode node = nodes.get(currentIndex + 2);
-            return node.pathMode() == PathMode.CATMULL_ROM ? node.position() : nodes.get(currentIndex + 1).position();
+            return node.pathMode() == PathMode.CATMULL_ROM ? position(node, context) : position(nodes.get(currentIndex + 1), context);
         } else {
-            return nodes.get(currentIndex + 1).position();
+            return position(nodes.get(currentIndex + 1), context);
         }
     }
 
