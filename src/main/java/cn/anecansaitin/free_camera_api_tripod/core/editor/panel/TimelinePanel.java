@@ -52,6 +52,8 @@ public class TimelinePanel extends EditorPanel {
     private static final int RENAME_MAX_LENGTH = 32;
     /// 播放状态条高度。它属于时间轴面板本身（位于标题栏正下方），面板拖到哪就跟到哪
     private static final int PLAY_BAR_HEIGHT = 22;
+    /// 适配时左右各留的像素：起点与终点的键不会贴在边框上
+    private static final float FIT_TIME_PADDING = 12f;
     private static final int PLAY_BAR_BUTTON_WIDTH = 20;
     /// 播放栏按钮高度：取面板统一的控件高度，与其它界面按钮一致
     private static final int PLAY_BAR_BUTTON_HEIGHT = EditorPanel.CONTROL_HEIGHT;
@@ -766,6 +768,13 @@ public class TimelinePanel extends EditorPanel {
             return true;
         }
 
+        // 时间区（标尺与轨道行的时间部分）按下即把播放头挪到点的地方。
+        // 轨道行有分组头、关键帧、空白三套分支，各自 return 会让定位时有时无，所以统一在这里处理；
+        // 命中关键帧时不抢——那是选中 / 拖动键的操作
+        if (event.button() == 0 && keyIndex < 0 && lane.contains(event.x(), event.y())) {
+            context.player().seek(context.snapTime(xToTime(content, event.x())));
+        }
+
         // 分割线：调整名称列宽度
         if (columnSplitterRect(content).contains(event.x(), event.y())) {
             drag = Drag.COLUMN;
@@ -859,7 +868,7 @@ public class TimelinePanel extends EditorPanel {
             return true;
         }
 
-        // 空白处：开始框选；单击而不拖动即等于清空已有框选
+        // 空白处：开始框选；播放头已在按下时定位（见方法开头的时间区处理）
         if (track != null) {
             selectTrackRow(track);
         }
@@ -930,7 +939,11 @@ public class TimelinePanel extends EditorPanel {
             if (drag == Drag.MARQUEE) {
                 marqueeEndX = event.x();
                 marqueeEndY = event.y();
-                commitMarquee(contentRect());
+
+                // 播放头在按下时就已经挪到点的地方；原地松开不当成框选（真正的框选要拖出一段距离）
+                if (marqueeStartX != marqueeEndX || marqueeStartY != marqueeEndY) {
+                    commitMarquee(contentRect());
+                }
             }
 
             drag = Drag.NONE;
@@ -1006,13 +1019,12 @@ public class TimelinePanel extends EditorPanel {
         context.viewStartTime(timeAtCursor - (float) (centerX - laneRect(content).x()) / context.pixelsPerSecond());
     }
 
-    /// 让整段动画适配当前宽度
-    /// 缩放到刚好容纳整段动画
+    /// 缩放到刚好容纳整段动画，左右各留一点余量
     public void fitView() {
         UiRect content = contentRect();
         float duration = Math.max(0.5f, context.duration());
-        context.pixelsPerSecond((laneRect(content).width() - 24f) / duration);
-        context.viewStartTime(-8f / context.pixelsPerSecond());
+        context.pixelsPerSecond(Math.max(1.0E-3f, (laneRect(content).width() - FIT_TIME_PADDING * 2) / duration));
+        context.viewStartTime(-FIT_TIME_PADDING / context.pixelsPerSecond());
     }
 
     /// 时间轴右键菜单；菜单项随鼠标位置变化：落在轨道上即可加帧，落在关键帧上还能删帧
@@ -1057,9 +1069,10 @@ public class TimelinePanel extends EditorPanel {
             });
         }
 
-        // 扩展轨道（指令、事件等）由使用者自行插入、改名与移除；曲线轨道跟着通道走，不在菜单里动
-        if (track != null && !(track instanceof CurveTrack)) {
-            if (track instanceof RenamableTrack) {
+        // 扩展轨道（指令、事件等）由使用者自行插入、改名与移除；通用曲线轨道同样可以改名与移除，
+        // 但相机自身的属性通道跟着播放逻辑走，名字动不得
+        if (track != null && !CameraAnimation.isCameraChannel(track.id())) {
+            if (track instanceof RenamableTrack || track instanceof CurveTrack) {
                 menu.item("", EditorLang.t("timeline.rename_track"), () -> beginRename(track));
             }
 
@@ -1081,10 +1094,11 @@ public class TimelinePanel extends EditorPanel {
         return menu;
     }
 
-    /// 插入轨道的子菜单：只列提供工厂的类型（没有工厂的类型只作占位，造不出实例）
+    /// 插入轨道的子菜单：一条通用曲线轨道，加上各扩展轨道类型中提供了工厂的那些
     private ContextMenu insertTrackMenu() {
         ContextMenu menu = new ContextMenu();
-        boolean any = false;
+        // 通用曲线轨道不对应任何相机属性，只给变量读数用
+        menu.item(Icons.ADD, EditorLang.t("timeline.insert_curve_track"), this::insertCurveTrack);
 
         for (TrackType type : TrackTypeRegistry.all()) {
             TrackType.TrackFactory factory = type.factory();
@@ -1093,16 +1107,23 @@ public class TimelinePanel extends EditorPanel {
                 continue;
             }
 
-            any = true;
             menu.item(Icons.ADD, type.label(), () -> insertTrack(type, factory));
         }
 
-        if (!any) {
-            menu.item("", EditorLang.t("timeline.no_insertable_track"), () -> {
-            });
+        return menu;
+    }
+
+    /// 新建一条通用曲线轨道并选中它；默认名按当前语言拼成「曲线1」「Curve1」这样
+    private void insertCurveTrack() {
+        String baseName = EditorLang.t("timeline.curve_track_name").getString();
+        CurveTrack track = context.animation().addCurveTrack(baseName);
+
+        if (track == null) {
+            return;
         }
 
-        return menu;
+        context.editor().selectTrack(track.id());
+        context.notify(EditorLang.t("notify.track_inserted", track.label()));
     }
 
     /// 新建一条扩展轨道并选中它；id 在动画内保持唯一（command、command_2 …）
@@ -1113,9 +1134,13 @@ public class TimelinePanel extends EditorPanel {
         context.notify(EditorLang.t("notify.track_inserted", type.label()));
     }
 
-    /// 移除一条扩展轨道；调用方已保证它不属于曲线通道
+    /// 移除一条轨道：扩展轨道走扩展接口，曲线轨道（通用曲线轨道）走通道接口
     private void removeTrack(AnimationTrack track) {
-        if (!context.animation().removeExtensionTrack(track.id())) {
+        boolean removed = track instanceof CurveTrack
+                ? context.animation().removeChannel(track.id())
+                : context.animation().removeExtensionTrack(track.id());
+
+        if (!removed) {
             return;
         }
 
@@ -1130,9 +1155,9 @@ public class TimelinePanel extends EditorPanel {
         context.editor().selectTrack(track.id());
     }
 
-    /// 进入就地重命名：只有能改标识的轨道（扩展轨道）响应，同时把它选中
+    /// 进入就地重命名：能改标识的轨道（扩展轨道与通用曲线轨道）响应，同时把它选中
     private void beginRename(AnimationTrack track) {
-        if (!(track instanceof RenamableTrack) || renameField == null) {
+        if (renameField == null || (!(track instanceof RenamableTrack) && !(track instanceof CurveTrack))) {
             return;
         }
 
@@ -1208,7 +1233,12 @@ public class TimelinePanel extends EditorPanel {
             return;
         }
 
-        if (!context.animation().renameExtensionTrack(id, name)) {
+        AnimationTrack track = context.animation().trackById(id);
+        boolean renamed = track instanceof CurveTrack
+                ? context.animation().renameCurveTrack(id, name)
+                : context.animation().renameExtensionTrack(id, name);
+
+        if (!renamed) {
             context.notify(EditorLang.t("notify.track_rename_failed", name));
             return;
         }

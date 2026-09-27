@@ -80,6 +80,8 @@ public final class EditorConfig {
                         " F9 pans the timeline one second to the left (checks the 0s left bound),",
                         " F10 delivers a right click at the current cursor position (drives context menus",
                         " from scripts, which cannot send a right click themselves),",
+                        " F7 / F8 deliver a wheel step in the same way (scrolls lists",
+                        " and the timeline from scripts, which cannot send a wheel either),",
                         " F12 toggles the full-screen world view.")
                 .define("test_keys", false);
         BUILDER.pop();

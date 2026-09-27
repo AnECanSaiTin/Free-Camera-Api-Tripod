@@ -1,7 +1,12 @@
 package cn.anecansaitin.free_camera_api_tripod.core.editor;
 
 import cn.anecansaitin.free_camera_api_tripod.api.animation.CameraAnimation;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ExpressionContext;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ConstantValue;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.CustomFunction;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Expression;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ExpressionSolver;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.FormulaValue;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.TrackValue;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Variable;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.CurveTrack;
 import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.playback.CameraPlayer;
@@ -9,6 +14,9 @@ import cn.anecansaitin.free_camera_api_tripod.core.editor.layout.UiRect;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.theme.Draw;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.theme.Icons;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.ButtonWidget;
+import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.EditorWidget;
+import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.LabelWidget;
+import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.TextFieldWidget;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.WidgetHost;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.Window;
@@ -32,8 +40,11 @@ import java.util.function.Consumer;
 /// 屏幕在最上层绘制它并优先派发输入，直到 {@link #finished()} 为真才关掉。
 ///
 /// 变量表里的 `+` / `−` 直接增删动画的变量（与变量面板操作同一份数据），点变量名把它插到光标处；
-/// 函数表同理，插入模板并把光标停进括号里。输入区下方实时给出当前公式的求值结果，
+/// 函数表同理，插入模板并把光标停进括号里。标题栏右侧实时给出当前公式的求值结果，
 /// 公式非法时转成警告色并说明原因——但**不会**阻止保存，求值失败时播放链会回退到固定数值。
+///
+/// 唯一拦住不让保存的是**自嵌套**：公式引用了绑定到本轨道的变量，那取到的是轨道上的数值模式取值，
+/// 与本键播放时的取值不是一回事，改了就说不清，所以标题栏标红并按住「确定」。
 public final class ExpressionEditorWindow {
     private static final int PADDING = 8;
     /// 窗口内第一行：窗口标题 + 实时求值结果
@@ -53,8 +64,19 @@ public final class ExpressionEditorWindow {
     private static final int MAX_HEIGHT = 270;
     /// 公式长度上限，避免一行行堆到看不见头
     private static final int MAX_TEXT_LENGTH = 512;
+    /// 参数输入框的宽度与长度上限
+    private static final int PARAMETER_FIELD_WIDTH = 150;
+    private static final int PARAMETER_MAX_LENGTH = 64;
     /// 变量表占右栏的比例，其余留给函数表
     private static final float VARIABLE_SECTION_RATIO = 0.58f;
+
+    /// 编辑函数体时的参数栏：窗口在第二行摆一个输入框，改动即时写回。
+    /// 预览与「能不能保存」都按这份参数判定
+    public interface Parameters {
+        List<String> get();
+
+        void set(List<String> parameters);
+    }
 
     private static final int KEY_ESCAPE = 256;
     private static final int KEY_ENTER = 257;
@@ -73,19 +95,52 @@ public final class ExpressionEditorWindow {
     private record FunctionItem(String label, String template) {
     }
 
-    /// 与 {@link Expression} 支持的内置函数保持一致
-    private static final List<FunctionItem> FUNCTIONS = List.of(
-            new FunctionItem("min(a, b)", "min()"),
-            new FunctionItem("max(a, b)", "max()"),
-            new FunctionItem("random()", "random()"),
-            new FunctionItem("random(a, b)", "random()"),
-            new FunctionItem("sin(x)", "sin()"),
-            new FunctionItem("cos(x)", "cos()"));
+    /// 变量表的一行：底板铺整行（底色 + 点击），名字与取值来源分两段排。
+    /// 两层是分开的控件，所以名字与来源能用不同颜色，整行的可点区域又只有一处
+    private record VariableRow(LabelWidget base, LabelWidget name, LabelWidget source, Variable variable) {
+    }
+
+    /// 函数表的一行：底板铺整行，文字只有一段
+    private record FunctionRow(LabelWidget base, LabelWidget label, FunctionItem item) {
+    }
+
+    /// 函数表的内容：内置函数（清单来自 {@link Expression}，避免两处不同步）+ 动画里的自定义函数。
+    /// 自定义函数随时可加，所以每次现拼一份（几十项，开销可忽略）
+    private List<FunctionItem> functionItems() {
+        List<FunctionItem> items = new ArrayList<>(Expression.BUILTIN_FUNCTIONS.size() + 4);
+
+        for (String signature : Expression.BUILTIN_FUNCTIONS) {
+            items.add(new FunctionItem(signature, functionName(signature) + "()"));
+        }
+
+        for (CustomFunction function : animation.functions()) {
+            items.add(new FunctionItem(function.name() + "(" + String.join(", ", function.parameters()) + ")",
+                    function.name() + "()"));
+        }
+
+        return items;
+    }
+
+    /// 函数名就是签名里 `(` 之前的那一段
+    private static String functionName(String signature) {
+        int at = signature.indexOf('(');
+        return at < 0 ? signature : signature.substring(0, at);
+    }
 
     private final CameraAnimation animation;
     private final CameraPlayer player;
     /// 正在编辑的字段名（例如「取值」「位置 X」），显示在标题右侧，用来区分开的是哪个数值的公式
     private final Component fieldLabel;
+    /// 这条公式所属的轨道 id；不属于任何轨道（例如变量自己的公式）时为 null。自嵌套判定要用
+    private final @Nullable String trackId;
+    /// 编辑函数体时的参数栏；普通的公式编辑为 null，那时不显示参数输入框
+    private final @Nullable Parameters parameters;
+    /// 参数输入框；不编辑函数体时为 null
+    private final @Nullable TextFieldWidget parameterField;
+    /// 上一次参数提交被拒的原因（有参数名写不进公式）；没问题时为 null
+    private @Nullable Component parameterProblem;
+    /// 编辑中的参数名：改动先落在窗口里，点「确定」才写回函数，取消就原样丢弃
+    private final List<String> editingParameters;
     private final Consumer<String> onConfirm;
 
     private final WidgetHost widgets = new WidgetHost();
@@ -98,6 +153,11 @@ public final class ExpressionEditorWindow {
     private boolean followCaret = true;
     /// 变量表里被点中的那一个，`−` 按钮删的就是它
     private @Nullable Variable selected;
+    /// 两个列表当前摆出来的行控件；行数或滚动位置一变就整批换掉
+    private final List<VariableRow> variableRows = new ArrayList<>();
+    private final List<FunctionRow> functionRows = new ArrayList<>();
+    /// 上一次摆行时的摘要（条目数、滚动位置、两个列表的位置）；没变就不重摆
+    private @Nullable String rowRevision;
     private boolean finished;
 
     private UiRect rect = new UiRect(0, 0, 0, 0);
@@ -114,10 +174,14 @@ public final class ExpressionEditorWindow {
     private final ButtonWidget confirmButton;
 
     public ExpressionEditorWindow(CameraAnimation animation, CameraPlayer player, Component fieldLabel,
-                                  @Nullable String expression, Consumer<String> onConfirm) {
+                                  @Nullable String expression, @Nullable String trackId, @Nullable Parameters parameters,
+                                  Consumer<String> onConfirm) {
         this.animation = animation;
         this.player = player;
         this.fieldLabel = fieldLabel;
+        this.trackId = trackId;
+        this.parameters = parameters;
+        this.editingParameters = parameters == null ? new ArrayList<>() : new ArrayList<>(parameters.get());
         this.onConfirm = onConfirm;
         this.text = expression == null ? "" : expression;
         this.caret = text.length();
@@ -133,6 +197,17 @@ public final class ExpressionEditorWindow {
         widgets.add(removeButton);
         widgets.add(cancelButton);
         widgets.add(confirmButton);
+
+        // 编辑函数体时才摆参数输入框：参数怎么改只影响预览与合法性判定，位置由 layout() 定
+        if (parameters == null) {
+            this.parameterField = null;
+        } else {
+            this.parameterField = new TextFieldWidget(new UiRect(0, 0, 1, 1), String.join(", ", parameters.get()), this::applyParameters);
+            this.parameterField.maxLength(PARAMETER_MAX_LENGTH);
+            // 参数在预览里一律当 1，这点容易误会，悬停时说明
+            this.parameterField.tooltip(EditorLang.t("expression.parameters.tip"));
+            widgets.add(parameterField);
+        }
     }
 
     /// 按屏幕尺寸重新居中并切分内部区域
@@ -167,6 +242,12 @@ public final class ExpressionEditorWindow {
         variableList = new UiRect(right, columnTop + LINE_HEIGHT, rightWidth, Math.max(LINE_HEIGHT, variableHeight - LINE_HEIGHT));
         int functionTop = columnTop + variableHeight + GAP;
         functionList = new UiRect(right, functionTop + LINE_HEIGHT, rightWidth, Math.max(LINE_HEIGHT, columnBottom - functionTop - LINE_HEIGHT));
+
+        // 参数输入框钉在第二行右端
+        if (parameterField != null) {
+            parameterField.rect(new UiRect(right2 - PARAMETER_FIELD_WIDTH, rect.y() + PADDING + TITLE_HEIGHT - 1,
+                    PARAMETER_FIELD_WIDTH, SUBTITLE_HEIGHT - 1));
+        }
     }
 
     /// 变量区的 `+` / `−` 与底部的「确定 / 取消」随窗口布局挪位置
@@ -187,19 +268,38 @@ public final class ExpressionEditorWindow {
     // region 渲染
 
     public void render(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
+        // 自嵌套、或函数本身还不能用时把「确定」按住：前者是取值口径有歧义，后者是存下去也用不了
+        confirmButton.enabled(!selfReferencing() && functionProblem() == null);
         graphics.fill(0, 0, screenWidth, screenHeight, Draw.OVERLAY_DIM);
         Draw.canvas(graphics, rect, Draw.FLOATING_BG);
         Draw.border(graphics, rect, Draw.BORDER);
         renderTitle(graphics);
-        Draw.textEllipsized(graphics, EditorLang.t("expression.attribute", fieldLabel.getString()).getString(),
-                rect.x() + PADDING, rect.y() + PADDING + TITLE_HEIGHT, rect.width() - PADDING * 2, Draw.TEXT_DIM);
+        renderSubtitle(graphics);
         renderTextArea(graphics, mouseX, mouseY);
+        rebuildRows();
         renderVariables(graphics, mouseX, mouseY);
         renderFunctions(graphics, mouseX, mouseY);
         widgets.render(graphics, mouseX, mouseY);
     }
 
-    /// 标题行：左边窗口名，右边实时求值结果（合法给数值，非法转警告色）
+    /// 第二行：「属性：xxx」；编辑函数体时右端再摆一个参数输入框，标签在它左边
+    private void renderSubtitle(GuiGraphicsExtractor graphics) {
+        Component attribute = EditorLang.t("expression.attribute", fieldLabel.getString());
+        int y = rect.y() + PADDING + TITLE_HEIGHT;
+
+        if (parameterField == null) {
+            Draw.textEllipsized(graphics, attribute.getString(), rect.x() + PADDING, y, rect.width() - PADDING * 2, Draw.TEXT_DIM);
+            return;
+        }
+
+        Component label = EditorLang.t("expression.parameters");
+        int labelWidth = Draw.font().width(label) + GAP;
+        Draw.text(graphics, label, parameterField.rect().x() - labelWidth, y, Draw.TEXT_DIM);
+        Draw.textEllipsized(graphics, attribute.getString(), rect.x() + PADDING, y,
+                Math.max(20, parameterField.rect().x() - labelWidth - GAP - (rect.x() + PADDING)), Draw.TEXT_DIM);
+    }
+
+    /// 标题行：左边窗口名，右边实时求值结果（自嵌套、成环与非法都转警告色并说明原因）
     private void renderTitle(GuiGraphicsExtractor graphics) {
         Component title = EditorLang.t("expression.title");
         Draw.text(graphics, title, rect.x() + PADDING, rect.y() + PADDING, Draw.TEXT);
@@ -210,11 +310,26 @@ public final class ExpressionEditorWindow {
         if (stripped.isEmpty()) {
             status = EditorLang.t("expression.preview.empty").getString();
             color = Draw.TEXT_DISABLED;
+        } else if (functionProblem() != null) {
+            // 函数还不能用时先报这个：比起求值结果，用户更该知道差在哪
+            status = functionProblem().getString();
+            color = Draw.WARNING;
+        } else if (selfReferencing()) {
+            status = EditorLang.t("variables.self_reference").getString();
+            color = Draw.WARNING;
         } else {
-            float evaluated = context().evaluate(stripped);
-            boolean valid = !Float.isNaN(evaluated);
-            status = EditorLang.t("expression.preview.result", valid ? Draw.num(evaluated, 4) : EditorLang.t("expression.invalid").getString()).getString();
-            color = valid ? Draw.ACCENT : Draw.WARNING;
+            ExpressionSolver solver = solver();
+            float evaluated = Expression.evaluate(stripped, previewResolver(solver));
+            List<String> cycle = solver.cycle();
+
+            if (cycle != null) {
+                status = EditorLang.t("variables.cycle", String.join(" → ", cycle)).getString();
+                color = Draw.WARNING;
+            } else {
+                boolean valid = !Float.isNaN(evaluated);
+                status = EditorLang.t("expression.preview.result", valid ? Draw.num(evaluated, 4) : EditorLang.t("expression.invalid").getString()).getString();
+                color = valid ? Draw.ACCENT : Draw.WARNING;
+            }
         }
 
         int statusWidth = Draw.font().width(status);
@@ -257,8 +372,11 @@ public final class ExpressionEditorWindow {
             Draw.text(graphics, lines.get(lineIndex), textArea.x() + TEXT_PADDING, textArea.y() + TEXT_PADDING + i * LINE_HEIGHT, Draw.TEXT);
         }
 
-        // 光标闪烁；行已被上面滚进可视范围，这里再判一次是为了避免取到视口外
-        if (!finished && (System.currentTimeMillis() / 500) % 2 == 0 && caretLine >= textScroll && caretLine < textScroll + visible) {
+        // 光标闪烁；行已被上面滚进可视范围，这里再判一次是为了避免取到视口外。
+        // 焦点在参数输入框这类文本控件上时不再画这一根：两个光标一起闪，分不清字会落进哪边
+        boolean ownsCaret = !(widgets.focused() instanceof TextFieldWidget);
+
+        if (ownsCaret && !finished && (System.currentTimeMillis() / 500) % 2 == 0 && caretLine >= textScroll && caretLine < textScroll + visible) {
             String line = lines.get(caretLine);
             int column = Math.min(caret - lineStart(lines, caretLine), line.length());
             int caretX = Math.min(textArea.right() - SCROLLBAR_WIDTH - 3, textArea.x() + TEXT_PADDING + Draw.font().width(line.substring(0, column)));
@@ -270,71 +388,129 @@ public final class ExpressionEditorWindow {
         renderScrollbar(graphics, textArea, lines.size(), visible, textScroll);
     }
 
+    /// 按当前位置摆出变量表与函数表要显示的行控件。
+    ///
+    /// 行是「底板 + 文字」两层：底板铺满整行、负责选中 / 悬停底色与点击，文字层不接点击，
+    /// 事件会穿透回底板——这样一行里能用多种文字颜色，而可点区域仍只有整行一处。
+    /// 只有摘要变了才重摆：每帧重建会不断造出新控件，还会冲掉「按下 → 松开」这类跨帧状态
+    private void rebuildRows() {
+        String revision = variableScroll + "|" + variableList + '|' + animation.variables().size()
+                + '|' + functionScroll + "|" + functionList + '|' + functionItems().size();
+
+        if (revision.equals(rowRevision)) {
+            return;
+        }
+
+        rowRevision = revision;
+        clearRows();
+        List<Variable> variables = animation.variables();
+        int visible = visibleRows(variableList);
+
+        for (int i = 0; i < visible && i + variableScroll < variables.size(); i++) {
+            Variable variable = variables.get(i + variableScroll);
+            UiRect row = rowRect(variableList, i);
+            VariableRow widgetsRow = new VariableRow(new LabelWidget(row, Component.empty()),
+                    new LabelWidget(row, Component.empty()), new LabelWidget(row, Component.empty()), variable);
+            widgetsRow.base().onClick(() -> pickVariable(variable));
+            widgets.add(widgetsRow.base());
+            widgets.add(widgetsRow.name());
+            widgets.add(widgetsRow.source());
+            variableRows.add(widgetsRow);
+        }
+
+        List<FunctionItem> functions = functionItems();
+        visible = visibleRows(functionList);
+
+        for (int i = 0; i < visible && i + functionScroll < functions.size(); i++) {
+            FunctionItem item = functions.get(i + functionScroll);
+            UiRect row = rowRect(functionList, i);
+            FunctionRow widgetsRow = new FunctionRow(new LabelWidget(row, Component.empty()),
+                    new LabelWidget(row, Component.literal(item.label())), item);
+            widgetsRow.base().onClick(() -> pickFunction(item));
+            widgets.add(widgetsRow.base());
+            widgets.add(widgetsRow.label());
+            functionRows.add(widgetsRow);
+        }
+    }
+
+    /// 撤掉当前摆着的行控件（只撤行，`+` / `−` 与底部按钮这些常驻控件不动）
+    private void clearRows() {
+        for (VariableRow row : variableRows) {
+            removeRowWidgets(row.base(), row.name(), row.source());
+        }
+
+        for (FunctionRow row : functionRows) {
+            removeRowWidgets(row.base(), row.label());
+        }
+
+        variableRows.clear();
+        functionRows.clear();
+    }
+
+    private void removeRowWidgets(EditorWidget... rowWidgets) {
+        List<EditorWidget> targets = List.of(rowWidgets);
+        widgets.removeIf(targets::contains);
+    }
+
     private void renderVariables(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
         Draw.text(graphics, EditorLang.t("expression.variables"), variableList.x(), variableList.y() - LINE_HEIGHT, Draw.TEXT_DIM);
         Draw.canvas(graphics, variableList, Draw.CANVAS_BG);
         Draw.border(graphics, variableList, Draw.BORDER);
-        graphics.enableScissor(variableList.x() + 1, variableList.y() + 1, variableList.right() - 1, variableList.bottom() - 1);
         List<Variable> variables = animation.variables();
-        int visible = visibleRows(variableList);
 
         if (variables.isEmpty()) {
             Draw.textEllipsized(graphics, EditorLang.t("expression.variables.empty").getString(), variableList.x() + 3, variableList.y() + 2,
                     variableList.width() - 6, Draw.TEXT_DISABLED);
         }
 
-        for (int i = 0; i < visible && i + variableScroll < variables.size(); i++) {
-            Variable variable = variables.get(i + variableScroll);
-            UiRect row = rowRect(variableList, i);
-            boolean active = variable == selected;
-
-            if (active) {
-                Draw.canvas(graphics, row, Draw.ROW_SELECTED);
-            } else if (row.contains(mouseX, mouseY)) {
-                Draw.canvas(graphics, row, Draw.ROW_ALT);
-            }
-
-            Draw.text(graphics, variable.name(), row.x() + 3, row.y() + 1, Draw.TEXT);
-            String source = sourceLabel(variable);
-            int nameWidth = Draw.font().width(variable.name()) + 6;
-            Draw.textEllipsized(graphics, source, row.x() + 3 + nameWidth, row.y() + 1,
-                    Math.max(1, row.width() - nameWidth - 6 - SCROLLBAR_WIDTH), Draw.TEXT_DISABLED);
+        // 底色、名字与取值来源每帧都要现算：选中状态与来源都会变，不能固化在控件里
+        for (VariableRow row : variableRows) {
+            refreshVariableRow(row);
         }
 
-        graphics.disableScissor();
-        renderScrollbar(graphics, variableList, variables.size(), visible, variableScroll);
+        renderScrollbar(graphics, variableList, variables.size(), visibleRows(variableList), variableScroll);
+    }
+
+    /// 变量行：整行底色随选中 / 悬停变化，名字与取值来源分两段。
+    /// 名字长度会随改名变，所以每帧重算两段的宽度与位置
+    private void refreshVariableRow(VariableRow row) {
+        Variable variable = row.variable();
+        UiRect base = row.base().rect();
+        int nameWidth = Draw.font().width(variable.name()) + 6;
+        row.base().background(variable == selected ? Draw.ROW_SELECTED : 0, Draw.ROW_ALT);
+        row.name().text(Component.literal(variable.name()));
+        row.name().rect(new UiRect(base.x() + 3, base.y(), Math.max(1, nameWidth), LINE_HEIGHT));
+        row.source().text(Component.literal(sourceLabel(variable)));
+        row.source().rect(new UiRect(base.x() + 3 + nameWidth, base.y(),
+                Math.max(1, base.width() - nameWidth - 6), LINE_HEIGHT));
     }
 
     private void renderFunctions(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
         Draw.text(graphics, EditorLang.t("expression.functions"), functionList.x(), functionList.y() - LINE_HEIGHT, Draw.TEXT_DIM);
         Draw.canvas(graphics, functionList, Draw.CANVAS_BG);
         Draw.border(graphics, functionList, Draw.BORDER);
-        graphics.enableScissor(functionList.x() + 1, functionList.y() + 1, functionList.right() - 1, functionList.bottom() - 1);
-        int visible = visibleRows(functionList);
-        functionScroll = clampScroll(functionScroll, FUNCTIONS.size(), visible);
+        List<FunctionItem> functions = functionItems();
+        functionScroll = clampScroll(functionScroll, functions.size(), visibleRows(functionList));
 
-        for (int i = 0; i < visible && i + functionScroll < FUNCTIONS.size(); i++) {
-            UiRect row = rowRect(functionList, i);
-
-            if (row.contains(mouseX, mouseY)) {
-                Draw.canvas(graphics, row, Draw.ROW_ALT);
-            }
-
-            Draw.text(graphics, FUNCTIONS.get(i + functionScroll).label(), row.x() + 3, row.y() + 1, Draw.TEXT);
+        for (FunctionRow row : functionRows) {
+            UiRect base = row.base().rect();
+            row.base().background(0, Draw.ROW_ALT);
+            row.label().rect(new UiRect(base.x() + 3, base.y(), Math.max(1, base.width() - 6), LINE_HEIGHT));
         }
 
-        graphics.disableScissor();
-        renderScrollbar(graphics, functionList, FUNCTIONS.size(), visible, functionScroll);
+        renderScrollbar(graphics, functionList, functions.size(), visibleRows(functionList), functionScroll);
     }
 
-    /// 变量取值来源的显示文本：绑定了显示轨道名，否则显示它的固定值
+    /// 变量取值来源的显示文本：固定值给出数值，轨道给出轨道名，公式给出原文
     private String sourceLabel(Variable variable) {
-        if (!variable.bound()) {
-            return EditorLang.t("expression.variable.fixed", Draw.num(variable.value(), 3)).getString();
-        }
-
-        CurveTrack track = track(variable.trackId());
-        return track == null ? EditorLang.t("expression.variable.unbound").getString() : track.label().getString();
+        return switch (variable.source()) {
+            case ConstantValue ignored -> EditorLang.t("expression.variable.fixed", Draw.num(variable.source().constant(), 3)).getString();
+            case FormulaValue formula -> formula.expression();
+            case TrackValue ignored -> {
+                CurveTrack track = track(variable.trackId());
+                yield track == null ? EditorLang.t("expression.variable.unbound").getString() : track.label().getString();
+            }
+        };
     }
 
     /// 贴区域右边缘内侧的滚动条；内容装得下就不画
@@ -354,8 +530,10 @@ public final class ExpressionEditorWindow {
         graphics.fill(x, thumbTop, x + SCROLLBAR_WIDTH, thumbTop + thumbHeight, Draw.BORDER);
     }
 
+    /// 列表里第 index 行的矩形。右侧给滚动条留出位置，免得行底色把滚动条盖住
     private static UiRect rowRect(UiRect list, int index) {
-        return new UiRect(list.x() + 1, list.y() + 1 + index * LINE_HEIGHT, Math.max(1, list.width() - 2), LINE_HEIGHT);
+        return new UiRect(list.x() + 1, list.y() + 1 + index * LINE_HEIGHT,
+                Math.max(1, list.width() - 2 - SCROLLBAR_WIDTH - 1), LINE_HEIGHT);
     }
 
     private static int visibleRows(UiRect list) {
@@ -384,15 +562,7 @@ public final class ExpressionEditorWindow {
             return true;
         }
 
-        if (variableList.contains(event.x(), event.y()) && event.button() == 0) {
-            clickVariable(event.y());
-            return true;
-        }
-
-        if (functionList.contains(event.x(), event.y()) && event.button() == 0) {
-            clickFunction(event.y());
-            return true;
-        }
+        // 两个列表的行是控件，点它们插名字 / 模板这一层已经在上面的 widgets.mouseClicked 里处理
 
         // 点在窗口之外只当作无事发生：输入区是一段没保存的文本，误点一下就丢掉太难接受
         return rect.contains(event.x(), event.y());
@@ -417,7 +587,7 @@ public final class ExpressionEditorWindow {
         }
 
         if (functionList.contains(mouseX, mouseY)) {
-            functionScroll = clampScroll(functionScroll + step, FUNCTIONS.size(), visibleRows(functionList));
+            functionScroll = clampScroll(functionScroll + step, functionItems().size(), visibleRows(functionList));
             return true;
         }
 
@@ -455,6 +625,11 @@ public final class ExpressionEditorWindow {
     }
 
     public boolean charTyped(CharacterEvent event) {
+        // 控件（参数输入框）先拿字符：少了这一步，选中它之后打的字会全落进公式文本里
+        if (widgets.charTyped(event)) {
+            return true;
+        }
+
         int codepoint = event.codepoint();
 
         // 控制字符（回车、换行、制表符）由 keyPressed 处理，其余按完整码点插入
@@ -470,7 +645,100 @@ public final class ExpressionEditorWindow {
 
     // region 编辑动作
 
+    /// 预览用的求解器：函数参数**一律取 1**，方便把它们当单位量试算（`a + b` 预览就是 2）。
+    /// 不这么处理的话，编辑函数体时合法的 `a + b` 会因为参数不是动画变量而被显示成算不出来
+    private Expression.Resolver previewResolver(ExpressionSolver solver) {
+        List<String> names = editingParameters;
+
+        if (names.isEmpty()) {
+            return solver;
+        }
+
+        return new Expression.Resolver() {
+            @Override
+            public float resolve(String name) {
+                return names.contains(name) ? 1f : solver.resolve(name);
+            }
+
+            @Override
+            public @Nullable CustomFunction function(String name) {
+                return solver.function(name);
+            }
+        };
+    }
+
+    /// 正在编辑的函数还能不能用；能用返回 null。
+    ///
+    /// 与「确定」按钮共用同一份判定：参数名写不进公式、函数体为空、函数体编译不过都算不能用
+    private @Nullable Component functionProblem() {
+        if (parameters == null) {
+            return null;
+        }
+
+        if (parameterProblem != null) {
+            return parameterProblem;
+        }
+
+        if (text.isBlank()) {
+            return EditorLang.t("expression.body_empty");
+        }
+
+        return Expression.compile(text.strip()) == null ? EditorLang.t("expression.body_invalid") : null;
+    }
+
+    /// 参数输入框提交：按逗号拆成参数名，有一个写不进公式就整条拒绝，留着原来的并给出提示。
+    /// 结果只落在窗口里，点「确定」时才写回函数——取消窗口不该顺手改掉参数
+    private void applyParameters(String value) {
+        List<String> parsed = new ArrayList<>();
+
+        for (String part : value.split(",")) {
+            String name = part.strip();
+
+            if (name.isEmpty()) {
+                continue;
+            }
+
+            if (!Expression.validName(name)) {
+                parameterProblem = EditorLang.t("expression.parameter_invalid", name);
+                return;
+            }
+
+            parsed.add(name);
+        }
+
+        parameterProblem = null;
+        editingParameters.clear();
+        editingParameters.addAll(parsed);
+    }
+
+    /// 公式是否引用了绑定到本轨道的变量——那就是自嵌套：那个变量在本轨道上取的是数值模式的固定数值，
+    /// 与本键播放时的取值不是一回事（与变量面板的判定是同一件事）
+    private boolean selfReferencing() {
+        if (trackId == null) {
+            return false;
+        }
+
+        for (String name : Expression.identifiers(text)) {
+            Variable variable = animation.variable(name);
+
+            if (variable != null && trackId.equals(variable.trackId())) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private void confirm() {
+        // 按钮已经被按住，这里再挡一次：回车等快捷路径也不能把自嵌套或还不能用的函数存进去
+        if (selfReferencing() || functionProblem() != null) {
+            return;
+        }
+
+        if (parameters != null) {
+            parameters.set(List.copyOf(editingParameters));
+        }
+
         finished = true;
         onConfirm.accept(text.strip());
     }
@@ -573,25 +841,15 @@ public final class ExpressionEditorWindow {
         followCaret = true;
     }
 
-    private void clickVariable(double mouseY) {
-        List<Variable> variables = animation.variables();
-        int index = (int) ((mouseY - variableList.y() - 1) / LINE_HEIGHT) + variableScroll;
-
-        if (index < 0 || index >= variables.size()) {
-            return;
-        }
-
-        Variable variable = variables.get(index);
+    /// 点变量行：选中它（`−` 按钮删的就是它）并把名字插到光标处
+    private void pickVariable(Variable variable) {
         selected = variable;
         insert(variable.name());
     }
 
-    private void clickFunction(double mouseY) {
-        int index = (int) ((mouseY - functionList.y() - 1) / LINE_HEIGHT) + functionScroll;
-
-        if (index >= 0 && index < FUNCTIONS.size()) {
-            insertTemplate(FUNCTIONS.get(index).template());
-        }
+    /// 点函数行：把调用模板插到光标处
+    private void pickFunction(FunctionItem item) {
+        insertTemplate(item.template());
     }
 
     /// 新增变量：名字从 var1 起找第一个没被占用的
@@ -662,8 +920,9 @@ public final class ExpressionEditorWindow {
         return lines.size() - 1;
     }
 
-    private ExpressionContext context() {
-        return new ExpressionContext(animation, player.time());
+    /// 本次预览用的求解器：每帧现建一份，变量改了当帧就能反映到结果上
+    private ExpressionSolver solver() {
+        return ExpressionSolver.of(animation, player.time(), player.worldTime());
     }
 
     private @Nullable CurveTrack track(String id) {

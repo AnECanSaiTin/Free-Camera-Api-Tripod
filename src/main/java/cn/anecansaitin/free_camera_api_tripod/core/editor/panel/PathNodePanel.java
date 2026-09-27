@@ -1,7 +1,6 @@
 package cn.anecansaitin.free_camera_api_tripod.core.editor.panel;
 
 import cn.anecansaitin.free_camera_api_tripod.api.animation.CameraAnimation;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.DynamicField;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.path.Path;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.path.PathMode;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.path.PathNodec;
@@ -14,7 +13,8 @@ import cn.anecansaitin.free_camera_api_tripod.core.editor.theme.Draw;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.theme.Icons;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.ButtonWidget;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.ContextMenu;
-import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.ExpressionFieldWidget;
+import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.LabelWidget;
+import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.NumberFieldWidget;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -43,7 +43,6 @@ public class PathNodePanel extends EditorPanel {
     private static final int SCROLLBAR_MARGIN = 4;
 
     private final EditorContext context;
-    private final List<LabelDraw> labels = new ArrayList<>();
     private final List<Runnable> refreshers = new ArrayList<>();
     private @Nullable String lastRevision;
     private int scrollY;
@@ -51,10 +50,6 @@ public class PathNodePanel extends EditorPanel {
     private int contentRight;
     /// 节点下拉选择器的矩形；没有选中节点时宽度为 0，既不绘制也不响应点击
     private UiRect nodeSelectorRect = new UiRect(0, 0, 0, 0);
-
-    /// maxWidth 大于 0 时超出宽度会被省略号截断
-    private record LabelDraw(Component text, int x, int y, int color, int maxWidth) {
-    }
 
     public PathNodePanel(EditorContext context) {
         super(ID, EditorLang.t("panel.path"));
@@ -89,14 +84,6 @@ public class PathNodePanel extends EditorPanel {
                     contextMenu() != null || nodeSelectorRect.contains(mouseX, mouseY));
         }
 
-        for (LabelDraw label : labels) {
-            if (label.maxWidth() > 0) {
-                Draw.textEllipsized(graphics, label.text().getString(), label.x(), label.y(), label.maxWidth(), label.color());
-            } else {
-                Draw.text(graphics, label.text(), label.x(), label.y(), label.color());
-            }
-        }
-
         graphics.disableScissor();
         renderScrollbar(graphics, content);
     }
@@ -127,7 +114,6 @@ public class PathNodePanel extends EditorPanel {
 
     private void rebuild(UiRect content) {
         lastRevision = revision();
-        labels.clear();
         // 控件同样要清空：否则每次重建（滚动、数据变化）都会再叠一层按钮，出现重叠与点不中的问题
         widgets.clear();
         refreshers.clear();
@@ -153,8 +139,8 @@ public class PathNodePanel extends EditorPanel {
         y = section(x, y, EditorLang.t("inspector.section.path"));
 
         if (!bound()) {
-            labels.add(new LabelDraw(EditorLang.t("inspector.path.unbound"), x, y + 3, Draw.TEXT_DISABLED,
-                    Math.max(8, contentRight - x)));
+            widgets.add(new LabelWidget(new UiRect(x, y, Math.max(8, contentRight - x), FIELD_HEIGHT),
+                    EditorLang.t("inspector.path.unbound")).color(Draw.TEXT_DISABLED));
             return y + ROW_HEIGHT;
         }
 
@@ -173,8 +159,8 @@ public class PathNodePanel extends EditorPanel {
         int index = context.editor().selectedPathNode().index();
 
         if (index < 0 || index >= path.size()) {
-            labels.add(new LabelDraw(EditorLang.t("inspector.path.empty"), x, y + 3, Draw.TEXT_DISABLED,
-                    Math.max(8, contentRight - x)));
+            widgets.add(new LabelWidget(new UiRect(x, y, Math.max(8, contentRight - x), FIELD_HEIGHT),
+                    EditorLang.t("inspector.path.empty")).color(Draw.TEXT_DISABLED));
             return y + ROW_HEIGHT;
         }
 
@@ -182,18 +168,15 @@ public class PathNodePanel extends EditorPanel {
         y = nodeDropdownRow(x, y, index, node);
         y = distanceToNodeRow(x, y);
         y = vectorRow(x, y, width, EditorLang.t("inspector.path.position"),
-                (axis, value) -> setPosition(index, axis, value), () -> path.node(index).position(),
-                new DynamicField[]{DynamicField.NODE_X, DynamicField.NODE_Y, DynamicField.NODE_Z});
+                (axis, value) -> setPosition(index, axis, value), () -> path.node(index).position());
         y = modeRow(x, y, width, index, path);
 
         // 切线与自动平滑只对贝塞尔段有意义，其它模式下隐藏，避免摆一堆不起作用的输入框
         if (node.pathMode() == PathMode.BEZIER) {
             y = vectorRow(x, y, width, EditorLang.t("inspector.path.in_tangent"),
-                    (axis, value) -> setTangent(index, true, axis, value), () -> path.node(index).inTangent(),
-                    new DynamicField[]{DynamicField.NODE_IN_X, DynamicField.NODE_IN_Y, DynamicField.NODE_IN_Z});
+                    (axis, value) -> setTangent(index, true, axis, value), () -> path.node(index).inTangent());
             y = vectorRow(x, y, width, EditorLang.t("inspector.path.out_tangent"),
-                    (axis, value) -> setTangent(index, false, axis, value), () -> path.node(index).outTangent(),
-                    new DynamicField[]{DynamicField.NODE_OUT_X, DynamicField.NODE_OUT_Y, DynamicField.NODE_OUT_Z});
+                    (axis, value) -> setTangent(index, false, axis, value), () -> path.node(index).outTangent());
             y = smoothRow(x, y, width, index, path);
         }
 
@@ -209,12 +192,14 @@ public class PathNodePanel extends EditorPanel {
     /// 选择器是自绘的：值左对齐、展开箭头右对齐，整框铺满到内容区右边界。
     /// 候选列表复用面板的右键菜单（由屏幕统一绘制在最上层），所以列表不会被内容区裁剪
     private int nodeDropdownRow(int x, int y, int index, PathNodec node) {
-        labels.add(new LabelDraw(EditorLang.t("inspector.path.node"), x, y + 3, Draw.TEXT_DIM, -1));
+        widgets.add(new LabelWidget(new UiRect(x, y, Math.max(8, contentRight - x), FIELD_HEIGHT),
+                EditorLang.t("inspector.path.node")).color(Draw.TEXT_DIM));
         int fieldX = x + LABEL_WIDTH;
         nodeSelectorRect = new UiRect(fieldX, y + 1, Math.max(1, contentRight - fieldX), FIELD_HEIGHT);
-        labels.add(new LabelDraw(nodeLabel(index, node.pathMode()), fieldX + 4, y + 3, Draw.TEXT,
-                Math.max(8, nodeSelectorRect.width() - 22)));
-        labels.add(new LabelDraw(Component.literal(Icons.COLLAPSE), nodeSelectorRect.right() - 13, y + 3, Draw.TEXT_DIM, -1));
+        widgets.add(new LabelWidget(new UiRect(fieldX + 4, y, Math.max(8, nodeSelectorRect.width() - 22), FIELD_HEIGHT),
+                nodeLabel(index, node.pathMode())).color(Draw.TEXT));
+        widgets.add(new LabelWidget(new UiRect(nodeSelectorRect.right() - 13, y, Math.max(8, contentRight - nodeSelectorRect.right() + 13), FIELD_HEIGHT),
+                Component.literal(Icons.COLLAPSE)).color(Draw.TEXT_DIM));
         return y + ROW_HEIGHT;
     }
 
@@ -222,7 +207,8 @@ public class PathNodePanel extends EditorPanel {
     ///
     /// 可用宽度从标签右沿算到内容区右边界，除不尽的 1 像素给右边那个，避免两格比例不同
     private int distanceModeRow(int x, int y) {
-        labels.add(new LabelDraw(EditorLang.t("inspector.path.distance_mode"), x, y + 3, Draw.TEXT_DIM, -1));
+        widgets.add(new LabelWidget(new UiRect(x, y, Math.max(8, contentRight - x), FIELD_HEIGHT),
+                EditorLang.t("inspector.path.distance_mode")).color(Draw.TEXT_DIM));
         int left = x + LABEL_WIDTH;
         int total = Math.max(2, contentRight - left);
         int cell = Math.max(1, (total - 2) / 2);
@@ -262,7 +248,7 @@ public class PathNodePanel extends EditorPanel {
     }
 
     private int section(int x, int y, Component title) {
-        labels.add(new LabelDraw(title, x, y + 2, Draw.ACCENT, -1));
+        widgets.add(new LabelWidget(new UiRect(x, y - 1, Math.max(8, contentRight - x), FIELD_HEIGHT), title).color(Draw.ACCENT));
         return y + ROW_HEIGHT;
     }
 
@@ -274,66 +260,52 @@ public class PathNodePanel extends EditorPanel {
     }
 
     private int textRow(int x, int y, Component label, Component value) {
-        labels.add(new LabelDraw(label, x, y + 3, Draw.TEXT_DIM, -1));
-        labels.add(new LabelDraw(value, x + LABEL_WIDTH, y + 3, Draw.TEXT, Math.max(8, contentRight - LABEL_WIDTH - x)));
+        widgets.add(new LabelWidget(new UiRect(x, y, Math.max(8, contentRight - x), FIELD_HEIGHT), label).color(Draw.TEXT_DIM));
+        widgets.add(new LabelWidget(new UiRect(x + LABEL_WIDTH, y, Math.max(8, contentRight - LABEL_WIDTH - x), FIELD_HEIGHT), value)
+                .color(Draw.TEXT));
         return y + ROW_HEIGHT;
     }
 
-    /// 三分量数值行：X / Y / Z 各一个输入框，右侧都带数值 / 动态模式切换按钮，
-    /// 刷新器每帧从节点同步当前值。格间留 2 像素，最后一格吃掉取整余量，右边界与其它行严格对齐
-    private int vectorRow(int x, int y, int width, Component label, AxisSetter setter,
-                          VectorGetter getter, DynamicField[] fields) {
-        labels.add(new LabelDraw(label, x, y + 3, Draw.TEXT_DIM, -1));
+    /// 三分量数值行：X / Y / Z 各一个输入框，刷新器每帧从节点同步当前值。
+    /// 格间留 2 像素，最后一格吃掉取整余量，右边界与其它行严格对齐
+    private int vectorRow(int x, int y, int width, Component label, AxisSetter setter, VectorGetter getter) {
+        widgets.add(new LabelWidget(new UiRect(x, y, Math.max(8, contentRight - x), FIELD_HEIGHT), label).color(Draw.TEXT_DIM));
         int cell = Math.max(20, (width - 4) / 3);
-        String[] axes = {"X", "Y", "Z"};
 
         for (int axis = 0; axis < 3; axis++) {
+            int current = axis;
             int cellX = x + LABEL_WIDTH + axis * (cell + 2);
             int cellWidth = axis == 2 ? Math.max(1, contentRight - cellX) : cell;
-            Component title = Component.empty().append(label).append(" " + axes[axis]);
-            ExpressionFieldWidget field = new ExpressionFieldWidget(context,
-                    new UiRect(cellX, y + 1, cellWidth, FIELD_HEIGHT), title,
-                    nodeAccessor(context.editor().selectedPathNode().index(), axis, fields[axis], setter, getter));
+            NumberFieldWidget field = new NumberFieldWidget(new UiRect(cellX, y + 1, cellWidth, FIELD_HEIGHT),
+                    axisValue(getter.get(), current), value -> setter.set(current, value));
             field.decimals(2);
             widgets.add(field);
-            refreshers.add(field::refresh);
-            labels.add(new LabelDraw(Component.literal(axes[axis]), cellX + 2, y + 3, Draw.TEXT_DISABLED, -1));
+            refreshers.add(() -> field.value(axisValue(getter.get(), current)));
         }
 
         return y + ROW_HEIGHT;
     }
 
-    /// 路径节点某个分量的读写入口：固定数值走面板原有的 getter / setter，公式存在节点自己身上
-    private ExpressionFieldWidget.Accessor nodeAccessor(int index, int axis, DynamicField field,
-                                                        AxisSetter setter, VectorGetter getter) {
-        return new ExpressionFieldWidget.Accessor() {
-            @Override
-            public float value() {
-                Vector3fc current = getter.get();
-                return axis == 0 ? current.x() : axis == 1 ? current.y() : current.z();
-            }
+    private static float axisValue(Vector3fc vector, int axis) {
+        return axis == 0 ? vector.x() : axis == 1 ? vector.y() : vector.z();
+    }
 
-            @Override
-            public void value(float value) {
-                setter.set(axis, value);
-            }
+    /// 写某个向量的单个分量
+    @FunctionalInterface
+    private interface AxisSetter {
+        void set(int axis, float value);
+    }
 
-            @Override
-            public @Nullable String expression() {
-                Path path = context.editor().path();
-                return index >= 0 && index < path.size() ? path.node(index).expressions().get(field) : null;
-            }
-
-            @Override
-            public void expression(@Nullable String expression) {
-                context.editor().updatePathNode(index, node -> node.expression(field, expression));
-            }
-        };
+    /// 读整个向量，面板据此取某一分量
+    @FunctionalInterface
+    private interface VectorGetter {
+        Vector3fc get();
     }
 
     /// 路径模式：线性 / 贝塞尔 / 卡蒙罗姆三选一。最后一格吃掉余量，右边界与其它行对齐
     private int modeRow(int x, int y, int width, int index, Path path) {
-        labels.add(new LabelDraw(EditorLang.t("inspector.path.mode"), x, y + 3, Draw.TEXT_DIM, -1));
+        widgets.add(new LabelWidget(new UiRect(x, y, Math.max(8, contentRight - x), FIELD_HEIGHT),
+                EditorLang.t("inspector.path.mode")).color(Draw.TEXT_DIM));
         PathMode[] values = PathMode.values();
         int cell = Math.max(1, (width - (values.length - 1) * 2) / values.length);
 
@@ -352,7 +324,8 @@ public class PathNodePanel extends EditorPanel {
 
     /// 自动平滑开关
     private int smoothRow(int x, int y, int width, int index, Path path) {
-        labels.add(new LabelDraw(EditorLang.t("inspector.path.smooth"), x, y + 3, Draw.TEXT_DIM, -1));
+        widgets.add(new LabelWidget(new UiRect(x, y, Math.max(8, contentRight - x), FIELD_HEIGHT),
+                EditorLang.t("inspector.path.smooth")).color(Draw.TEXT_DIM));
         ButtonWidget button = new ButtonWidget(new UiRect(x + LABEL_WIDTH, y + 1, width - LABEL_WIDTH, FIELD_HEIGHT), Component.empty(),
                 () -> context.editor().updatePathNode(index, node -> node.smooth(!node.smooth())));
         button.tooltip(EditorLang.t("inspector.path.smooth.tip"));
@@ -372,16 +345,6 @@ public class PathNodePanel extends EditorPanel {
     /// 节点摘要文本：「#下标 模式」
     private Component nodeLabel(int index, PathMode mode) {
         return EditorLang.t("path_editor.node_row", index, modeLabel(mode));
-    }
-
-    @FunctionalInterface
-    private interface AxisSetter {
-        void set(int axis, float value);
-    }
-
-    @FunctionalInterface
-    private interface VectorGetter {
-        Vector3fc get();
     }
 
     // endregion

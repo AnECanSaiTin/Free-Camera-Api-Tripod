@@ -497,17 +497,22 @@ public class PathEditorScreen extends Screen {
         renderSplitters(graphics, hoverX, hoverY);
         renderDragFeedback(graphics);
 
+        Draw.layer(Draw.LAYER_FLOATING);
+
         for (EditorPanel panel : layout.floatingPanels()) {
             panel.render(graphics, hoverX, hoverY);
         }
 
         renderTopBar(graphics, hoverX, hoverY);
 
+        Draw.layer(Draw.LAYER_MENU);
+
         for (EditorPanel panel : panels) {
             panel.renderMenu(graphics, hoverX, hoverY);
         }
 
-        Draw.TruncatedText truncated = Draw.truncatedAt(mouseX, mouseY);
+        // 只提示鼠标当前所在那一层的文字：被悬浮窗口或菜单盖住的文字不该弹出提示
+        Draw.TruncatedText truncated = Draw.truncatedAt(mouseX, mouseY, surfaceAt(mouseX, mouseY));
 
         if (truncated != null) {
             Draw.tooltip(graphics, truncated.text(), mouseX, mouseY, width, height);
@@ -520,6 +525,23 @@ public class PathEditorScreen extends Screen {
             expressionEditor.update(width, height);
             expressionEditor.render(graphics, mouseX, mouseY);
         }
+    }
+
+    /// 鼠标当前压在哪一层界面上：右键菜单 > 悬浮窗口 / 文件栏 > 停靠面板
+    private int surfaceAt(double mouseX, double mouseY) {
+        for (EditorPanel panel : panels) {
+            ContextMenu menu = panel.contextMenu();
+
+            if (menu != null && menu.contains(mouseX, mouseY)) {
+                return Draw.LAYER_MENU;
+            }
+        }
+
+        if (layout.fileBarRect().contains(mouseX, mouseY) || layout.floatingPanelAt(mouseX, mouseY) != null) {
+            return Draw.LAYER_FLOATING;
+        }
+
+        return Draw.LAYER_DOCKED;
     }
 
     private void renderSplitters(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
@@ -650,7 +672,12 @@ public class PathEditorScreen extends Screen {
                     && floatPanel.resizeGripRect().contains(event.x(), event.y())) {
                 dragResizePanel = floatPanel;
             } else if (floatPanel.headerRect().contains(event.x(), event.y())) {
-                beginPanelDrag(floatPanel, event, doubleClick);
+                // 悬浮 / 取消悬浮都走标题栏右键菜单，与主编辑器一致
+                if (event.button() == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
+                    openPanelHeaderMenu(floatPanel, event);
+                } else {
+                    beginPanelDrag(floatPanel, event, doubleClick);
+                }
             } else {
                 floatPanel.mouseClicked(event, doubleClick);
             }
@@ -847,6 +874,12 @@ public class PathEditorScreen extends Screen {
     public boolean keyPressed(KeyEvent event) {
         int key = event.key();
 
+        // 开发用测试按键：默认关闭，只有配置里打开 dev.test_keys 后才识别。
+        // 必须排在模态窗口之前：它们替身的正是鼠标事件，而窗口里的列表/菜单同样要用鼠标操作
+        if (EditorConfig.DEV_TEST_KEYS.get() && handleTestKey(key)) {
+            return true;
+        }
+
         // 表达式编辑窗口是模态的，按键全部归它（Esc 关闭且不写回）
         ExpressionEditorWindow expressionEditor = context.expressionEditor();
 
@@ -894,10 +927,7 @@ public class PathEditorScreen extends Screen {
             }
         }
 
-        // 开发用测试按键：默认关闭，只有配置里打开 dev.test_keys 后才识别
-        if (EditorConfig.DEV_TEST_KEYS.get() && handleTestKey(key)) {
-            return true;
-        }
+        // 开发用测试按键已经在方法开头处理过了
 
         // 工具栏里的名称输入框优先接收按键，避免输入内容触发面板快捷键
         if (topBar.keyPressed(event)) {
@@ -955,17 +985,28 @@ public class PathEditorScreen extends Screen {
                 || key == GLFW.GLFW_KEY_LEFT_CONTROL || key == GLFW.GLFW_KEY_RIGHT_CONTROL;
     }
 
-    /// 开发用测试按键：F10 在鼠标位置补一次右键。
+    /// 开发用测试按键：F10 在鼠标位置补一次右键，F7 / F8 补一次滚轮。
     ///
-    /// 自动化脚本发不出右键，视口菜单只能靠它触发。
+    /// 自动化脚本发不出右键与滚轮，视口菜单和列表滚动只能靠它们触发。
     private boolean handleTestKey(int key) {
-        if (key != GLFW.GLFW_KEY_F10) {
-            return false;
+        switch (key) {
+            case GLFW.GLFW_KEY_F10 -> {
+                MouseButtonInfo buttonInfo = new MouseButtonInfo(GLFW.GLFW_MOUSE_BUTTON_RIGHT, 0);
+                mouseClicked(new MouseButtonEvent(lastMouseX, lastMouseY, buttonInfo), false);
+                return true;
+            }
+            case GLFW.GLFW_KEY_F7 -> {
+                mouseScrolled(lastMouseX, lastMouseY, 0, 1);
+                return true;
+            }
+            case GLFW.GLFW_KEY_F8 -> {
+                mouseScrolled(lastMouseX, lastMouseY, 0, -1);
+                return true;
+            }
+            default -> {
+                return false;
+            }
         }
-
-        MouseButtonInfo buttonInfo = new MouseButtonInfo(GLFW.GLFW_MOUSE_BUTTON_RIGHT, 0);
-        mouseClicked(new MouseButtonEvent(lastMouseX, lastMouseY, buttonInfo), false);
-        return true;
     }
 
     // endregion

@@ -4,10 +4,13 @@ import cn.anecansaitin.free_camera_api_tripod.api.animation.CameraAnimation;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.CameraAnimationc;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.EvaluateMode;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.Keyframe;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.WeightedMode;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Curve;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.WrapMode;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.DynamicField;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ConstantValue;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.CustomFunction;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.FormulaValue;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.TrackValue;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ValueSource;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Variable;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.path.Path;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.path.PathMode;
@@ -26,16 +29,17 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
+import com.google.gson.JsonPrimitive;
 import net.minecraft.resources.Identifier;
 import org.joml.Vector3f;
 import org.joml.Vector3fc;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
-import java.util.Map;
+import java.util.List;
 import java.util.Set;
-import java.util.function.BiConsumer;
 
 /// 相机动画与路径的 JSON 编解码。
 ///
@@ -43,16 +47,19 @@ import java.util.function.BiConsumer;
 /// {@code variables}（变量数组）、{@code path}（路径）。
 /// 轨道数组按动画里的轨道顺序写出，两类轨道混排、用 {@code type} 区分：
 /// - 曲线轨道（{@code type} 为 {@code free_camera_api_tripod:curve}）：{@code id}（相机属性名）、
-///   {@code preMode}、{@code postMode} 与 {@code keys}；每个关键帧含时间、取值、入/出切线、入/出权重、插值模式与权重模式
+///   {@code preMode}、{@code postMode} 与 {@code keys}；每个关键帧含时间、取值、两条曲柄的斜率与长度倍数、
+///   插值模式。旧文件里的 {@code inTangent}/{@code outTangent}/{@code inWeight}/{@code outWeight}/{@code weightedMode}
+///   仍可读入，长度按当时的线性系数换算（见 {@code legacyLength}）
 /// - 扩展轨道：{@code id}（轨道标识）与 {@code keys}（字段由轨道自己定，见 {@link JsonTrack}）
 ///
-/// 变量数组里每项含 {@code name}（表达式里引用的名字）、{@code track}（绑定的曲线轨道 id，空串表示不绑定）
-/// 与 {@code value}（不绑定轨道时用的固定值）。
+/// **一个数值**有两种写法：固定值直接写成数字，公式写成 {@code {"expression": "…", "fallback": 1.0}}，
+/// 轨道读数写成 {@code {"track": "fov"}}。关键帧的取值与曲柄、变量的取值来源都用它，
+/// 于是文件里"这个数是不是动态的"一眼就能看出来，不必再去别处找公式表。
 ///
-/// 挂了公式的数值字段统一写在 {@code expressions} 对象里，键是 {@link DynamicField} 的枚举名、值是公式文本；
-/// 关键帧与路径节点各带一份，没有任何公式时不写出该字段。
+/// 变量数组里每项是 {@code name} 加一个 {@code source}（同一个数值写法）。
 ///
-/// 路径含 {@code name} 与 {@code nodes}，每个节点含位置、入/出切线、路径模式与平滑开关。
+/// 路径是**纯几何**，节点坐标与切线就是三个数字的数组，不含公式：{@code position} /
+/// {@code inTangent} / {@code outTangent}，另含 {@code pathMode} 与 {@code smooth}。
 ///
 /// 反序列化一律宽松：字段缺失、类型错误、枚举名非法都退回默认值，只有整个 JSON 无法解析时才返回 null。
 /// {@code tracks} 被视为权威集合，JSON 中未出现的曲线通道会在反序列化后被移除，保证结果与序列化内容一致。
@@ -69,18 +76,32 @@ public final class AnimationCodec {
     private static final String FIELD_TYPE = "type";
     private static final String FIELD_ID = "id";
     private static final String FIELD_TRACK = "track";
-    private static final String FIELD_EXPRESSIONS = "expressions";
+    private static final String FIELD_SOURCE = "source";
+    private static final String FIELD_EXPRESSION = "expression";
+    private static final String FIELD_FALLBACK = "fallback";
     private static final String FIELD_PRE_MODE = "preMode";
     private static final String FIELD_POST_MODE = "postMode";
     private static final String FIELD_KEYS = "keys";
+    private static final String FIELD_FUNCTIONS = "functions";
+    private static final String FIELD_PARAMETERS = "parameters";
+    private static final String FIELD_BODY = "body";
     private static final String FIELD_TIME = "time";
     private static final String FIELD_VALUE = "value";
+    /// 关键帧两侧的曲柄：斜率与长度倍数
+    private static final String FIELD_IN_SLOPE = "inSlope";
+    private static final String FIELD_OUT_SLOPE = "outSlope";
+    private static final String FIELD_IN_LENGTH = "inLength";
+    private static final String FIELD_OUT_LENGTH = "outLength";
+    /// 路径节点的入/出切线；关键帧在旧格式里也用这两个名字存斜率
     private static final String FIELD_IN_TANGENT = "inTangent";
     private static final String FIELD_OUT_TANGENT = "outTangent";
-    private static final String FIELD_IN_WEIGHT = "inWeight";
-    private static final String FIELD_OUT_WEIGHT = "outWeight";
+    /// 旧格式的曲线权重与加权模式，只用于读档时换算成曲柄长度
+    private static final String FIELD_LEGACY_IN_WEIGHT = "inWeight";
+    private static final String FIELD_LEGACY_OUT_WEIGHT = "outWeight";
+    private static final String FIELD_LEGACY_WEIGHTED_MODE = "weightedMode";
+    /// 旧格式把权重线性换算成曲柄长度倍数，系数取它当时的取值
+    private static final float LEGACY_WEIGHT_TO_LENGTH = 0.3f;
     private static final String FIELD_EVALUATE_MODE = "evaluateMode";
-    private static final String FIELD_WEIGHTED_MODE = "weightedMode";
     private static final String FIELD_NODES = "nodes";
     private static final String FIELD_POSITION = "position";
     private static final String FIELD_PATH_MODE = "pathMode";
@@ -88,8 +109,6 @@ public final class AnimationCodec {
 
     private static final String DEFAULT_ANIMATION_NAME = "Camera";
     private static final String DEFAULT_PATH_NAME = "Path";
-    /// 与 Keyframe 的默认权重保持一致
-    private static final float DEFAULT_WEIGHT = 1f / 3f;
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
@@ -121,8 +140,30 @@ public final class AnimationCodec {
 
         root.add(FIELD_TRACKS, tracks);
         root.add(FIELD_VARIABLES, variablesToJson(animation));
+        root.add(FIELD_FUNCTIONS, functionsToJson(animation));
         root.add(FIELD_PATH, pathToObject(animation.path()));
         return GSON.toJson(root);
+    }
+
+    /// 自定义函数：名字 + 参数名数组 + 函数体文本
+    private static JsonArray functionsToJson(CameraAnimationc animation) {
+        JsonArray functions = new JsonArray();
+
+        for (CustomFunction function : animation.functions()) {
+            JsonObject object = new JsonObject();
+            object.addProperty(FIELD_NAME, function.name());
+            JsonArray parameters = new JsonArray();
+
+            for (String parameter : function.parameters()) {
+                parameters.add(parameter);
+            }
+
+            object.add(FIELD_PARAMETERS, parameters);
+            object.addProperty(FIELD_BODY, function.body());
+            functions.add(object);
+        }
+
+        return functions;
     }
 
     private static JsonArray variablesToJson(CameraAnimationc animation) {
@@ -131,14 +172,97 @@ public final class AnimationCodec {
         for (Variable variable : animation.variables()) {
             JsonObject object = new JsonObject();
             object.addProperty(FIELD_NAME, variable.name());
-            object.addProperty(FIELD_TRACK, variable.trackId());
-            // value 是「不绑轨道」时用的固定值；绑了轨道时它不参与求值，
-            // 但一并写出来，取消绑定后原来的数还在
-            object.addProperty(FIELD_VALUE, variable.value());
+            object.add(FIELD_SOURCE, valueToJson(variable.source()));
             variables.add(object);
         }
 
         return variables;
+    }
+
+    /// 读自定义函数：名字 + 参数名数组 + 函数体
+    private static void readFunctions(CameraAnimation animation, JsonArray array) {
+        for (JsonElement element : array) {
+            if (!element.isJsonObject()) {
+                continue;
+            }
+
+            JsonObject object = element.getAsJsonObject();
+            String name = stringValue(object, FIELD_NAME, "");
+
+            if (name.isBlank()) {
+                continue;
+            }
+
+            animation.addFunction(name, readParameters(object), stringValue(object, FIELD_BODY, ""));
+        }
+    }
+
+    /// 函数的参数名数组；缺字段时给空表（零参数函数）
+    private static List<String> readParameters(JsonObject object) {
+        JsonElement parameters = object.get(FIELD_PARAMETERS);
+
+        if (parameters == null || !parameters.isJsonArray()) {
+            return List.of();
+        }
+
+        List<String> names = new ArrayList<>();
+
+        for (JsonElement parameter : parameters.getAsJsonArray()) {
+            if (parameter.isJsonPrimitive()) {
+                names.add(parameter.getAsString().strip());
+            }
+        }
+
+        return names;
+    }
+
+    /// 一个数值：固定值写成数字，公式与轨道读数写成对象
+    private static JsonElement valueToJson(ValueSource source) {
+        return switch (source) {
+            case ConstantValue constant -> new JsonPrimitive(constant.value());
+            case FormulaValue formula -> {
+                JsonObject object = new JsonObject();
+                object.addProperty(FIELD_EXPRESSION, formula.expression());
+                object.addProperty(FIELD_FALLBACK, formula.fallback());
+                yield object;
+            }
+            case TrackValue track -> {
+                JsonObject object = new JsonObject();
+                object.addProperty(FIELD_TRACK, track.trackId());
+                yield object;
+            }
+        };
+    }
+
+    /// 读一个数值：数字是固定值，对象里认 expression（公式）与 track（轨道读数）；
+    /// 认不出来或字段缺失就用 fallback
+    private static ValueSource readValue(@Nullable JsonElement element, float fallback) {
+        if (element == null) {
+            return new ConstantValue(fallback);
+        }
+
+        if (element.isJsonPrimitive() && element.getAsJsonPrimitive().isNumber()) {
+            return new ConstantValue(element.getAsFloat());
+        }
+
+        if (!element.isJsonObject()) {
+            return new ConstantValue(fallback);
+        }
+
+        JsonObject object = element.getAsJsonObject();
+        String track = stringValue(object, FIELD_TRACK, "");
+
+        if (!track.isEmpty()) {
+            return new TrackValue(track);
+        }
+
+        String expression = stringValue(object, FIELD_EXPRESSION, "");
+
+        if (!expression.isBlank()) {
+            return new FormulaValue(expression, floatValue(object, FIELD_FALLBACK, fallback));
+        }
+
+        return new ConstantValue(floatValue(object, FIELD_FALLBACK, fallback));
     }
 
     /// 一条轨道：曲线轨道按曲线写，其余交给轨道自己；
@@ -178,6 +302,12 @@ public final class AnimationCodec {
 
         if (variables != null && variables.isJsonArray()) {
             readVariables(animation, variables.getAsJsonArray());
+        }
+
+        JsonElement functions = root.get(FIELD_FUNCTIONS);
+
+        if (functions != null && functions.isJsonArray()) {
+            readFunctions(animation, functions.getAsJsonArray());
         }
 
         JsonElement path = root.get(FIELD_PATH);
@@ -241,58 +371,13 @@ public final class AnimationCodec {
     private static JsonObject keyToJson(Keyframe key) {
         JsonObject object = new JsonObject();
         object.addProperty(FIELD_TIME, key.time());
-        object.addProperty(FIELD_VALUE, key.value());
-        object.addProperty(FIELD_IN_TANGENT, key.inTangent());
-        object.addProperty(FIELD_OUT_TANGENT, key.outTangent());
-        object.addProperty(FIELD_IN_WEIGHT, key.inWeight());
-        object.addProperty(FIELD_OUT_WEIGHT, key.outWeight());
+        object.add(FIELD_VALUE, valueToJson(key.valueSource()));
+        object.add(FIELD_IN_SLOPE, valueToJson(key.inSlopeSource()));
+        object.add(FIELD_OUT_SLOPE, valueToJson(key.outSlopeSource()));
+        object.add(FIELD_IN_LENGTH, valueToJson(key.inLengthSource()));
+        object.add(FIELD_OUT_LENGTH, valueToJson(key.outLengthSource()));
         object.addProperty(FIELD_EVALUATE_MODE, enumName(key.evaluateMode()));
-        object.addProperty(FIELD_WEIGHTED_MODE, enumName(key.weightedMode()));
-
-        // 没挂公式就不写这个字段，文件里只有真正用到的动态字段
-        if (!key.expressions().isEmpty()) {
-            object.add(FIELD_EXPRESSIONS, expressionsToJson(key.expressions()));
-        }
-
         return object;
-    }
-
-    private static JsonObject expressionsToJson(Map<DynamicField, String> expressions) {
-        JsonObject object = new JsonObject();
-
-        for (Map.Entry<DynamicField, String> entry : expressions.entrySet()) {
-            object.addProperty(entry.getKey().name(), entry.getValue());
-        }
-
-        return object;
-    }
-
-    /// 读一份公式表：枚举名不认识、值不是字符串的条目一律跳过，不影响同一条目里的其余公式
-    private static void readExpressions(@Nullable JsonElement element, BiConsumer<DynamicField, String> apply) {
-        if (element == null || !element.isJsonObject()) {
-            return;
-        }
-
-        for (Map.Entry<String, JsonElement> entry : element.getAsJsonObject().entrySet()) {
-            DynamicField field = dynamicField(entry.getKey());
-            JsonElement value = entry.getValue();
-
-            if (field == null || value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) {
-                continue;
-            }
-
-            apply.accept(field, value.getAsString());
-        }
-    }
-
-    private static @Nullable DynamicField dynamicField(String name) {
-        for (DynamicField field : DynamicField.values()) {
-            if (field.name().equals(name)) {
-                return field;
-            }
-        }
-
-        return null;
     }
 
     private static JsonObject pathToObject(@Nullable Pathc path) {
@@ -320,16 +405,10 @@ public final class AnimationCodec {
         object.add(FIELD_OUT_TANGENT, vectorToJson(node.outTangent()));
         object.addProperty(FIELD_PATH_MODE, enumName(node.pathMode()));
         object.addProperty(FIELD_SMOOTH, node.smooth());
-
-        Map<DynamicField, String> expressions = node.expressions();
-
-        if (!expressions.isEmpty()) {
-            object.add(FIELD_EXPRESSIONS, expressionsToJson(expressions));
-        }
-
         return object;
     }
 
+    /// 路径节点是纯几何：坐标与切线就写成三个数字的数组，没有公式可言
     private static JsonArray vectorToJson(Vector3fc vector) {
         JsonArray array = new JsonArray();
         array.add(vector.x());
@@ -421,15 +500,34 @@ public final class AnimationCodec {
     }
 
     private static Keyframe readKey(JsonObject object) {
-        Keyframe key = Keyframe.create(floatValue(object, FIELD_TIME, 0), floatValue(object, FIELD_VALUE, 0))
-                .inTangent(floatValue(object, FIELD_IN_TANGENT, 0))
-                .outTangent(floatValue(object, FIELD_OUT_TANGENT, 0))
-                .inWeight(floatValue(object, FIELD_IN_WEIGHT, DEFAULT_WEIGHT))
-                .outWeight(floatValue(object, FIELD_OUT_WEIGHT, DEFAULT_WEIGHT))
-                .evaluateMode(enumValue(EvaluateMode.class, object.get(FIELD_EVALUATE_MODE), EvaluateMode.LINEAR))
-                .weightedMode(enumValue(WeightedMode.class, object.get(FIELD_WEIGHTED_MODE), WeightedMode.NONE));
-        readExpressions(object.get(FIELD_EXPRESSIONS), key::expression);
+        Keyframe key = Keyframe.create(floatValue(object, FIELD_TIME, 0), 0)
+                .evaluateMode(enumValue(EvaluateMode.class, object.get(FIELD_EVALUATE_MODE), EvaluateMode.LINEAR));
+        key.valueSource(readValue(object.get(FIELD_VALUE), 0));
+        // 斜率优先读新字段，缺失时回退旧格式的 inTangent / outTangent
+        key.inSlopeSource(readValue(firstOf(object, FIELD_IN_SLOPE, FIELD_IN_TANGENT), 0));
+        key.outSlopeSource(readValue(firstOf(object, FIELD_OUT_SLOPE, FIELD_OUT_TANGENT), 0));
+        key.inLengthSource(readValue(object.get(FIELD_IN_LENGTH), legacyLength(object, true)));
+        key.outLengthSource(readValue(object.get(FIELD_OUT_LENGTH), legacyLength(object, false)));
         return key;
+    }
+
+    /// 同一个量的新旧两个字段名，优先取新名字；两个都没有时返回 null
+    private static @Nullable JsonElement firstOf(JsonObject object, String field, String legacy) {
+        return object.has(field) ? object.get(field) : object.get(legacy);
+    }
+
+    /// 旧文件的曲柄长度：那时是「权重 + 加权模式」，加权模式没覆盖该方向时长度就是基准值 1，
+    /// 覆盖到的按当时的线性系数换算成倍数
+    private static float legacyLength(JsonObject object, boolean incoming) {
+        String mode = stringValue(object, FIELD_LEGACY_WEIGHTED_MODE, "");
+        boolean weighted = "BOTH".equals(mode) || (incoming ? "IN" : "OUT").equals(mode);
+
+        if (!weighted) {
+            return Keyframe.DEFAULT_LENGTH;
+        }
+
+        return floatValue(object, incoming ? FIELD_LEGACY_IN_WEIGHT : FIELD_LEGACY_OUT_WEIGHT, Keyframe.DEFAULT_LENGTH)
+                * LEGACY_WEIGHT_TO_LENGTH;
     }
 
     /// 变量数组：名字重复或为空的条目跳过（变量的值靠名字引用，重名没有意义）
@@ -443,8 +541,7 @@ public final class AnimationCodec {
             Variable variable = animation.addVariable(stringValue(object, FIELD_NAME, ""));
 
             if (variable != null) {
-                variable.trackId(stringValue(object, FIELD_TRACK, ""));
-                variable.value(floatValue(object, FIELD_VALUE, 0));
+                variable.source(readValue(object.get(FIELD_SOURCE), 0));
             }
         }
     }
@@ -467,19 +564,20 @@ public final class AnimationCodec {
     }
 
     private static PathNode readNode(JsonObject object) {
-        PathNode node = new PathNode(readVector(object.get(FIELD_POSITION)));
+        PathNode node = new PathNode(new Vector3f());
         node.pathMode(enumValue(PathMode.class, object.get(FIELD_PATH_MODE), PathMode.LINEAR));
         // 缺字段时沿用节点自身的默认值（自动平滑默认开启），所以要在关掉它之前先读出来
         boolean smooth = booleanValue(object, FIELD_SMOOTH, node.smooth());
         // 写切线前先把自动平滑关掉：开启状态下写一侧会带着另一侧一起动，
         // 那样文件里存的对侧切线会被覆盖；开关在最后用 restoreSmooth 原样恢复，不再动切线
         node.restoreSmooth(false);
+        Vector3f position = readVector(object.get(FIELD_POSITION));
+        node.position(position.x, position.y, position.z);
         Vector3f inTangent = readVector(object.get(FIELD_IN_TANGENT));
         node.inTangent(inTangent.x, inTangent.y, inTangent.z);
         Vector3f outTangent = readVector(object.get(FIELD_OUT_TANGENT));
         node.outTangent(outTangent.x, outTangent.y, outTangent.z);
         node.restoreSmooth(smooth);
-        readExpressions(object.get(FIELD_EXPRESSIONS), node::expression);
         return node;
     }
 

@@ -57,6 +57,9 @@ public final class Icons {
     /// 未选中 ○
     public static final String UNMARKED = "○";
 
+    /// 重命名（用在列表的右键菜单里）
+    public static final String RENAME = "✎";
+
     private Icons() {
     }
 }

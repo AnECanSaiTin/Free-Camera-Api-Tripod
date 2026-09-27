@@ -69,8 +69,7 @@ public class CurveTrack implements AnimationTrack {
         Keyframe pre = curve.preKey(time);
 
         if (pre != null) {
-            key.evaluateMode(pre.evaluateMode())
-                    .weightedMode(pre.weightedMode());
+            key.evaluateMode(pre.evaluateMode());
         }
 
         return curve.key(key);

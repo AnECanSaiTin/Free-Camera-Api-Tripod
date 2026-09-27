@@ -75,6 +75,15 @@ public final class Draw {
     /// 文本截断时的省略号
     private static final String ELLIPSIS = "...";
 
+    /// 界面层级：停靠面板 < 悬浮面板 / 文件栏 < 右键菜单。
+    /// 悬停提示按层级过滤，只提示鼠标当前所在那一层的内容
+    public static final int LAYER_DOCKED = 0;
+    public static final int LAYER_FLOATING = 1;
+    public static final int LAYER_MENU = 2;
+
+    /// 当前记录截断文本时归属的层级
+    private static int layer = LAYER_DOCKED;
+
     private static final List<TruncatedText> TRUNCATED = new ArrayList<>();
 
     /// 当前主题；初始为 null，静态块里铺第一套配色时会落下 DARK
@@ -198,22 +207,31 @@ public final class Draw {
 
     // endregion
 
-    /// 被截断的文本：记录屏幕区域与完整内容，供鼠标悬停时提示
-    public record TruncatedText(UiRect rect, String text) {
+    /// 被截断的文本：记录屏幕区域、完整内容与所属层级，供鼠标悬停时提示
+    public record TruncatedText(UiRect rect, String text, int layer) {
     }
 
     /// 每帧绘制前清空截断记录，并把主题同步到配置里的选择
     public static void beginFrame() {
         TRUNCATED.clear();
+        layer = LAYER_DOCKED;
         darkMode(EditorConfig.DARK_MODE.get());
     }
 
-    /// 鼠标位置下被截断的文本；同一位置有多个时取最后记录的一个
-    public static @Nullable TruncatedText truncatedAt(double mouseX, double mouseY) {
+    /// 切到某一层：之后的截断记录都归到该层。
+    ///
+    /// 悬停提示按层级过滤，因为被上层窗口（悬浮面板、右键菜单）盖住的文字仍然会被记录，
+    /// 不加区分的话鼠标划过上层窗口时就会弹出下层的提示，把上层内容遮住
+    public static void layer(int layer) {
+        Draw.layer = layer;
+    }
+
+    /// 鼠标位置下、且属于该层级的被截断文本；同层有多个时取最后记录的一个
+    public static @Nullable TruncatedText truncatedAt(double mouseX, double mouseY, int layer) {
         TruncatedText found = null;
 
         for (TruncatedText candidate : TRUNCATED) {
-            if (candidate.rect().contains(mouseX, mouseY)) {
+            if (candidate.layer() == layer && candidate.rect().contains(mouseX, mouseY)) {
                 found = candidate;
             }
         }
@@ -290,7 +308,7 @@ public final class Draw {
         text(graphics, value, x, y, color);
 
         if (clipped) {
-            TRUNCATED.add(new TruncatedText(new UiRect(x, y, font().width(value), 9), text));
+            TRUNCATED.add(new TruncatedText(new UiRect(x, y, font().width(value), 9), text, layer));
         }
     }
 

@@ -59,6 +59,8 @@ public class ViewportPanel extends EditorPanel {
     private static final int MAX_TABS = 8;
     /// 删除按钮悬停时的底色
     private static final int TAB_CLOSE_HOVER = 0x60FF5252;
+    /// 准星十字的长度（与原版一致的 15 像素）
+    private static final int CROSSHAIR_LENGTH = 15;
 
     private final EditorContext context;
     private final CameraPose poseCache = new CameraPose();
@@ -156,6 +158,7 @@ public class ViewportPanel extends EditorPanel {
         renderTabs(graphics, content, mouseX, mouseY);
         UiRect frame = frameRect();
         renderFrame(graphics, frame);
+        renderCrosshair(graphics, frame);
         Draw.textEllipsized(graphics, statusText().getString(), content.x() + 5, content.y() + TAB_ROW_HEIGHT + 3,
                 content.width() - 20, takingOver() ? Draw.ACCENT : Draw.TEXT_DIM);
 
@@ -221,6 +224,30 @@ public class ViewportPanel extends EditorPanel {
         // 离屏抓帧后再贴回视窗：PiP 的准备阶段位于世界之后、GUI 通道之前，不会把编辑器自身拍进去
         graphics.submitPictureInPictureRenderState(new ViewportPipRenderer.State(
                 frame.x(), frame.y(), frame.right(), frame.bottom(), 1.0f, null));
+    }
+
+    /// 画面中心的准星：一横一竖各 {@link #CROSSHAIR_LENGTH} 像素，靠中心的格最亮、往两端淡出，
+    /// 与原版准星同一套观感。相机视角正对着哪就指向哪，取景时用来对齐画面中心
+    private static void renderCrosshair(GuiGraphicsExtractor graphics, @Nullable UiRect frame) {
+        if (frame == null) {
+            return;
+        }
+
+        int centerX = frame.centerX();
+        int centerY = frame.centerY();
+        int half = CROSSHAIR_LENGTH / 2;
+
+        for (int offset = -half; offset <= half; offset++) {
+            int color = crosshairColor(offset, half);
+            graphics.fill(centerX, centerY + offset, centerX + 1, centerY + offset + 1, color);
+            graphics.fill(centerX + offset, centerY, centerX + offset + 1, centerY + 1, color);
+        }
+    }
+
+    /// 准星单格的 ARGB：中心全白，越往外越透明（平方衰减，边缘过渡更自然）
+    private static int crosshairColor(int offset, int half) {
+        float fade = 1f - Math.abs(offset) / (half + 0.5f);
+        return Mth.clamp(Math.round(fade * fade * 255f), 0, 255) << 24 | 0xFFFFFF;
     }
 
     /// 拖拽中的控制点：在画面上用强调色画一个十字加方框，和世界里白色的控制点方块区分开

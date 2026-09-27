@@ -1,7 +1,8 @@
 package cn.anecansaitin.free_camera_api_tripod.api.animation.curve;
 
 import cn.anecansaitin.free_camera_api_tripod.api.animation.Keyframe;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ExpressionContext;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Solver;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ValueSource;
 import net.minecraft.util.Mth;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
@@ -52,9 +53,9 @@ public class Curve implements Curvec {
         return evaluate(time, null);
     }
 
-    /// 带上下文的求值：挂了公式的字段按公式算（见 {@link Keyframe#value(ExpressionContext)}），
-    /// 上下文为 null 或字段没挂公式时就是普通的固定数值求值
-    public float evaluate(float time, @Nullable ExpressionContext context) {
+    /// 带求解器的求值：挂了公式的数值按公式算（见 [ValueSource#evaluateOrFallback]），
+    /// 求解器为 null 或公式算不出来时就是普通的固定数值求值
+    public float evaluate(float time, @Nullable Solver solver) {
         int size = keys.size();
 
         if (size == 0) {
@@ -62,7 +63,7 @@ public class Curve implements Curvec {
         }
 
         if (size == 1) {
-            return value(keys.getFirst(), context);
+            return value(keys.getFirst(), solver);
         }
 
         time = mapTime(time);
@@ -70,7 +71,7 @@ public class Curve implements Curvec {
         Keyframe left = keys.get(index);
 
         if (index == size - 1) {
-            return value(left, context);
+            return value(left, solver);
         }
 
         Keyframe right = keys.get(index + 1);
@@ -79,66 +80,68 @@ public class Curve implements Curvec {
         // 相邻关键帧时间相同（或数据异常）时，归一化时间与切线缩放都会变成 0/0，
         // 插值结果随即变成 NaN 并污染整条通道，这里直接退化成取左值
         if (!(duration > 0)) {
-            return value(left, context);
+            return value(left, solver);
         }
 
-        if (Float.isInfinite(outTangent(left, context)) || Float.isInfinite(inTangent(right, context))) {
+        if (Float.isInfinite(outSlope(left, solver)) || Float.isInfinite(inSlope(right, solver))) {
             // 切线为无限，视为Step插值，取左值
-            return value(left, context);
+            return value(left, solver);
         }
 
         // 归一化时间
         time = Math.clamp((time - left.time()) / duration, 0, 1);
 
         return switch (left.evaluateMode()) {
-            case LINEAR -> evaluateLinear(left, right, time, context);
-            case STEP -> value(left, context);
-            case HERMITE -> evaluateHermite(left, right, time, duration, context);
+            case LINEAR -> evaluateLinear(left, right, time, solver);
+            case STEP -> value(left, solver);
+            case HERMITE -> evaluateBezier(left, right, time, duration, solver);
         };
     }
 
-    private float evaluateLinear(Keyframe left, Keyframe right, float time, @Nullable ExpressionContext context) {
-        float leftValue = value(left, context);
-        return (value(right, context) - leftValue) * time + leftValue;
+    private float evaluateLinear(Keyframe left, Keyframe right, float time, @Nullable Solver solver) {
+        float leftValue = value(left, solver);
+        return (value(right, solver) - leftValue) * time + leftValue;
     }
 
-    private float evaluateHermite(Keyframe left, Keyframe right, float time, float duration, @Nullable ExpressionContext context) {
-        // 切线计算
-        float leftTangent = outTangent(left, context);
-        float rightTangent = inTangent(right, context);
-
-        leftTangent = switch (left.weightedMode()) {
-            case NONE, IN -> leftTangent;
-            case OUT, BOTH -> leftTangent * computeWeightScale(outWeight(left, context));
-        };
-
-        rightTangent = switch (right.weightedMode()) {
-            case NONE, OUT -> rightTangent;
-            case IN, BOTH -> rightTangent * computeWeightScale(inWeight(right, context));
-        };
-
-        return hermite(value(left, context), leftTangent, value(right, context), rightTangent, time, duration);
+    /// 三次贝塞尔求值。
+    ///
+    /// 两端各有一条曲柄，落在 `端点 + 曲柄长度 × (1, 斜率)` 处：横向是曲柄长度（基准是这段时长的 1/3，
+    /// 按关键帧上的长度倍数缩放），纵向是斜率乘这个长度。横向也是自由度，
+    /// 所以曲线图上把曲柄拖长拖短同样会改变曲线，与常见软件的贝塞尔曲柄一致。
+    ///
+    /// 求值要先按时间反解曲线参数（见 [solveParameter]）。两侧曲柄长度之和不超过整段时长时
+    /// 横坐标随参数单调，解唯一
+    private float evaluateBezier(Keyframe left, Keyframe right, float time, float duration, @Nullable Solver solver) {
+        float p0 = value(left, solver);
+        float p1 = value(right, solver);
+        float span = duration / 3f;
+        float h0 = span * handleLength(outLength(left, solver));
+        float h1 = span * handleLength(inLength(right, solver));
+        float m0 = outSlope(left, solver);
+        float m1 = inSlope(right, solver);
+        float u = solveParameter(h0 / duration, 1 - h1 / duration, time);
+        return bezier(p0, p0 + m0 * h0, p1 - m1 * h1, p1, u);
     }
 
-    /// 取值 / 切线 / 权重的统一出口：没有上下文时读固定数值，省得求值链上到处写判断
-    private static float value(Keyframe key, @Nullable ExpressionContext context) {
-        return context == null ? key.value() : key.value(context);
+    /// 取值 / 斜率 / 曲柄长度的统一出口：算不出来就退回该字段自己的固定数值
+    private static float value(Keyframe key, @Nullable Solver solver) {
+        return ValueSource.evaluateOrFallback(key.valueSource(), solver);
     }
 
-    private static float inTangent(Keyframe key, @Nullable ExpressionContext context) {
-        return context == null ? key.inTangent() : key.inTangent(context);
+    private static float inSlope(Keyframe key, @Nullable Solver solver) {
+        return ValueSource.evaluateOrFallback(key.inSlopeSource(), solver);
     }
 
-    private static float outTangent(Keyframe key, @Nullable ExpressionContext context) {
-        return context == null ? key.outTangent() : key.outTangent(context);
+    private static float outSlope(Keyframe key, @Nullable Solver solver) {
+        return ValueSource.evaluateOrFallback(key.outSlopeSource(), solver);
     }
 
-    private static float inWeight(Keyframe key, @Nullable ExpressionContext context) {
-        return context == null ? key.inWeight() : key.inWeight(context);
+    private static float inLength(Keyframe key, @Nullable Solver solver) {
+        return ValueSource.evaluateOrFallback(key.inLengthSource(), solver);
     }
 
-    private static float outWeight(Keyframe key, @Nullable ExpressionContext context) {
-        return context == null ? key.outWeight() : key.outWeight(context);
+    private static float outLength(Keyframe key, @Nullable Solver solver) {
+        return ValueSource.evaluateOrFallback(key.outLengthSource(), solver);
     }
 
     public int key(float time, float value) {
@@ -170,7 +173,7 @@ public class Curve implements Curvec {
 
     @Override
     public Keyframe key(int index) {
-        if (validKey(index)) {
+        if (invalidKey(index)) {
             throw new IndexOutOfBoundsException("Invalid keyframe index: " + index);
         }
 
@@ -182,7 +185,7 @@ public class Curve implements Curvec {
     /// 如果newTime小于0，则不移动并返回-1
     /// 如果目标时间已有关键帧（且都不是被移动的这一个），则不移动并返回-1
     public int moveKey(int index, float newTime) {
-        if (validKey(index) || newTime < 0) {
+        if (invalidKey(index) || newTime < 0) {
             return -1;
         }
 
@@ -199,7 +202,7 @@ public class Curve implements Curvec {
     /// 删除关键帧
     /// 如果index不在范围内，则不删除
     public boolean removeKey(int index) {
-        if (validKey(index)) {
+        if (invalidKey(index)) {
             return false;
         }
 
@@ -222,25 +225,25 @@ public class Curve implements Curvec {
         Keyframe current = keys.get(index);
         weight = Math.clamp(weight, 0, 1);
 
-        float inTangent, outTangent;
+        float inSlope, outSlope;
 
         if (count == 1) {
             // 单关键帧：切线为 0
-            inTangent = outTangent = 0f;
+            inSlope = outSlope = 0f;
         } else if (index == 0) {
-            // 起点只有 outTangent
+            // 起点只有出侧斜率
             Keyframe next = keys.get(1);
             float dt = next.time() - current.time();
             float dv = next.value() - current.value();
-            outTangent = (dt != 0) ? (dv / dt) : current.inTangent();
-            inTangent = outTangent;
+            outSlope = (dt != 0) ? (dv / dt) : current.inSlope();
+            inSlope = outSlope;
         } else if (index == count - 1) {
-            // 终点只有 inTangent
+            // 终点只有入侧斜率
             Keyframe prev = keys.get(count - 2);
             float dt = current.time() - prev.time();
             float dv = current.value() - prev.value();
-            inTangent = (dt != 0) ? (dv / dt) : current.outTangent();
-            outTangent = inTangent;
+            inSlope = (dt != 0) ? (dv / dt) : current.outSlope();
+            outSlope = inSlope;
         } else {
             // 中间点：使用 Catmull-Rom
             Keyframe prev = keys.get(index - 1);
@@ -256,12 +259,12 @@ public class Curve implements Curvec {
             float slopeNext = dvNext / dtNext;
 
             float tangent = (slopePrev + slopeNext) * 0.5f;
-            inTangent = Mth.lerp(weight, slopePrev, tangent);
-            outTangent = Mth.lerp(weight, slopeNext, tangent);
+            inSlope = Mth.lerp(weight, slopePrev, tangent);
+            outSlope = Mth.lerp(weight, slopeNext, tangent);
         }
 
-        current.inTangent(inTangent);
-        current.outTangent(outTangent);
+        current.inSlope(inSlope);
+        current.outSlope(outSlope);
     }
 
     @Override
@@ -347,15 +350,11 @@ public class Curve implements Curvec {
         };
     }
 
+    /// 指定时间之前最近的关键帧；该时间之前没有键（含整条曲线还是空的）时返回 null
     @Nullable
     public Keyframe preKey(float time) {
         int index = findFloorIndex(time);
-
-        if (validKey(index)) {
-            return key(index);
-        }
-
-        return null;
+        return invalidKey(index) ? null : key(index);
     }
 
     private int findFloorIndex(float time) {
@@ -409,28 +408,63 @@ public class Curve implements Curvec {
         return Collections.binarySearch(keys, searchingCache.time(time), Keyframe.TIME_COMPARATOR);
     }
 
-    private float computeWeightScale(float weight) {
-        // 来自Unity的经验算法，减少计算量
-        return weight / (weight + 3.0f);
+    /// 曲柄长度倍数的上限：基准长度的 1.5 倍。
+    /// 一段里两侧曲柄加起来不超过整段时长，横坐标才随曲线参数单调、反解才有唯一解
+    public static final float MAX_HANDLE_LENGTH = 1.5f;
+
+    /// 曲柄长度倍数：负值按 0、超上限按上限。
+    /// 数据可能来自手写文件或公式，越界会让反解失去唯一解，所以取用前统一夹一次
+    public static float handleLength(float length) {
+        return Math.clamp(length, 0f, MAX_HANDLE_LENGTH);
     }
 
-    private boolean validKey(int index) {
+    /// 下标是否越界（或为负）。方法名就是判断结果，调用处不必再取反
+    private boolean invalidKey(int index) {
         return index < 0 || index >= size();
     }
 
-    private float hermite(float p0, float m0, float p1, float m1, float t, float dt) {
-        float tangent0 = m0 * dt;
-        float tangent1 = m1 * dt;
+    /// 反解曲线参数：求 u 使横坐标等于归一化后的时间。
+    ///
+    /// 两侧曲柄长度之和不超过整段时长（见 [MAX_HANDLE_SCALE]）时横坐标单调递增，
+    /// 牛顿迭代从线性解 u = x 出发很快收敛；命中不了就退回当前值，不会发散
+    private static float solveParameter(float a, float b, float x) {
+        float u = x;
 
-        float t2 = t * t;
-        float t3 = t2 * t;
+        for (int i = 0; i < 8; i++) {
+            float error = parameterX(a, b, u) - x;
 
-        float h00 = 2 * t3 - 3 * t2 + 1;
-        float h10 = -2 * t3 + 3 * t2;
-        float h01 = t3 - 2 * t2 + t;
-        float h11 = t3 - t2;
+            if (Math.abs(error) < 1.0E-4f) {
+                break;
+            }
 
-        return h00 * p0 + h10 * p1 + h01 * tangent0 + h11 * tangent1;
+            float slope = parameterSlope(a, b, u);
+
+            if (slope < 1.0E-5f) {
+                break;
+            }
+
+            u = Math.clamp(u - error / slope, 0f, 1f);
+        }
+
+        return u;
+    }
+
+    /// 三次贝塞尔的横坐标（归一化）。a 是左曲柄的横坐标，b 是右曲柄的
+    private static float parameterX(float a, float b, float u) {
+        float v = 1 - u;
+        return 3 * v * v * u * a + 3 * v * u * u * b + u * u * u;
+    }
+
+    /// 横坐标对曲线参数的导数
+    private static float parameterSlope(float a, float b, float u) {
+        float v = 1 - u;
+        return 3 * (v * v * a + 2 * v * u * (b - a) + u * u * (1 - b));
+    }
+
+    /// 三次贝塞尔的值
+    private static float bezier(float p0, float c0, float c1, float p1, float u) {
+        float v = 1 - u;
+        return v * v * v * p0 + 3 * v * v * u * c0 + 3 * v * u * u * c1 + u * u * u * p1;
     }
 
     public static Curve constant(float timeStart, float timeEnd, float value) {

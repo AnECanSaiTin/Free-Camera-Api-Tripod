@@ -12,6 +12,7 @@ import cn.anecansaitin.freecameraapi.api.Plugin;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.util.Mth;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import org.jspecify.annotations.NullMarked;
 
@@ -45,6 +46,8 @@ public class CmdCamera implements CameraPlugin {
     @Override
     public void update(float partialTicks) {
         float deltaSeconds = deltaSeconds();
+        // 表达式里的世界时间内置变量每帧都要最新值：编辑器与播放共用这一份
+        player.worldTime(worldTime());
 
         if (player.playing()) {
             player.tick(deltaSeconds);
@@ -103,6 +106,12 @@ public class CmdCamera implements CameraPlugin {
             // 没有 FOV 关键帧时沿用玩家原本的摄像机 FOV
             modifier.disableFov();
         }
+    }
+
+    /// 世界时间归一化到 0~1：游戏内一天的进度，表达式里的内置变量 `worldTime` 读它
+    private static float worldTime() {
+        Level level = Minecraft.getInstance().level;
+        return level == null ? 0f : Math.floorMod(level.getOverworldClockTime(), 24000L) / 24000f;
     }
 
     /// 帧间隔（秒）；首次调用返回 0

@@ -5,6 +5,7 @@ import cn.anecansaitin.free_camera_api_tripod.core.editor.EditorContext;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.EditorLang;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.layout.UiRect;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.theme.Draw;
+import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.LabelWidget;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.TextFieldWidget;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
@@ -25,13 +26,8 @@ public class PathInfoPanel extends EditorPanel {
     private static final int LABEL_WIDTH = 56;
 
     private final EditorContext context;
-    private final List<LabelDraw> labels = new ArrayList<>();
     private final List<Runnable> refreshers = new ArrayList<>();
     private @Nullable String lastRevision;
-
-    /// maxWidth 大于 0 时超出宽度会被省略号截断
-    private record LabelDraw(Component text, int x, int y, int color, int maxWidth) {
-    }
 
     public PathInfoPanel(EditorContext context) {
         super(ID, EditorLang.t("panel.path_info"));
@@ -54,18 +50,6 @@ public class PathInfoPanel extends EditorPanel {
         for (Runnable refresher : refreshers) {
             refresher.run();
         }
-
-        graphics.enableScissor(content.x(), content.y(), content.right(), content.bottom());
-
-        for (LabelDraw label : labels) {
-            if (label.maxWidth() > 0) {
-                Draw.textEllipsized(graphics, label.text().getString(), label.x(), label.y(), label.maxWidth(), label.color());
-            } else {
-                Draw.text(graphics, label.text(), label.x(), label.y(), label.color());
-            }
-        }
-
-        graphics.disableScissor();
     }
 
     /// 路径规模变化时重建；名称不参与——它由输入框自己维护，参与进来会在输入时重建控件
@@ -76,7 +60,6 @@ public class PathInfoPanel extends EditorPanel {
 
     private void rebuild(UiRect content) {
         lastRevision = revision();
-        labels.clear();
         // 控件同样要清空，避免重建时叠层导致重叠与点不中
         widgets.clear();
         refreshers.clear();
@@ -87,7 +70,8 @@ public class PathInfoPanel extends EditorPanel {
         int y = content.y() + 4;
         Path path = context.editor().path();
 
-        labels.add(new LabelDraw(EditorLang.t("path_editor.name"), x, y + 3, Draw.TEXT_DIM, -1));
+        widgets.add(new LabelWidget(new UiRect(x, y, Math.max(8, right - x), FIELD_HEIGHT),
+                EditorLang.t("path_editor.name")).color(Draw.TEXT_DIM));
         TextFieldWidget name = new TextFieldWidget(new UiRect(x + LABEL_WIDTH, y + 1, width, FIELD_HEIGHT),
                 path.name(), path::name);
         widgets.add(name);
@@ -102,8 +86,9 @@ public class PathInfoPanel extends EditorPanel {
     // region 行构建
 
     private int textRow(int x, int y, Component label, Component value, int right) {
-        labels.add(new LabelDraw(label, x, y + 3, Draw.TEXT_DIM, -1));
-        labels.add(new LabelDraw(value, x + LABEL_WIDTH, y + 3, Draw.TEXT, Math.max(8, right - x - LABEL_WIDTH)));
+        widgets.add(new LabelWidget(new UiRect(x, y, Math.max(8, right - x), FIELD_HEIGHT), label).color(Draw.TEXT_DIM));
+        widgets.add(new LabelWidget(new UiRect(x + LABEL_WIDTH, y, Math.max(8, right - x - LABEL_WIDTH), FIELD_HEIGHT), value)
+                .color(Draw.TEXT));
         return y + ROW_HEIGHT;
     }
 

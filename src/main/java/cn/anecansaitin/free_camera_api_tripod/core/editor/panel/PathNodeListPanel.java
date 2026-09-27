@@ -8,13 +8,12 @@ import cn.anecansaitin.free_camera_api_tripod.core.editor.EditorLang;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.layout.UiRect;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.theme.Draw;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.ButtonWidget;
+import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.LabelWidget;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import org.jspecify.annotations.Nullable;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Locale;
 
 /// 路径节点列表面板：列出全部路径节点并支持选中，顶部是取点与删除两个操作。
@@ -32,14 +31,9 @@ public class PathNodeListPanel extends EditorPanel {
     private static final int SCROLLBAR_MARGIN = 4;
 
     private final EditorContext context;
-    private final List<LabelDraw> labels = new ArrayList<>();
     private @Nullable String lastRevision;
     private int scrollY;
     private int totalHeight;
-
-    /// maxWidth 大于 0 时超出宽度会被省略号截断
-    private record LabelDraw(Component text, int x, int y, int color, int maxWidth) {
-    }
 
     public PathNodeListPanel(EditorContext context) {
         super(ID, EditorLang.t("path_editor.nodes"));
@@ -71,17 +65,6 @@ public class PathNodeListPanel extends EditorPanel {
             rebuild(content);
         }
 
-        graphics.enableScissor(content.x(), content.y(), content.right(), content.bottom());
-
-        for (LabelDraw label : labels) {
-            if (label.maxWidth() > 0) {
-                Draw.textEllipsized(graphics, label.text().getString(), label.x(), label.y(), label.maxWidth(), label.color());
-            } else {
-                Draw.text(graphics, label.text(), label.x(), label.y(), label.color());
-            }
-        }
-
-        graphics.disableScissor();
         renderScrollbar(graphics, rowsRect(content));
     }
 
@@ -101,7 +84,6 @@ public class PathNodeListPanel extends EditorPanel {
 
     private void rebuild(UiRect content) {
         lastRevision = revision();
-        labels.clear();
         // 控件同样要清空：否则每次重建都会再叠一层行按钮，后加的行永远点不中
         widgets.clear();
 
@@ -116,8 +98,8 @@ public class PathNodeListPanel extends EditorPanel {
         buildActions(content, rowWidth);
 
         if (path.size() == 0) {
-            labels.add(new LabelDraw(EditorLang.t("inspector.path.empty"), rows.x() + 5, rows.y() + 3, Draw.TEXT_DISABLED,
-                    Math.max(8, rows.width() - 10)));
+            widgets.add(new LabelWidget(new UiRect(rows.x() + 5, rows.y(), Math.max(8, rows.width() - 10), FIELD_HEIGHT),
+                    EditorLang.t("inspector.path.empty")).color(Draw.TEXT_DISABLED));
         }
 
         for (int i = 0; i < path.size(); i++) {

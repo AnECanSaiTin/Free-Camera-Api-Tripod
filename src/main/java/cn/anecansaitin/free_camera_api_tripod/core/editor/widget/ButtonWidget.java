@@ -32,8 +32,6 @@ public class ButtonWidget extends EditorWidget {
     private int textColor = DEFAULT_TEXT_COLOR;
     /// 以强调色显示底边，用于区分主要动作
     private boolean accent;
-    /// 悬停提示；按钮只放图标时用来补全含义
-    private @Nullable Component tooltip;
     /// 已按下但尚未松开
     private boolean pressed;
 
@@ -53,8 +51,10 @@ public class ButtonWidget extends EditorWidget {
         return this;
     }
 
-    public ButtonWidget tooltip(Component tooltip) {
-        this.tooltip = tooltip;
+    /// 悬停提示（按钮只放图标时用来补全含义）；返回按钮本身以便链式设置
+    @Override
+    public ButtonWidget tooltip(@Nullable Component tooltip) {
+        super.tooltip(tooltip);
         return this;
     }
 
@@ -83,10 +83,7 @@ public class ButtonWidget extends EditorWidget {
         }
 
         renderLabel(graphics);
-
-        if (tooltip != null && hovered()) {
-            graphics.setTooltipForNextFrame(Draw.font(), tooltip, mouseX, mouseY);
-        }
+        renderTooltip(graphics, mouseX, mouseY);
     }
 
     /// 文字超出按钮时裁剪到按钮内部并横向滚动（跑马灯）

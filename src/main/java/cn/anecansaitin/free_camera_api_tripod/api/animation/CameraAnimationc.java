@@ -1,5 +1,6 @@
 package cn.anecansaitin.free_camera_api_tripod.api.animation;
 
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.CustomFunction;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Variable;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.path.Pathc;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.AnimationTrack;
@@ -39,6 +40,9 @@ public interface CameraAnimationc {
 
     /// 变量表：表达式里按名字引用，值取自它绑定的曲线轨道
     List<Variable> variables();
+
+    /// 自定义函数表：公式里按名字调用，形参见 {@link CustomFunction}
+    List<CustomFunction> functions();
 
     /// 把「位置通道」的取值换算成沿路径的弧长（绝对距离）
     float distanceToLength(float value);

@@ -8,6 +8,7 @@ import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Predicate;
 
 /// 控件容器：负责焦点管理与事件分发（后加入的控件优先接收事件）。
 public final class WidgetHost {
@@ -22,6 +23,16 @@ public final class WidgetHost {
     public void clear() {
         widgets.clear();
         focused = null;
+    }
+
+    /// 移除满足条件的控件；焦点落在被移除的控件上时一并交还。
+    /// 用于"只重建其中一批控件"的界面（例如列表行换了而常驻按钮不动）
+    public void removeIf(Predicate<EditorWidget> predicate) {
+        if (focused != null && predicate.test(focused)) {
+            focus(null);
+        }
+
+        widgets.removeIf(predicate);
     }
 
     public List<EditorWidget> widgets() {

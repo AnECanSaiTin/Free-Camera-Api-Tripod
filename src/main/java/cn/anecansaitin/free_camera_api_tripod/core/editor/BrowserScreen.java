@@ -1,5 +1,6 @@
 package cn.anecansaitin.free_camera_api_tripod.core.editor;
 
+import cn.anecansaitin.free_camera_api_tripod.EditorConfig;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.layout.DockLayout;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.layout.UiRect;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.theme.Draw;
@@ -7,6 +8,7 @@ import cn.anecansaitin.free_camera_api_tripod.core.editor.theme.Icons;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.BreadcrumbBar;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.ButtonWidget;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.ConfirmDialog;
+import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.ContextMenu;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.TextFieldWidget;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.WidgetHost;
 import net.minecraft.client.Minecraft;
@@ -15,6 +17,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.CharacterEvent;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.input.MouseButtonInfo;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import org.jspecify.annotations.Nullable;
@@ -80,6 +83,8 @@ public abstract class BrowserScreen extends Screen {
     protected final List<Row> rows = new ArrayList<>();
     /// 二次确认弹窗（覆盖确认、删除确认等）
     protected @Nullable ConfirmDialog dialog;
+    /// 列表的右键菜单；打开时点击先交给它
+    protected @Nullable ContextMenu menu;
     /// 一次性状态提示（删除结果、地址栏跳转失败等），切换层级或重读数据时清除
     protected @Nullable String statusMessage;
     protected int selectedIndex = -1;
@@ -98,6 +103,9 @@ public abstract class BrowserScreen extends Screen {
     /// 上次构建控件时的屏幕尺寸，尺寸变化才重建，避免打断输入框编辑状态
     private int layoutWidth = -1;
     private int layoutHeight = -1;
+    /// 最后一次点击的位置；开发用测试按键在它那里补右键 / 滚轮
+    private int lastMouseX;
+    private int lastMouseY;
 
     protected BrowserScreen(Component title) {
         super(title);
@@ -123,6 +131,16 @@ public abstract class BrowserScreen extends Screen {
     /// 一行被点击；单击时 {@link #selectedIndex} 已经指向它。
     /// 点在列表空白处时 index 为 -1，此时 selectedIndex 已清空
     protected abstract void rowClicked(int index, @Nullable Row row, boolean doubleClick);
+
+    /// 一行被右键；默认什么都不做。调用时 {@link #selectedIndex} 已经指向它。
+    /// 需要右键菜单的界面在这里挂一个（用 {@link #openMenu} 打开）
+    protected void rowRightClicked(int index, Row row, double mouseX, double mouseY) {
+    }
+
+    /// 在鼠标位置打开右键菜单；越出屏幕时由控件自己翻转
+    protected void openMenu(ContextMenu menu, double mouseX, double mouseY) {
+        this.menu = menu.at(mouseX, mouseY, width, height);
+    }
 
     /// 列表为空时的提示
     protected abstract Component emptyText();
@@ -248,6 +266,17 @@ public abstract class BrowserScreen extends Screen {
     protected void commitNameField() {
         widgets.focus(null);
         refreshWidgets();
+    }
+
+    /// 让名字输入框直接进入编辑并全选：右键菜单选了「重命名」之后不用再点一次输入框
+    protected final void focusNameField() {
+        if (nameField == null) {
+            return;
+        }
+
+        nameField.value(nameValue);
+        widgets.focus(nameField);
+        nameField.edit();
     }
 
     // endregion
@@ -391,7 +420,7 @@ public abstract class BrowserScreen extends Screen {
 
         int cancelWidth = textButtonWidth("common.cancel");
         UiRect cancelRect = new UiRect(Math.max(PADDING, cursor - cancelWidth), y, cancelWidth, CONTROL_HEIGHT);
-        widgets.add(new ButtonWidget(cancelRect, EditorLang.t("common.cancel"), this::onClose));
+        widgets.add(new ButtonWidget(cancelRect, EditorLang.t("common.cancel"), this::cancelAction));
         cursor = cancelRect.x() - BUTTON_GAP;
 
         int primaryWidth = textWidth(primaryLabel());
@@ -443,6 +472,7 @@ public abstract class BrowserScreen extends Screen {
 
         if (primaryButton != null) {
             primaryButton.enabled(primaryEnabled());
+            relayoutPrimaryButton(primaryLabel());
         }
 
         if (nameField != null) {
@@ -469,6 +499,19 @@ public abstract class BrowserScreen extends Screen {
     /// 按钮宽度：随文字长度自适应，空出左右内边距
     private static int textWidth(Component label) {
         return Draw.font().width(label) + 10;
+    }
+
+    /// 主按钮的文案随模式变化时重排它。
+    /// 底栏按钮是按文字宽度从右往左摆的，改了文案不挪位置就会和「取消」叠在一起
+    private void relayoutPrimaryButton(Component label) {
+        if (label.equals(primaryButton.label())) {
+            return;
+        }
+
+        UiRect old = primaryButton.rect();
+        int width = textWidth(label);
+        primaryButton.label(label);
+        primaryButton.rect(new UiRect(Math.max(PADDING, old.right() - width), old.y(), width, old.height()));
     }
 
     private static int textButtonWidth(String key) {
@@ -517,13 +560,21 @@ public abstract class BrowserScreen extends Screen {
         breadcrumb.render(graphics, mouseX, mouseY);
         renderHint(graphics);
 
+        if (menu != null) {
+            // 右键菜单画在最后（弹窗除外），并切到菜单层
+            Draw.layer(Draw.LAYER_MENU);
+            menu.render(graphics, mouseX, mouseY);
+        }
+
         if (dialog != null) {
             // 二次确认弹窗必须盖在所有东西之上
             dialog.update(width, height);
             dialog.render(graphics, mouseX, mouseY);
         }
 
-        Draw.TruncatedText truncated = Draw.truncatedAt(mouseX, mouseY);
+        // 只提示鼠标所在那一层的文字：被菜单盖住的文字不该弹出提示
+        Draw.TruncatedText truncated = Draw.truncatedAt(mouseX, mouseY,
+                menu != null && menu.contains(mouseX, mouseY) ? Draw.LAYER_MENU : Draw.LAYER_DOCKED);
 
         if (truncated != null) {
             Draw.tooltip(graphics, truncated.text(), mouseX, mouseY, width, height);
@@ -657,6 +708,8 @@ public abstract class BrowserScreen extends Screen {
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
         ensureLayout();
+        lastMouseX = (int) event.x();
+        lastMouseY = (int) event.y();
 
         // 确认弹窗盖住一切，先把它处理完
         if (dialog != null) {
@@ -665,6 +718,17 @@ public abstract class BrowserScreen extends Screen {
 
             if (current.finished()) {
                 dialog = null;
+            }
+
+            return true;
+        }
+
+        // 右键菜单打开时点击先交给它：选一项、或者点到别处把它收起来
+        if (menu != null) {
+            menu.mouseClicked(event);
+
+            if (!menu.keepOpen()) {
+                menu = null;
             }
 
             return true;
@@ -696,21 +760,29 @@ public abstract class BrowserScreen extends Screen {
 
     /// 列表点击：算出命中的行，交给子类决定单击 / 双击各自做什么
     private void clickRow(MouseButtonEvent event, boolean doubleClick) {
-        if (event.button() != GLFW.GLFW_MOUSE_BUTTON_LEFT) {
-            return;
-        }
-
         UiRect list = listRect();
         int index = (int) ((event.y() - list.y() - LIST_PADDING + scrollY) / ROW_HEIGHT);
 
         if (index < 0 || index >= rows.size()) {
-            // 点在列表空白处：取消选中
+            // 点在列表空白处：收起菜单并取消选中
+            menu = null;
             selectedIndex = -1;
             rowClicked(-1, null, doubleClick);
             return;
         }
 
+        // 右键菜单操作的就是这一行，所以右键同样要选中它
         selectedIndex = index;
+
+        if (event.button() == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
+            rowRightClicked(index, rows.get(index), event.x(), event.y());
+            return;
+        }
+
+        if (event.button() != GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            return;
+        }
+
         rowClicked(index, rows.get(index), doubleClick);
     }
 
@@ -764,12 +836,24 @@ public abstract class BrowserScreen extends Screen {
     public boolean keyPressed(KeyEvent event) {
         int key = event.key();
 
+        // 开发用测试按键：默认关闭，只有配置里打开 dev.test_keys 后才识别。
+        // 必须排在弹窗之前：它们替身的正是鼠标事件
+        if (EditorConfig.DEV_TEST_KEYS.get() && handleTestKey(key)) {
+            return true;
+        }
+
         // 弹窗打开时：Esc 只关弹窗
         if (dialog != null) {
             if (key == GLFW.GLFW_KEY_ESCAPE) {
                 dialog = null;
             }
 
+            return true;
+        }
+
+        // 右键菜单打开时：Esc 只收起它
+        if (menu != null && key == GLFW.GLFW_KEY_ESCAPE) {
+            menu = null;
             return true;
         }
 
@@ -797,7 +881,7 @@ public abstract class BrowserScreen extends Screen {
         }
 
         if (key == GLFW.GLFW_KEY_ESCAPE) {
-            onClose();
+            cancelAction();
             return true;
         }
 
@@ -807,6 +891,36 @@ public abstract class BrowserScreen extends Screen {
     @Override
     public boolean charTyped(CharacterEvent event) {
         return widgets.charTyped(event);
+    }
+
+    /// 「取消」与 Esc 的动作：默认关掉界面；
+    /// 子类可以改成"先退出当前模式"（例如重命名进行到一半时，先退回浏览状态）
+    protected void cancelAction() {
+        onClose();
+    }
+
+    /// 开发用测试按键：F10 在鼠标位置补一次右键，F7 / F8 补一次滚轮。
+    ///
+    /// 自动化脚本送不进 GLFW 的右键与滚轮，列表的右键菜单与滚动只能靠它们触发。
+    private boolean handleTestKey(int key) {
+        switch (key) {
+            case GLFW.GLFW_KEY_F10 -> {
+                MouseButtonInfo buttonInfo = new MouseButtonInfo(GLFW.GLFW_MOUSE_BUTTON_RIGHT, 0);
+                mouseClicked(new MouseButtonEvent(lastMouseX, lastMouseY, buttonInfo), false);
+                return true;
+            }
+            case GLFW.GLFW_KEY_F7 -> {
+                mouseScrolled(lastMouseX, lastMouseY, 0, 1);
+                return true;
+            }
+            case GLFW.GLFW_KEY_F8 -> {
+                mouseScrolled(lastMouseX, lastMouseY, 0, -1);
+                return true;
+            }
+            default -> {
+                return false;
+            }
+        }
     }
 
     /// 关闭并返回打开本界面的原界面；没有来源界面时退回游戏

@@ -1,68 +1,67 @@
 package cn.anecansaitin.free_camera_api_tripod.api.animation;
 
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.DynamicField;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ExpressionContext;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ConstantValue;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.FormulaValue;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ValueSource;
 import org.jspecify.annotations.NullMarked;
-import org.jspecify.annotations.Nullable;
 
 import java.util.Comparator;
-import java.util.EnumMap;
-import java.util.Map;
 
-/// 曲线上的一个关键帧：时间 + 值，以及决定插值的切线、权重与求值模式。
+/// 曲线上的一个关键帧：时间 + 值，以及两端各一条贝塞尔曲柄。
 ///
-/// 可变对象：{@link cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Curve} 直接持有实例，
-/// 改时间 / 值 / 切线都是就地修改；需要只读视图时用 {@link Keyframec}，
-/// 时间轴上的各类键（含未来的事件键、特效键）统一由 {@link TrackKey} 描述。
+/// 曲柄由「长度 + 斜率」两个数描述：长度是相邻帧间隔 1/3 的倍数（默认 1，即基准长度），
+/// 斜率是曲柄相对该键的方向。曲线图上曲柄的屏幕位置就是这两个数——拖拽改的是它们，求值读的也是它们。
 ///
-/// 常用静态工厂建关键帧：{@link #create} 建默认插值的关键帧，
-/// {@link #linear} / {@link #step} / {@link #hermite} 直接给出对应的求值模式。
+/// 取值、斜率、长度这五个数值各自是一个 [ValueSource]——固定值或一条公式。
+/// 对外因此有两套读写：
+/// - `value()` / `value(float)` 这一组看的是**固定数值**（公式的回退值）：几何、绘制与界面编辑用它
+/// - `valueSource()` / `valueSource(ValueSource)` 这一组给的是值源本身：求值与序列化用它
+///
+/// 可变对象：[cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Curve] 直接持有实例，
+/// 改时间 / 值 / 曲柄都是就地修改；需要只读视图时用 [Keyframec]。
 @NullMarked
 @SuppressWarnings("unused")
 public class Keyframe implements Keyframec {
     /// 按时间升序比较，曲线靠它维持关键帧有序
     public static final Comparator<Keyframe> TIME_COMPARATOR = (Keyframe k1, Keyframe k2) -> Float.compare(k1.time(), k2.time());
-    /// Hermite 插值的默认权重
-    private static final float DEFAULT_WEIGHT = 1f / 3f;
+    /// 曲柄的默认长度：1 倍基准长度，也就是相邻帧间隔的 1/3
+    public static final float DEFAULT_LENGTH = 1f;
 
     private float time;
-    private float value;
-    private float inTangent;
-    private float inWeight;
-    private float outTangent;
-    private float outWeight;
-    private WeightedMode weightedMode;
+    private ValueSource value;
+    private ValueSource inSlope;
+    private ValueSource inLength;
+    private ValueSource outSlope;
+    private ValueSource outLength;
     private EvaluateMode evaluateMode;
-    /// 挂了公式的字段：播放时按公式求值，没挂公式的字段用上面的固定数值
-    private final Map<DynamicField, String> expressions = new EnumMap<>(DynamicField.class);
 
     public Keyframe(float time, float value) {
         this(time, value, 0, 0);
     }
 
-    public Keyframe(float time, float value, float inTangent, float outTangent) {
-        this(time, value, inTangent, DEFAULT_WEIGHT, outTangent, DEFAULT_WEIGHT, WeightedMode.NONE, EvaluateMode.LINEAR);
+    public Keyframe(float time, float value, float inSlope, float outSlope) {
+        this(time, value, inSlope, DEFAULT_LENGTH, outSlope, DEFAULT_LENGTH, EvaluateMode.LINEAR);
     }
 
-    public Keyframe(float time, float value, float inTangent, float inWeight, float outTangent, float outWeight,
-                    WeightedMode weightedMode, EvaluateMode evaluateMode) {
+    public Keyframe(float time, float value, float inSlope, float inLength, float outSlope, float outLength,
+                    EvaluateMode evaluateMode) {
         this.time = time;
-        this.value = value;
-        this.inTangent = inTangent;
-        this.inWeight = inWeight;
-        this.outTangent = outTangent;
-        this.outWeight = outWeight;
-        this.weightedMode = weightedMode;
+        this.value = new ConstantValue(value);
+        this.inSlope = new ConstantValue(inSlope);
+        this.inLength = new ConstantValue(inLength);
+        this.outSlope = new ConstantValue(outSlope);
+        this.outLength = new ConstantValue(outLength);
         this.evaluateMode = evaluateMode;
     }
 
-    /// 从任意只读关键帧拷贝一份：曲线收下外部关键帧时用它转成自己的可变副本
+    /// 从任意只读关键帧拷贝一份：曲线收下外部关键帧时用它转成自己的可变副本。
+    /// 是 [Keyframe] 时连公式一并拷过来
     public Keyframe(Keyframec keyframe) {
-        this(keyframe.time(), keyframe.value(), keyframe.inTangent(), keyframe.inWeight(),
-                keyframe.outTangent(), keyframe.outWeight(), keyframe.weightedMode(), keyframe.evaluateMode());
+        this(keyframe.time(), keyframe.value(), keyframe.inSlope(), keyframe.inLength(),
+                keyframe.outSlope(), keyframe.outLength(), keyframe.evaluateMode());
 
         if (keyframe instanceof Keyframe source) {
-            expressions.putAll(source.expressions);
+            copySources(source);
         }
     }
 
@@ -80,61 +79,52 @@ public class Keyframe implements Keyframec {
 
     @Override
     public float value() {
-        return value;
+        return value.constant();
     }
 
+    /// 只改固定数值（公式保留，换的只是它的回退值）
     public Keyframe value(float value) {
-        this.value = value;
+        this.value = ValueSource.withConstant(this.value, value);
         return this;
     }
 
     @Override
-    public float inTangent() {
-        return inTangent;
+    public float inSlope() {
+        return inSlope.constant();
     }
 
-    public Keyframe inTangent(float inTangent) {
-        this.inTangent = inTangent;
+    public Keyframe inSlope(float inSlope) {
+        this.inSlope = ValueSource.withConstant(this.inSlope, inSlope);
         return this;
     }
 
     @Override
-    public float outTangent() {
-        return outTangent;
+    public float outSlope() {
+        return outSlope.constant();
     }
 
-    public Keyframe outTangent(float outTangent) {
-        this.outTangent = outTangent;
+    public Keyframe outSlope(float outSlope) {
+        this.outSlope = ValueSource.withConstant(this.outSlope, outSlope);
         return this;
     }
 
     @Override
-    public float inWeight() {
-        return inWeight;
+    public float inLength() {
+        return inLength.constant();
     }
 
-    public Keyframe inWeight(float inWeight) {
-        this.inWeight = inWeight;
+    public Keyframe inLength(float inLength) {
+        this.inLength = ValueSource.withConstant(this.inLength, inLength);
         return this;
     }
 
     @Override
-    public float outWeight() {
-        return outWeight;
+    public float outLength() {
+        return outLength.constant();
     }
 
-    public Keyframe outWeight(float outWeight) {
-        this.outWeight = outWeight;
-        return this;
-    }
-
-    @Override
-    public WeightedMode weightedMode() {
-        return weightedMode;
-    }
-
-    public Keyframe weightedMode(WeightedMode weightedMode) {
-        this.weightedMode = weightedMode;
+    public Keyframe outLength(float outLength) {
+        this.outLength = ValueSource.withConstant(this.outLength, outLength);
         return this;
     }
 
@@ -148,20 +138,20 @@ public class Keyframe implements Keyframec {
         return this;
     }
 
-    /// 覆盖式拷贝：把另一个关键帧的全部字段写到本实例上，曲线用它更新同时间的已有帧
+    /// 覆盖式拷贝：把另一个关键帧的全部字段写到本实例上，曲线用它更新同时间的已有帧。
+    /// 来源是 [Keyframe] 时连公式一并拷过来，否则（只读视图）只剩固定数值，公式清空
     public Keyframe set(Keyframec keyframe) {
         this.time = keyframe.time();
-        this.value = keyframe.value();
-        this.inTangent = keyframe.inTangent();
-        this.inWeight = keyframe.inWeight();
-        this.outTangent = keyframe.outTangent();
-        this.outWeight = keyframe.outWeight();
-        this.weightedMode = keyframe.weightedMode();
         this.evaluateMode = keyframe.evaluateMode();
-        expressions.clear();
 
         if (keyframe instanceof Keyframe source) {
-            expressions.putAll(source.expressions);
+            copySources(source);
+        } else {
+            this.value = new ConstantValue(keyframe.value());
+            this.inSlope = new ConstantValue(keyframe.inSlope());
+            this.inLength = new ConstantValue(keyframe.inLength());
+            this.outSlope = new ConstantValue(keyframe.outSlope());
+            this.outLength = new ConstantValue(keyframe.outLength());
         }
 
         return this;
@@ -169,64 +159,68 @@ public class Keyframe implements Keyframec {
 
     // endregion
 
-    // region 动态字段
+    // region 值源
 
-    /// 该字段挂的公式；没挂返回 null
-    public @Nullable String expression(DynamicField field) {
-        return expressions.get(field);
+    public ValueSource valueSource() {
+        return value;
     }
 
-    /// 给字段挂公式（null 或空白表示回到固定数值）
-    public Keyframe expression(DynamicField field, @Nullable String expression) {
-        if (expression == null || expression.isBlank()) {
-            expressions.remove(field);
-        } else {
-            expressions.put(field, expression.strip());
-        }
-
+    public Keyframe valueSource(ValueSource source) {
+        this.value = source;
         return this;
     }
 
-    /// 该字段是否挂了公式
-    public boolean dynamic(DynamicField field) {
-        return expressions.containsKey(field);
+    public ValueSource inSlopeSource() {
+        return inSlope;
     }
 
-    /// 公式表副本，供序列化与界面判断使用
-    public Map<DynamicField, String> expressions() {
-        return Map.copyOf(expressions);
+    public Keyframe inSlopeSource(ValueSource source) {
+        this.inSlope = source;
+        return this;
     }
 
-    /// 求值时的取值：挂了公式就按公式算，算不出来（公式非法或变量缺失）回退固定值
-    public float value(ExpressionContext context) {
-        return resolve(DynamicField.KEY_VALUE, value, context);
+    public ValueSource outSlopeSource() {
+        return outSlope;
     }
 
-    public float inTangent(ExpressionContext context) {
-        return resolve(DynamicField.KEY_IN_TANGENT, inTangent, context);
+    public Keyframe outSlopeSource(ValueSource source) {
+        this.outSlope = source;
+        return this;
     }
 
-    public float outTangent(ExpressionContext context) {
-        return resolve(DynamicField.KEY_OUT_TANGENT, outTangent, context);
+    public ValueSource inLengthSource() {
+        return inLength;
     }
 
-    public float inWeight(ExpressionContext context) {
-        return resolve(DynamicField.KEY_IN_WEIGHT, inWeight, context);
+    public Keyframe inLengthSource(ValueSource source) {
+        this.inLength = source;
+        return this;
     }
 
-    public float outWeight(ExpressionContext context) {
-        return resolve(DynamicField.KEY_OUT_WEIGHT, outWeight, context);
+    public ValueSource outLengthSource() {
+        return outLength;
     }
 
-    private float resolve(DynamicField field, float fallback, ExpressionContext context) {
-        String expression = expressions.get(field);
+    public Keyframe outLengthSource(ValueSource source) {
+        this.outLength = source;
+        return this;
+    }
 
-        if (expression == null) {
-            return fallback;
-        }
+    /// 是否有任一个数值挂了公式
+    public boolean dynamic() {
+        return value instanceof FormulaValue
+                || inSlope instanceof FormulaValue
+                || outSlope instanceof FormulaValue
+                || inLength instanceof FormulaValue
+                || outLength instanceof FormulaValue;
+    }
 
-        float evaluated = context.evaluate(expression);
-        return Float.isNaN(evaluated) ? fallback : evaluated;
+    private void copySources(Keyframe source) {
+        this.value = ValueSource.copy(source.value);
+        this.inSlope = ValueSource.copy(source.inSlope);
+        this.inLength = ValueSource.copy(source.inLength);
+        this.outSlope = ValueSource.copy(source.outSlope);
+        this.outLength = ValueSource.copy(source.outLength);
     }
 
     // endregion
@@ -245,12 +239,9 @@ public class Keyframe implements Keyframec {
         return create(time, value).evaluateMode(EvaluateMode.STEP);
     }
 
-    public static Keyframe hermite(float time, float value, float inTangent, float outTangent) {
-        return create(time, value).inTangent(inTangent).outTangent(outTangent).evaluateMode(EvaluateMode.HERMITE);
-    }
-
-    public static Keyframe hermite(float time, float value, float inTangent, float inWeight, float outTangent, float outWeight, WeightedMode weightedMode) {
-        return create(time, value).inTangent(inTangent).inWeight(inWeight).outTangent(outTangent).outWeight(outWeight).weightedMode(weightedMode).evaluateMode(EvaluateMode.HERMITE);
+    /// 贝塞尔插值：只给斜率，曲柄长度取默认的基准长度
+    public static Keyframe hermite(float time, float value, float inSlope, float outSlope) {
+        return create(time, value).inSlope(inSlope).outSlope(outSlope).evaluateMode(EvaluateMode.HERMITE);
     }
 
     // endregion

@@ -4,7 +4,7 @@ import cn.anecansaitin.free_camera_api_tripod.api.animation.Evaluator;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.CameraAnimation;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Clip;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Curve;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ExpressionContext;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ExpressionSolver;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.path.Path;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.AnimationTrack;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.TickTrack;
@@ -31,6 +31,9 @@ public class CameraPlayer {
     private float time;
     private float speed = 1f;
     private boolean loop = false;
+    /// 世界时间（游戏内一天的进度，归一化到 0~1）：表达式里的内置变量读它。
+    /// 播放器不认 Minecraft，这个值由调用方每帧灌进来
+    private float worldTime;
 
     public CameraPlayer(CameraAnimation animation) {
         this.animation = animation;
@@ -60,8 +63,10 @@ public class CameraPlayer {
             advanceTracks(previous, duration);
             advanceTracks(0f, time);
         } else {
+            // 播完就交还相机控制：停在末尾也算「已停止」，下一帧 CmdCamera 会把 modifier 禁用掉。
+            // 编辑器开着时相机本来就由编辑器驱动、视口仍停在末帧，不受这里影响
             time = duration;
-            state = State.PAUSED;
+            state = State.STOPPED;
             // 停在末尾前把最后一段走完，末尾那一帧的键仍会触发
             advanceTracks(previous, duration);
         }
@@ -84,8 +89,8 @@ public class CameraPlayer {
     public CameraPose evaluatePose(CameraPose dest) {
         Clip clip = animation.clip();
         Path path = animation.path();
-        // 每帧一份求值上下文：挂了公式的关键帧 / 路径节点按当前时间算，变量也按当前时间取轨道读数
-        ExpressionContext expression = new ExpressionContext(animation, time);
+        // 每帧一份求解器：挂了公式的关键帧 / 路径节点按当前时间算，变量也按当前时间取轨道读数
+        ExpressionSolver expression = ExpressionSolver.of(animation, time, worldTime);
 
         if (animation.motionMode() == CameraAnimation.MotionMode.COORDINATE) {
             // 直接坐标模式：位置由三个坐标通道给出，与路径无关。
@@ -115,7 +120,7 @@ public class CameraPlayer {
         } else if (path.size() > 0) {
             // 位置通道的取值口径由动画决定：绝对距离直接用，百分比先乘总长再采样
             float distance = animation.distanceToLength(clip.evaluate(CameraAnimation.CHANNEL_POSITION, time, expression));
-            Vector3f evaluated = path.evaluate(distance, posCache, expression);
+            Vector3f evaluated = path.evaluate(distance, posCache);
 
             // 路径数据异常（总长或切线非有限值）时算出的是 NaN，绝不能把它交给相机
             if (isFinite(evaluated)) {
@@ -213,6 +218,15 @@ public class CameraPlayer {
 
     public float time() {
         return time;
+    }
+
+    /// 世界时间（游戏内一天的进度，归一化到 0~1），由调用方每帧更新
+    public float worldTime() {
+        return worldTime;
+    }
+
+    public void worldTime(float worldTime) {
+        this.worldTime = worldTime;
     }
 
     public void speed(float speed) {

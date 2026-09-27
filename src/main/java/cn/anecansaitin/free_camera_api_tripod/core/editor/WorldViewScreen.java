@@ -6,9 +6,11 @@ import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.edit.CameraEditorM
 import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.edit.Selected;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.layout.DockLayout;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.layout.UiRect;
+import cn.anecansaitin.free_camera_api_tripod.core.editor.panel.KeyframePanel;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.theme.Draw;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.theme.Icons;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.ButtonWidget;
+import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.ContextMenu;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.WidgetHost;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -17,6 +19,7 @@ import net.minecraft.client.input.CharacterEvent;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
+import net.minecraft.util.Mth;
 import org.jspecify.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
 
@@ -44,6 +47,9 @@ public class WorldViewScreen extends Screen {
     private static final int BAR_PAD = 4;
     /// 操作栏上方提示条的高度
     private static final int HUD_HEIGHT = 14;
+    /// 关键帧属性面板的默认尺寸，超出屏幕时会被压缩
+    private static final int KEYFRAME_PANEL_WIDTH = 220;
+    private static final int KEYFRAME_PANEL_HEIGHT = 240;
 
     private final EditorContext context;
     /// 返回目标：打开本界面的那个界面
@@ -56,6 +62,12 @@ public class WorldViewScreen extends Screen {
     private final WidgetHost playBar = new WidgetHost();
     private final List<Runnable> refreshers = new ArrayList<>();
     private final Set<Integer> pressedKeys = new HashSet<>();
+    /// 就地弹出的关键帧属性面板；为 null 表示没弹出
+    private @Nullable KeyframePanel keyframePanel;
+    /// 正在拖面板标题栏，以及按下时鼠标相对面板左上角的偏移
+    private boolean panelDragging;
+    private double panelGrabX;
+    private double panelGrabY;
     /// 底部操作栏高度，按按钮行数自适应
     private int playBarHeight = BAR_PAD * 2 + BUTTON_HEIGHT;
 
@@ -128,11 +140,52 @@ public class WorldViewScreen extends Screen {
         renderPlayBar(graphics, hoverX, hoverY);
         renderHud(graphics);
 
-        Draw.TruncatedText truncated = Draw.truncatedAt(mouseX, mouseY);
+        // 关键帧属性面板浮在世界之上；它的右键菜单再压一层
+        Draw.layer(Draw.LAYER_FLOATING);
+
+        if (keyframePanel != null) {
+            keyframePanel.render(graphics, hoverX, hoverY);
+        }
+
+        Draw.layer(Draw.LAYER_MENU);
+
+        if (keyframePanel != null) {
+            keyframePanel.renderMenu(graphics, hoverX, hoverY);
+        }
+
+        ExpressionEditorWindow expressionEditor = context.expressionEditor();
+
+        if (expressionEditor != null) {
+            expressionEditor.update(width, height);
+            expressionEditor.render(graphics, mouseX, mouseY);
+        }
+
+        // 只提示鼠标当前所在那一层的文字：被属性面板或菜单盖住的文字不该弹出提示
+        Draw.TruncatedText truncated = Draw.truncatedAt(mouseX, mouseY, surfaceAt(mouseX, mouseY));
 
         if (truncated != null) {
             Draw.tooltip(graphics, truncated.text(), mouseX, mouseY, width, height);
         }
+    }
+
+    /// 鼠标当前压在哪一层界面上：右键菜单最上，其次是就地弹出的属性面板，其余都算底栏那一层
+    private int surfaceAt(double mouseX, double mouseY) {
+        if (keyframePanel == null) {
+            return Draw.LAYER_DOCKED;
+        }
+
+        ContextMenu menu = keyframePanel.contextMenu();
+
+        if (menu != null && menu.contains(mouseX, mouseY)) {
+            return Draw.LAYER_MENU;
+        }
+
+        return keyframePanel.rect().contains(mouseX, mouseY) ? Draw.LAYER_FLOATING : Draw.LAYER_DOCKED;
+    }
+
+    /// 属性面板能否接收输入：环视时鼠标已被锁定，点击一律让给"释放环视"
+    private boolean panelInteractive() {
+        return keyframePanel != null && !takeover.takingOver();
     }
 
     private void renderPlayBar(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
@@ -202,9 +255,9 @@ public class WorldViewScreen extends Screen {
                     this::addKey));
             buttons.add(barButton(Component.literal(Icons.REMOVE), EditorLang.t("world_view.remove_key"), BUTTON_WIDTH,
                     this::removeKey));
-            // 关键帧属性交给编辑界面的面板，这里只负责退回
-            buttons.add(barButton(EditorLang.t("world_view.key_props"), EditorLang.t("world_view.back"),
-                    BUTTON_WIDTH, this::onClose));
+            // 关键帧属性就地弹出：世界内查看本来就是"边看边调"的地方，退回编辑界面反而打断
+            buttons.add(barButton(EditorLang.t("world_view.key_props"), EditorLang.t("world_view.key_props_hint"),
+                    BUTTON_WIDTH, this::toggleKeyframePanel));
         }
 
         buttons.add(barButton(EditorLang.t("world_view.back"), EditorLang.t("world_view.back"), BACK_BUTTON_WIDTH,
@@ -259,6 +312,35 @@ public class WorldViewScreen extends Screen {
 
             y += BUTTON_HEIGHT + BUTTON_GAP;
         }
+    }
+
+    /// 就地弹出 / 收起关键帧属性面板。
+    ///
+    /// 世界内查看没有停靠布局，所以面板固定浮在右上角，拖标题栏可以挪开，免得挡住要看的世界；
+    /// 面板本身与编辑界面里那个关键帧面板是同一个实现，选中状态、改动都直接落在同一份数据上
+    private void toggleKeyframePanel() {
+        if (keyframePanel != null) {
+            keyframePanel = null;
+            return;
+        }
+
+        KeyframePanel panel = new KeyframePanel(context);
+        int panelWidth = Math.min(KEYFRAME_PANEL_WIDTH, Math.max(60, width - 12));
+        int panelHeight = Math.min(KEYFRAME_PANEL_HEIGHT, Math.max(40, height - playBarHeight - HUD_HEIGHT - 12));
+        panel.rect(new UiRect(width - panelWidth - 6, 6, panelWidth, panelHeight));
+        keyframePanel = panel;
+    }
+
+    /// 拖动属性面板：位置夹在屏幕内，标题栏不会被拖出画面
+    private void moveKeyframePanel(double x, double y) {
+        if (keyframePanel == null) {
+            return;
+        }
+
+        UiRect rect = keyframePanel.rect();
+        int left = (int) Mth.clamp(x, 0, Math.max(0, width - rect.width()));
+        int top = (int) Mth.clamp(y, 0, Math.max(0, height - rect.height()));
+        keyframePanel.rect(new UiRect(left, top, rect.width(), rect.height()));
     }
 
     private void togglePlay() {
@@ -347,6 +429,9 @@ public class WorldViewScreen extends Screen {
     /// 不额外改动动画数据。
     @Override
     public void onClose() {
+        // 表达式编辑窗口是模态的，留到退回之后会盖在编辑界面上，这里顺手关掉
+        context.closeExpressionEditor();
+
         if (context.editor().viewMode() == CameraEditorModel.ViewMode.FREE) {
             context.syncFreePoseFromCamera();
         }
@@ -361,6 +446,43 @@ public class WorldViewScreen extends Screen {
     /// 世界内查看的点击分两步：底部操作栏 -> 路径点/控制点拖拽 -> 世界本体（切换环视）
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        // 表达式编辑窗口是模态的：打开时点击全归它，免得点穿到底下的面板与世界
+        ExpressionEditorWindow expressionEditor = context.expressionEditor();
+
+        if (expressionEditor != null) {
+            ExpressionEditorWindow current = expressionEditor;
+            expressionEditor.mouseClicked(event, doubleClick);
+
+            if (expressionEditor.finished() && context.expressionEditor() == current) {
+                context.closeExpressionEditor();
+            }
+
+            return true;
+        }
+
+        // 属性面板压在世界之上：菜单 -> 标题栏拖动 -> 面板控件
+        KeyframePanel panel = panelInteractive() ? keyframePanel : null;
+
+        // 菜单打开时它优先吃掉点击（点在菜单外就是关掉菜单）
+        if (panel != null && panel.menuMouseClicked(event)) {
+            return true;
+        }
+
+        if (panel != null && panel.rect().contains(event.x(), event.y())) {
+            if (panel.headerRect().contains(event.x(), event.y())) {
+                if (event.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+                    panelDragging = true;
+                    panelGrabX = event.x() - panel.rect().x();
+                    panelGrabY = event.y() - panel.rect().y();
+                }
+
+                return true;
+            }
+
+            panel.mouseClicked(event, doubleClick);
+            return true;
+        }
+
         // 底部操作栏优先响应，点按钮不会误触发环视接管
         if (playBarRect().contains(event.x(), event.y())) {
             playBar.mouseClicked(event, doubleClick);
@@ -396,6 +518,23 @@ public class WorldViewScreen extends Screen {
 
     @Override
     public boolean mouseDragged(MouseButtonEvent event, double dragX, double dragY) {
+        // 表达式编辑窗口是模态的，拖拽不落到面板或世界上
+        if (context.expressionEditor() != null) {
+            return true;
+        }
+
+        if (panelDragging) {
+            moveKeyframePanel(event.x() - panelGrabX, event.y() - panelGrabY);
+            return true;
+        }
+
+        KeyframePanel panel = panelInteractive() ? keyframePanel : null;
+
+        if (panel != null && panel.rect().contains(event.x(), event.y())) {
+            panel.mouseDragged(event, dragX, dragY);
+            return true;
+        }
+
         if (handleDrag.dragging()) {
             handleDrag.update(event.x(), event.y(), fullScreenRect());
             return true;
@@ -406,8 +545,32 @@ public class WorldViewScreen extends Screen {
 
     @Override
     public boolean mouseReleased(MouseButtonEvent event) {
+        if (panelDragging && event.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            panelDragging = false;
+            return true;
+        }
+
+        ExpressionEditorWindow expressionEditor = context.expressionEditor();
+
+        if (expressionEditor != null) {
+            ExpressionEditorWindow current = expressionEditor;
+            expressionEditor.mouseReleased(event);
+
+            if (expressionEditor.finished() && context.expressionEditor() == current) {
+                context.closeExpressionEditor();
+            }
+
+            return true;
+        }
+
         if (event.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
             handleDrag.cancel();
+        }
+
+        KeyframePanel panel = panelInteractive() ? keyframePanel : null;
+
+        if (panel != null) {
+            panel.mouseReleased(event);
         }
 
         playBar.mouseReleased(event);
@@ -415,7 +578,44 @@ public class WorldViewScreen extends Screen {
     }
 
     @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        ExpressionEditorWindow expressionEditor = context.expressionEditor();
+
+        if (expressionEditor != null) {
+            return expressionEditor.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+        }
+
+        KeyframePanel panel = panelInteractive() ? keyframePanel : null;
+
+        if (panel != null && panel.rect().contains(mouseX, mouseY)) {
+            return panel.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+        }
+
+        return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+    }
+
+    @Override
     public boolean keyPressed(KeyEvent event) {
+        // 表达式编辑窗口打开时按键全部归它（Esc 关窗且不写回）
+        ExpressionEditorWindow expressionEditor = context.expressionEditor();
+
+        if (expressionEditor != null) {
+            ExpressionEditorWindow current = expressionEditor;
+            expressionEditor.keyPressed(event);
+
+            if (expressionEditor.finished() && context.expressionEditor() == current) {
+                context.closeExpressionEditor();
+            }
+
+            return true;
+        }
+
+        KeyframePanel panel = panelInteractive() ? keyframePanel : null;
+
+        if (panel != null && panel.keyPressed(event)) {
+            return true;
+        }
+
         int key = event.key();
 
         // Esc：先释放环视，未环视时返回编辑界面
@@ -451,7 +651,14 @@ public class WorldViewScreen extends Screen {
 
     @Override
     public boolean charTyped(CharacterEvent event) {
-        return false;
+        ExpressionEditorWindow expressionEditor = context.expressionEditor();
+
+        if (expressionEditor != null) {
+            return expressionEditor.charTyped(event);
+        }
+
+        KeyframePanel panel = panelInteractive() ? keyframePanel : null;
+        return panel != null && panel.charTyped(event);
     }
 
     private static boolean isMovementKey(int key) {

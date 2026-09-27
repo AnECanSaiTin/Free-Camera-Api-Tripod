@@ -17,8 +17,9 @@
 api/                          对外契约：数据模型 + 扩展点（不依赖 core）
 ├── camera/                   相机数据接口：TripodData / TripodStates / ControlScheme
 ├── animation/                动画数据模型
-│   ├── Keyframe/Keyframec/TrackKey/Evaluator/EvaluateMode/WeightedMode
+│   ├── Keyframe/Keyframec/TrackKey/Evaluator/EvaluateMode
 │   ├── curve/                Curve / Curvec / Clip / WrapMode
+│   ├── expression/           Expression / ValueSource / Variable / CustomFunction / ExpressionSolver
 │   ├── path/                 Path / Pathc / PathNode / PathNodec / PathMode
 │   └── track/                AnimationTrack / TrackType / CurveTrack
 │                             TrackTypeRegistry / AnimationChannelRegistry
@@ -82,20 +83,29 @@ F6 ──► CameraEditorScreen.open()
 | `Keyframe` | 可写关键帧（可变类；setter 返回自身可链式）；静态工厂 `create/linear/step/hermite`；`set(Keyframec)` 覆盖式拷贝 |
 | `Keyframec` / `Keyframe` 的分工 | 与 `PathNodec` / `PathNode` 一致：读方只认只读接口，`Curve` 内部直接持有可变的 `Keyframe` |
 
-`EvaluateMode`：`LINEAR` / `STEP` / `HERMITE`；`WeightedMode`：`NONE` / `IN` / `OUT` / `BOTH`。
+`EvaluateMode`：`LINEAR` / `STEP` / `HERMITE`（`HERMITE` 即按贝塞尔求值）。
 
-关键帧还可以给取值 / 切线 / 权重**挂公式**（见 2.7）：`expression(DynamicField)` 读、`expression(DynamicField, String)` 写，
-`value(ExpressionContext)` 这一组带上下文的 getter 会先按公式算，算不出来再回退固定数值。
+关键帧的取值 / 入出斜率 / 入出长度倍数这五个数值各自是一个**值源**（见 2.7），所以每个字段有两套读写：
+`value()` / `value(float)` 这一组看的是**固定数值**（公式的回退值，几何、绘制、界面编辑都用它），
+`valueSource()` / `valueSource(ValueSource)` 这一组给的是值源本身（求值与序列化用它）。
+
+四个插值字段就是两端各一条贝塞尔曲柄：**斜率给方向，长度倍数给长度**——
+曲柄长度 = 这段时长的 1/3 × 长度倍数（默认 1，即基准长度）。没有单独的「加权模式」开关，
+权重总是参与，曲柄在曲线图上能拖多长就生效多长（上限见 2.2）。
 
 ### 2.2 曲线 `curve/Curve`
 
 一条 float 曲线，内部是升序的 `Keyframe` 列表。
 
 - `key(time, value)` / `key(Keyframe)`：按时间二分查找插入或覆盖，返回索引
-- `moveKey` / `removeKey` / `smoothTangents`：编辑操作；`smoothTangents` 在两端用差分、中间点用 Catmull-Rom 斜率
+- `moveKey` / `removeKey` / `smoothTangents`：编辑操作；`smoothTangents` 在两端用差分、中间点用 Catmull-Rom 斜率，
+  只改斜率、不动曲柄长度
 - `evaluate(time)`：先按 `preMode` / `postMode`（`WrapMode`：CLAMP / LOOP / PING_PONG）把时间映射进有效区间，
-  再取相邻两键按左键的 `EvaluateMode` 插值；HERMITE 分支按 `WeightedMode` 缩放切线（`weight / (weight + 3)`）
-- `evaluate(time, ExpressionContext)`：多带一个求值上下文，挂了公式的字段按公式取值；上下文为 `null` 就是纯固定数值求值
+  再取相邻两键按左键的 `EvaluateMode` 插值。`HERMITE` 分支按**曲柄位置**求三次贝塞尔：
+  两端的曲柄落在 `端点 + 曲柄长度 × (1, 斜率)` 处，曲柄长度由关键帧上的长度倍数决定（`Curve.handleLength` 夹在 0~1.5 倍）。
+  因为横坐标也是自由度，求值要先按时间反解曲线参数（牛顿迭代，见 `Curve.solveParameter`）；
+  两侧曲柄长度之和不超过整段时长，横坐标才单调、解唯一，这正是长度上限取 1.5 倍的原因
+- `evaluate(time, Solver)`：多带一个求解器，挂了公式的字段按公式取值；求解器为 `null` 就是纯固定数值求值
 - **健壮性处理**：相邻键时间相同、线段长度退化、切线为无穷时直接取左值，避免 `0/0` 产生 NaN 污染整条通道
 - 命中位置用 `lastIndex` + 方向标记做局部近似，退化时才回到二分
 
@@ -111,17 +121,17 @@ F6 ──► CameraEditorScreen.open()
 
 ### 2.4 路径 `path/`
 
-- `PathNodec`：只读节点（位置、入/出切线、`PathMode`、是否自动平滑、挂了公式的分量 `expressions()`）
+- `PathNodec`：只读节点（位置、入/出切线、`PathMode`、是否自动平滑）
 - `PathNode`：可写节点；`inTangent/outTangent` 在 `smooth` 开启时互为反向，保证拖动一侧另一侧跟随；
-  `smooth(true)` 打开开关的瞬间会把出切线对齐到入切线（出 = -入），`restoreSmooth` 只改开关、不动切线（供反序列化）；
-  坐标与切线的每个分量都可以挂公式（`DynamicField.NODE_*`）
+  `smooth(true)` 打开开关的瞬间会把出切线对齐到入切线（出 = -入），`restoreSmooth` 只改开关、不动切线（供反序列化）
+- **路径是纯几何**：坐标与切线就是固定向量，节点不参与表达式求值。相机随时间变化由曲线通道与路径进度负责，
+  节点形状不做动态，弧长与渲染因此始终有确定的值
 - `PathMode`：`LINEAR` / `BEZIER` / `CATMULL_ROM`，**由每段起点节点的模式决定该段插值方式**
 - `Path`：节点表 + **弧长表**（每段长度、累计长度）
   - `node/insertNode/removeNode/moveNode` 后按受影响范围重建弧长表（`updateArcLengthTable(begin, end)` 或整体重建）
-  - `evaluate(distance, dest [, context])`：按弧长二分定位分段 → 归一化参数 → 按模式调 `util/SplineUtils` 取点
-  - `evaluate(dest, progress [, context])`：按 0~1 进度取点（内部乘总长）
+  - `evaluate(distance, dest)`：按弧长二分定位分段 → 归一化参数 → 按模式调 `util/SplineUtils` 取点
+  - `evaluate(dest, progress)`：按 0~1 进度取点（内部乘总长）
   - 退化保护：线段长度为 0 时参数取 0，索引越界时夹到有效分段
-  - **弧长表一律按固定数值算**，不接求值上下文：弧长是静态度量，否则"路径总长"会随时间变，百分比口径就失去意义
 - `Pathc`：只读视图（`name/size/node/totalLength/evaluate`），渲染等只读场景用它
 
 ### 2.5 轨道抽象 `track/`
@@ -158,42 +168,107 @@ F6 ──► CameraEditorScreen.open()
 - 扩展轨道：`addExtensionTrack(track)` 插入到末尾、`removeExtensionTrack(id)` 移除、
   `renameExtensionTrack(id, newId)` 改名（只对实现 `RenamableTrack` 的轨道生效，改的是标识本身）；
   `extensionTracks()` 是它的只读过滤视图
+- **通用曲线轨道**：`addCurveTrack(baseName)` 建一条曲线轨道（名字是 `baseName` 加序号，界面传进来的是
+  本地化过的「曲线」这类词，所以叫「曲线1」「Curve1」），它不对应任何相机属性，专门给变量读写用；
+  `renameCurveTrack(id, newId)` 改名时会连曲线（`Clip` 的 key）与绑定它的变量一起改指向，
+  相机自身的属性通道（`isCameraChannel`）不允许改名
 - 实现了 `JsonTrack` 的轨道随动画一起进 JSON；`copyFrom` 会整体替换轨道表（撤销栈与读档都依赖这一点）
 - `variables()`：变量表（见 2.7），`variable(name)` / `addVariable(name)` / `removeVariable(name)` /
-  `renameVariable(name, newName)` 负责增删改；名字要能被表达式当标识符读（`Expression.validName`），重名与空名一律拒绝
-- `copyFrom(other)`：读档时**原地替换**内容——动画实例被播放器与编辑器各处持有，不能换对象；变量表也一并换成副本
-- `CameraAnimationc`：只读视图（`name/duration/motionMode/distanceMode/path/tracks/curveTracks/extensionTracks/variables/distanceToLength`）
+  `renameVariable(name, newName)` 负责增删改；名字要能被表达式当标识符读（`Expression.validName`），重名与空名一律拒绝。
+  `variableCycle()` 给出变量之间的第一条循环引用，`selfReferencing(variable)` 判断自嵌套，两个都供界面报错
+- `functions()`：自定义函数表（见 2.7），`function(name)` / `addFunction()` / `removeFunction(name)` /
+  `renameFunction(name, newName)` 负责增删改；`functionNameTaken(name)` 挡住与内置函数重名
+- `copyFrom(other)`：读档时**原地替换**内容——动画实例被播放器与编辑器各处持有，不能换对象；变量表与函数表也一并换成副本
+- `CameraAnimationc`：只读视图（`name/duration/motionMode/distanceMode/path/tracks/curveTracks/extensionTracks/variables/functions/distanceToLength`）
 
-### 2.7 表达式与变量 `expression/`
+### 2.7 值源、表达式、变量与函数 `expression/`
 
 让"数值"可以随时间变化：一个数值既可以是一个固定的数，也可以挂一条公式，播放时按当前时间算出来。
 
-| 类型 | 职责 |
+#### 值源 `ValueSource`
+
+**每个数值字段自己就是一个值源对象**，而不是"数值 + 一张外挂的公式表"。这是整套设计的支点：
+
+| 实现 | 含义 |
 | --- | --- |
-| `Expression` | 极简求值器：四则运算、`%`、括号、一元正负、变量、函数 `min/max/sin/cos/random`。每次求值重新扫描字符串（表达式很短，省掉 AST 更划算）；**任何失败一律返回 NaN**，调用方据此回退到固定数值 |
-| `Expression.Resolver` | 变量取值入口：`resolve(name)`，未知变量返回 NaN |
-| `Variable` | 变量 = 名字 + 取值来源。来源二选一：绑定的曲线轨道 id（非空）或固定值 `value`（不绑轨道时用） |
-| `ExpressionContext` | 求值上下文：内置变量 `t`（当前时间）+ 动画里的变量。构造时把变量表索引成 Map，并对本次求值的变量取值做缓存 |
-| `DynamicField` | **可以挂公式的数值字段**的枚举：关键帧的 `KEY_VALUE / KEY_IN_TANGENT / KEY_OUT_TANGENT / KEY_IN_WEIGHT / KEY_OUT_WEIGHT`，路径节点的 `NODE_{X,Y,Z} / NODE_IN_{X,Y,Z} / NODE_OUT_{X,Y,Z}` |
+| `ConstantValue` | 固定值 |
+| `FormulaValue` | 一段公式 + 一个回退用的固定值（编译结果也在这里缓存） |
+| `TrackValue` | 某条曲线轨道在当前时刻的读数（**只作变量的取值来源**，不会出现在关键帧的字段上） |
 
-设计要点：
+- `evaluate(solver)`：算不出来返回 NaN；`constant()`：该来源携带的固定数值
+- `ValueSource.evaluateOrFallback(source, solver)` 是**求值链上唯一的回退点**：算不出来就退回固定数值
+- `ValueSource.withConstant(source, value)`：只改那个数，**公式保留**。因此"界面里改数值"不会把公式弄丢
 
-- **公式挂在数据上，不挂在求值链上**：`Keyframe` / `PathNode` 各存一份 `Map<DynamicField, String>`，
-  `Curve` / `Clip` / `Path` 的 `evaluate` 只是多带一个 `@Nullable ExpressionContext`；传 `null` 就是纯固定数值求值
-- **求值失败永远是回退，不是中断**：公式非法、引用了不存在的变量、算出来是 NaN——统统退回原来的固定数值，
-  播放不会因为一条写错的公式而崩掉或整段失效
-- **变量只读静态曲线**：`ExpressionContext` 取变量值时用 `curve().evaluate(time)`（不带上下文）。
-  这顺带把自嵌套挡在门外——"变量 V 绑轨道 A、A 的键又引用 V"不会无限递归，
-  因为求值链在变量处就断了，A 上的公式在这一步被忽略、用键上的固定数值。
-  代价是同一个键"作为相机属性播放"与"作为变量被引用"可能得出不同的值；
-  `CameraAnimation.selfReferencing(variable)` + `Expression.references(source, name)` 就是这套检查，
-  变量面板会把这类变量的取值标成警告色并在悬停时说明
-- **一次求值内每个变量只算一次**：上下文绑定了一个固定时间，变量值在其生命周期内不会变，
-  所以 `resolve` 的结果缓存进 `Map`。同一条公式里写 3 次、或一帧内几十个字段引用同一个变量，都只算一次；
-  上下文是每帧新建的，不存在过期问题。界面侧由 `EditorContext.beginFrame()`（两个编辑器屏幕渲染开头各调一次）
-  提供同一份帧内上下文，跨帧重算——不能只看播放头时间，因为暂停时时间不动而变量随时可能被改
-- **轨道被删时变量自动解绑**：`removeChannel` 会把指向它的变量 `trackId` 清空，变量随即回到固定值模式
-- **时间不进 `DynamicField`**：公式本来就是按时间求值的，时间自己再挂公式只会绕回自己
+#### 求解器 `Solver` 与 `ExpressionSolver`
+
+```java
+public interface Solver extends Expression.Resolver {
+    float time();                 // 当前求值时间
+    float progress();             // 播放进度：当前时间 / 总时长，归一化到 0~1
+    float worldTime();            // 世界时间：游戏内一天的进度，归一化到 0~1
+    float track(String id);       // 某条曲线轨道在当前时刻的读数
+}
+```
+
+求值链只认这个接口，**不认 `CameraAnimation`**——单条曲线、单个值都能脱离动画求值，好测试也好复用；
+从动画构造的入口是 `ExpressionSolver.of(animation, time, worldTime)`（播放进度由动画时长算出，世界时间由调用方灌入）。
+
+**三个内置变量**：`t`（当前时间）、`p`（播放进度）、`wt`（世界时间），在 `resolve` 里先于用户变量被认出来，
+名字由 `ExpressionSolver.BUILTIN_VARIABLES` 列出（既不让用户取重名，也直接列在变量面板最上面，
+显示为「变量名 + 类型 + 当前取值」三列）。后两个都归一化到 0~1，
+世界时间由 `CmdCamera` 每帧写进 `CameraPlayer.worldTime()`——播放器本身不认 Minecraft，换算留在外面。
+
+**内置函数**由 `Expression.BUILTIN_FUNCTIONS` 列出（表达式编辑器直接用这份清单生成可插入的模板，
+不必两处同步）：`min/max/clamp/lerp/smoothstep`、`abs/sign/floor/ceil/round/sqrt`、`pow/mod`、
+`sin/cos/tan/asin/acos/atan/atan2`、`exp/log/log10`，以及 `random()` 与 `random(a, b)`。
+参数个数不对在**编译期**就报错（整条公式算不出来），不会拖到播放时才发作。
+
+**自定义函数**（`CustomFunction`）是动画里的一份小定义：名字 + 参数名 + 函数体文本。
+名字不在内置清单里时，调用节点在**求值时**向 `Resolver.function(name)` 查一次
+（`ExpressionSolver` 从动画的函数表里取），所以函数随时可加、改完立刻生效，也不必去清编译缓存。
+参数按值绑定：实参先在调用处求值一次，再按参数名喂进函数体；函数体里还能调用别的自定义函数
+（查询转回外层求解器），但不支持递归——表达式没有条件写法，写不出终止条件。
+形参个数与实参个数不符时返回 NaN（退回固定数值），不会抛异常。
+
+三者可以这样记：**变量是"值"的名字，函数是"算法"的名字，轨道是"曲线"的容器**——
+公式里都能引用，而函数只是把一段公式包起来复用。
+
+三条关键约定：
+
+- **一次求值内每个变量只算一次**：时间是构造时定下的，变量值在其生命周期内不会变，`resolve` 的结果缓存进 Map。
+  同一条公式里写 3 次、或一帧内几十个字段引用同一个变量，都只算一次
+- **变量读轨道走静态曲线**：`curve.evaluate(time)` 不带求解器，所以轨道上的公式在这一步被忽略、用键上的固定数值。
+  这让"变量指向某条轨道、该轨道的键又引用这个变量"不会无限递归；代价是同一个键
+  "作为相机属性播放"与"作为变量被引用"可能得出不同的值，这就是**自嵌套**：
+  变量面板会把它标红，表达式编辑窗口在公式引用到绑定本轨道的变量时也会标红并**按住「确定」不让保存**
+- **成环时明确报错**：`V1 = V2 * 2` 且 `V2 = V1 + 1` 这种写法，求值返回 NaN 并把环记录在 `ExpressionSolver.cycle()` 里；
+  变量面板与表达式编辑窗口都会把环上的变量标红并写出链路，不是静默给一个数
+
+#### 表达式求值 `Expression`
+
+- 递归下降解析**一次**：解析结果是一棵由闭包拼起来的语法树 `Expression.Formula`，按公式文本驻留缓存（上限 512 条），求值不再扫描字符串
+- 支持：`+ - * / %`、括号、一元正负、变量、`min/max/sin/cos/random`
+- 失败一律返回 NaN：语法错误、参数个数不对在**编译期**就返回 null；未知变量不抛异常，让 NaN 顺着算术传播
+- `validName` / `identifiers` / `references`：名字规则与依赖分析用的三个字符串工具（与解析器共用同一套字符规则）
+
+#### 变量 `Variable`
+
+变量 = 名字 + 一个 `ValueSource`。取值来源三选一：固定值、公式、某条曲线轨道。
+公式里按名字引用别的变量，变量之间因此构成有向图：
+
+- `VariableGraph.findCycle(variables)`：深搜找第一条环，返回环上的变量名（首尾同名）
+- `VariableGraph.dependencies(variable, names)`：某变量的公式引用到的其它变量
+- 图里**只有变量**：关键帧上的公式不是节点，变量读轨道又走静态曲线，所以自嵌套那种写法不成环。
+  路径是纯几何、不含公式，自然也不在图上
+
+#### 设计要点
+
+- **公式挂在数据上，不挂在求值链上**：字段持有值源，`Curve` / `Clip` / `Path` 的 `evaluate` 只是多带一个 `@Nullable Solver`；
+  传 `null` 就是纯固定数值求值（画曲线、算弧长都走这条路）
+- **求值失败永远是回退，不是中断**：公式非法、变量取不到值、成环——统统退回固定数值，播放不会因为一条写错的公式而失效
+- **新增一个可动态字段不用改枚举**：以前要靠 `DynamicField` 枚举寻址，现在字段本身就是值源，
+  读写入口就是一对 `xxxSource()` 方法（见 `Keyframe`）
+- **时间不进值源**：公式本来就是按时间求值的，时间自己再挂公式只会绕回自己
 
 
 ---
@@ -212,8 +287,8 @@ F6 ──► CameraEditorScreen.open()
 | `CmdCameraKeyMapping` | 快捷键：**F6** 打开编辑器、**F7** 播放/暂停、**F8** 停止、**F9** 打开路径编辑器（均限游戏内） |
 | `CameraCommand` | 客户端命令注册 |
 
-`CameraPlayer.evaluatePose` 的关键分支：每帧先构造一份 `ExpressionContext`（当前时间 + 动画变量），
-再把它传给所有 `evaluate` 重载，挂了公式的关键帧与路径节点由此按当前时刻取值。
+`CameraPlayer.evaluatePose` 的关键分支：每帧先构造一份 `ExpressionSolver`（当前时间 + 动画变量），
+再把它传给曲线求值，挂了公式的关键帧由此按当前时刻取值（路径是纯几何，不接求解器）。
 坐标模式下逐轴判断"有没有键"，有键才写该轴；路径模式下先 `distanceToLength` 再 `Path.evaluate`，并对非有限值做兜底。
 
 ---
@@ -222,18 +297,23 @@ F6 ──► CameraEditorScreen.open()
 
 ### 4.1 `AnimationCodec`——JSON 编解码
 
-- 顶层字段：`name`、`motionMode`、`distanceMode`、`tracks`（轨道数组）、`variables`（变量数组）、`path`
+- 顶层字段：`name`、`motionMode`、`distanceMode`、`tracks`（轨道数组）、`variables`（变量数组）、
+  `functions`（自定义函数数组）、`path`
 - 轨道数组按动画里的轨道顺序写出（拖拽排序会反映到文件里），两类轨道混排、用 `type` 区分：
   - 曲线轨道：`type` = `free_camera_api_tripod:curve`，字段为 `id`（相机属性名）、`preMode`、`postMode`、
-    `keys`（每个键含时间、取值、入/出切线、入/出权重、`evaluateMode`、`weightedMode`）
+    `keys`（每个键含时间、取值、两条曲柄的 `inSlope` / `outSlope` 与 `inLength` / `outLength`、`evaluateMode`）
   - 扩展轨道：`type` = 该类型 id，字段为 `id`（轨道标识）与 `keys`（键的字段由轨道自己定，见 `JsonTrack`）
-- 变量数组：每项含 `name`（表达式里引用的名字）、`track`（绑定的曲线轨道 id，空串表示不绑定）
-  与 `value`（不绑定轨道时用的固定值）
-- 挂了公式的数值字段写在 `expressions` 对象里（键是 `DynamicField` 枚举名、值是公式文本），
-  关键帧与路径节点各带一份；一条公式都没有时不写出该字段
+- **一个数值**有两种写法：固定值直接写成数字，公式写成 `{"expression": "…", "fallback": 1.0}`，
+  轨道读数写成 `{"track": "fov"}`。关键帧的取值与曲柄、变量的取值来源都用它，
+  于是文件里"这个数是不是动态的"一眼就能看出来，不必再去别处找公式表
+- **旧文件仍可读**：曲线键里的 `inTangent` / `outTangent` / `inWeight` / `outWeight` / `weightedMode`
+  是「切线 + 权重 + 加权模式」时代的写法，读档时按当时的线性系数换算成曲柄长度
+  （加权模式没覆盖的方向取基准长度 1），形状与当时一致；写出的一律是新字段
+- 变量数组：每项含 `name`（表达式里引用的名字）与 `source`（同一个数值写法）
+- 函数数组：每项含 `name`、`parameters`（参数名数组，可为空）与 `body`（函数体文本）
 - 读档按 `type` 分派：curve 走通道与曲线，其余查 `TrackTypeRegistry` 用工厂造实例再交回 `readKeys`；
   类型未注册、没有工厂、id 重复或不实现 `JsonTrack` 的条目跳过
-- 路径：`name` + `nodes`（位置、入/出切线、`pathMode`、`smooth`）
+- 路径是**纯几何**：`name` + `nodes`，节点的 `position` / `inTangent` / `outTangent` 是三个数字的数组，不含公式
 - 反序列化一律宽松（字段缺失/类型错误/枚举名非法都回退默认值），只有整份 JSON 解析失败才返回 null
 - **`tracks` 是权威集合**：JSON 里没出现的通道会在读取后被移除，避免构造动画时的默认通道残留
 - 序列化只读数据：`animationToJson(CameraAnimationc)` / `pathToJson(Pathc)`
@@ -263,12 +343,12 @@ F6 ──► CameraEditorScreen.open()
 | --- | --- |
 | `CameraEditorScreen` | 主编辑器：顶部菜单（文件/编辑/视图/播放/帮助）+ 可拖拽停靠的面板布局；同时是 `F6` 的入口，自己渲染还是交给界面后端由它判断（见 5.8） |
 | `PathEditorScreen` | 路径编辑器：默认「视口 / 节点列表 / 节点详情」三列 + 顶部路径工具栏；布局与主编辑器同款持久化（`EditorConfig.path_dock`） |
-| `WorldViewScreen` | 世界内查看：面板全部收起，底部一条操作栏，左键进入环视（Esc 先退出环视再返回）；从路径编辑器进来时不放播放控制 |
-| `BrowserScreen` | **浏览界面基类**：标题行 + 面包屑行 + 可选第二行 + 列表 + 底栏 + 提示行，以及选中/滚动/输入分派、新建文件夹；子类只实现数据与语义 |
+| `WorldViewScreen` | 世界内查看：面板全部收起，底部一条操作栏，左键进入环视（Esc 先退出环视再返回）；从路径编辑器进来时不放播放控制。底栏的「设置关键帧属性」在界面上就地弹出一个关键帧属性面板（同一个 `KeyframePanel`，拖标题栏可挪位置，再点按钮收起），不必退回编辑界面 |
+| `BrowserScreen` | **浏览界面基类**：标题行 + 面包屑行 + 可选第二行 + 列表 + 底栏 + 提示行，以及选中/滚动/输入分派、新建文件夹、列表右键菜单；子类只实现数据与语义 |
 | `FileBrowserScreen` | 资源管理器式的本地文件保存/打开：顶栏只有面包屑（点段跳转、段尾箭头选同级目录），列本地目录与符合后缀的文件 |
 | `StorageDataScreen` | **存档数据中间基类**：层级、面包屑、条目避重名与建文件夹——浏览与管理两个界面共用 |
 | `StorageBrowserScreen` | 存档内数据浏览（打开 / 保存）：条目支持 `/` 多层文件夹 |
-| `StorageManagerScreen` | 存档数据管理：第二行切换动画 / 路径，建文件夹与「删除」移除选中条目（文件夹连同内容一起删） |
+| `StorageManagerScreen` | 存档数据管理：第二行切换动画 / 路径，建文件夹与「删除」移除选中条目（文件夹连同内容一起删）；**右键文件夹可「重命名」**（菜单里目前只有这一项） |
 | `CameraScreens` | 判定"当前是否在相机编辑界面"，供渲染与输入分流使用（按屏幕实例判断，不受 init 顺序影响） |
 
 > 这些界面都不暂停游戏（`isPauseScreen()` 返回 false）：取景、取点与播放预览都要在真实运行的世界上进行。
@@ -284,8 +364,9 @@ F6 ──► CameraEditorScreen.open()
 - 交互反馈：`notify(Component)` 状态行提示、`confirm(...)` 二次确认弹窗
   ——内置界面由屏幕统一绘制与派发；外部界面从 `EditorSession.pendingConfirm()` 取走自己画，
   确认时调 `confirmPending()`。为此 `ConfirmDialog` 的 `confirm()` 与 `message()` 是公开的
-- 表达式：`openExpressionEditor(label, expression, onConfirm)` / `expressionEditor()` / `evaluateExpression(expr)`
-  ——表达式编辑窗口与二次确认一样是**模态**的，屏幕在最上层绘制并优先派发输入
+- 表达式：`openExpressionEditor(label, expression, trackId, parameters, onConfirm)` / `expressionEditor()` / `evaluateExpression(expr)`
+  ——`parameters` 是编辑函数体时的参数栏（`ExpressionEditorWindow.Parameters`，普通公式编辑给 null）；
+  表达式编辑窗口与二次确认一样是**模态**的，屏幕在最上层绘制并优先派发输入
 - 复合动作：`chooseAndBindPath` / `switchToPathMode` / `switchToCoordinateMode` / `recordPathNode` / `syncFreePoseFromCamera` 等
   ——"先选文件、再确认、才改数据"这类流程都收敛在这里，面板只调一个方法
 
@@ -304,10 +385,11 @@ F6 ──► CameraEditorScreen.open()
 | `PathNodePanel` | `path_node` | 路径节点区：按模式显示入/出切线、自动平滑等 |
 | `PathNodeListPanel` | `path_node_list` | 节点列表：添加/删除节点、上移/下移排序 |
 | `PathNodeDetailPanel` | `path_node_detail` | 当前选中节点的详情与编辑 |
-| `KeyframePanel` | `keyframe` | 选中关键帧的属性、插值模式、贝塞尔对称设置；非曲线键显示时间与轨道自带的内容（如指令文本） |
-| `GraphPanel` | `graph` | 曲线图：取值曲线与切线手柄的绘制与拖拽 |
-| `TimelinePanel` | `timeline` | 时间轴：轨道行、折叠分组、播放头、键的拖拽与右键菜单（「插入轨道 ▸」、重命名、删除扩展轨道；名称列双击可改名） |
-| `VariablePanel` | `variables` | 变量表：新建/删除变量、改名、选择取值来源（固定值 / 某条曲线轨道），并实时显示取值 |
+| `KeyframePanel` | `keyframe` | 选中关键帧的属性、插值模式、贝塞尔对称设置；入/出斜率与入/出长度倍数只在贝塞尔（HERMITE）插值下出现（其余模式求值根本不读它们）；非曲线键显示时间与轨道自带的内容（如指令文本） |
+| `GraphPanel` | `graph` | 曲线图：取值曲线与贝塞尔曲柄的绘制与拖拽。曲柄的屏幕位置就是它的两个数据，上下左右都能拖——横向写长度倍数、纵向写斜率，鼠标拖到哪、曲线就变到哪。曲柄只能在自己那一侧伸缩（出侧朝右、入侧朝左），拖过关键帧就卡在最短长度而不是翻到对面；横向最长到基准的 1.5 倍（再长曲线会随时间折返），最短留一点余量免得斜率爆掉。**动态关键帧**（有字段挂了公式）画成蓝点，它两侧的曲线段转成青蓝虚线；底部图例说明点与线各自的颜色。顶部只有轨道名与「适配」：适配时上下左右都留余量，且选中关键帧时范围收缩到它和左右相邻各一个 |
+| `TimelinePanel` | `timeline` | 时间轴：轨道行、折叠分组、播放头、键的拖拽与右键菜单（「插入轨道 ▸」里可选一条**通用曲线轨道**或某个扩展类型，通用曲线轨道可改名与删除；重命名、删除扩展轨道；名称列双击可改名） |
+| `VariablePanel` | `variables` | 变量表：最上面三行是内置变量（`t` 当前时间、`p` 播放进度、`wt` 世界时间）——只读，按「变量名 + 类型 + 当前取值」三列展示，与下面的用户变量同一套列宽；下面是新建/删除变量、改名、选取值来源（固定值 / 公式 / 某条曲线轨道），实时显示取值；成环、自嵌套、算不出来（NaN）时**公式原文与取值一起转红**（取值列显示感叹号）并给出说明。末尾只剩一条命名规则提示 |
+| `FunctionPanel` | `functions` | 函数表：每行是「名字 + 预览」，名字可直接改，预览写成 `(a, b) -> a + b`；**参数与函数体都在表达式编辑窗口里改**——点这一行的预览打开窗口（窗口第二行右端是参数输入框）。预览在函数体编译不过时转红。名字要能写进公式，且不能与内置函数重名 |
 
 > 新增面板：继承 `EditorPanel`，实现 `layoutWidgets` 与 `renderContent`；
 > 重建控件前必须 `widgets.clear()`（`WidgetHost` 不会自动清理，否则控件会叠加）。
@@ -328,10 +410,11 @@ F6 ──► CameraEditorScreen.open()
 
 | 控件 | 说明 |
 | --- | --- |
-| `EditorWidget` | 控件基类：矩形、可见/可用、悬停、焦点、工具提示 |
+| `EditorWidget` | 控件基类：矩形、可见/可用、悬停、焦点；`tooltip(...)` 设悬停提示，子类在自己 `render` 的末尾调 `renderTooltip(...)` 把它显示出来 |
 | `WidgetHost` | 控件容器：焦点管理与事件分发（后加入的优先命中） |
 | `ButtonWidget` | 按钮：**按下再抬起且指针仍在按钮上才触发**；默认文字色随主题取 |
-| `TextFieldWidget` | 文本输入：点击进入编辑、双击全选、右键清空、回车提交、Esc 取消；编辑中不被外部刷新覆盖 |
+| `LabelWidget` | 只读文本：一行文字 + 可选颜色 / `field` 底框 / `suffix` 行尾图标 / `background` 行底色（常态 + 悬停）/ `onClick` / 悬停提示。**面板与窗口里的只读内容一律摆它**——提示行、空态、只读取值、行首选中标记、列表行都用它，不要手绘 |
+| `TextFieldWidget` | 文本输入：点击进入编辑并按落点定光标、双击全选、右键清空、回车提交、Esc 取消，编辑中左右键移动光标、Home / End 跳首尾；编辑中不被外部刷新覆盖 |
 | `NumberFieldWidget` | 数值输入：拖拽/输入，用于坐标、FOV 等 |
 | `ExpressionFieldWidget` | 数值输入 + 模式切换按钮：默认数值模式，可切成动态模式挂公式；动态模式下数值框变成预览框（公式 + 当前取值），点击打开表达式编辑窗口。时间这类不允许动态的字段仍用 `NumberFieldWidget` |
 | `ContextMenu` | 自绘右键菜单：图标 + 文本、勾选项、分隔线、二级菜单（悬停展开且不会移开即消失） |
@@ -340,14 +423,28 @@ F6 ──► CameraEditorScreen.open()
 
 > `ExpressionEditorWindow`（在 `core.editor` 下）是表达式编辑窗口（模态）：第一行窗口标题 + 实时求值结果，
 > 第二行「属性：xxx」说明在给哪个数值写公式；下面左栏是公式输入区，右栏上为变量表（带 `+` / `−`，点名字插进公式）、
-> 下为函数表（点一下插入模板并把光标停进括号）。输入区上界与变量区顶部齐平、下界与函数表底部齐平，
+> 下为函数表（内置函数 + 自定义函数，点一下插入模板并把光标停进括号）。输入区上界与变量区顶部齐平、下界与函数表底部齐平，
 > 三块区域都在内容超出时显示滚动条。它不自绘到面板里，而是由屏幕在最上层绘制并优先派发输入。
+> 标题栏右侧的实时求值结果在自嵌套、成环、公式非法时转红并写出原因；其中**自嵌套会禁用「确定」**，
+> 其余只提示、不拦保存（求值失败时播放链本来就会回退到固定数值）。
+>
+> 编辑函数体时窗口会多出一条参数栏（第二行右端），**参数与函数体都在这里改**：
+> 预览把每个参数一律当 1（`a + b` 显示 2），便于当单位量试算；参数名写不进公式、函数体为空或编译不过时，
+> 标题栏报出原因并且**「确定」被按住**——存下去也用不了，不如当场拦住。
+>
+> 两个列表的行都是 `LabelWidget`：底板铺满整行、管选中 / 悬停底色与点击，文字层叠在上面（不接点击，事件穿透回底板），
+> 所以一行里能用多种文字颜色、可点区域又只有一处。行控件按条目数与滚动位置整批重建，
+> 只撤换行、不动 `+` / `−` 与底部按钮（它们要保留「按下 → 松开」的跨帧状态）。
 
 ### 5.6 绘制与主题 `theme/`、`render/`
 
 - `Draw`：全部配色与绘制辅助。配色是**可变静态字段**，`applyTheme` 整体赋值，`beginFrame()` 每帧按 `EditorConfig.DARK_MODE` 同步；
   文本绘制会按当前主题给文字附加阴影样式（浅色主题用浅灰阴影，深色主题沿用原版）
 - `Icons`：复用字体的符号字形，不引入额外纹理
+- **界面层级**：`Draw.LAYER_DOCKED` / `LAYER_FLOATING` / `LAYER_MENU`，屏幕在画每一层之前调 `Draw.layer(...)`。
+  被省略号截断的文字登记时会带上当时所在的那一层（`textEllipsized` 自动带），悬停提示只查鼠标当前压住的那一层
+  （屏幕用 `surfaceAt` 判断），所以被悬浮窗口或右键菜单盖住的文字不会弹出提示糊在最上面。
+  宽度连省略号都放不下时直接不画、不登记，免得溢出到相邻控件上
 - `render/FloatFill`：浮点坐标矩形填充（原版只接受整数坐标，曲线会被量化成阶梯）
 - `render/ViewportPipRenderer`：把整帧游戏画面拷进离屏纹理再由 GUI 通道贴回视口（PiP）
 - `ViewportTakeover`：锁定光标后的视角转向与 WASD 飞行，视口面板 / 世界内查看 / 路径编辑共用
@@ -359,6 +456,17 @@ F6 ──► CameraEditorScreen.open()
 - `EditorConfig`：客户端配置，含布局串 `layout.dock`、下排高度、折叠面板、视口提示收起、深色模式、
   `layout.path_dock` / `layout.path_collapsed`（路径编辑器自己的一套布局）、
   `modern_ui_compat`（是否允许界面后端接管，默认开）、`dev.test_keys`
+
+> **开发用测试按键**（`dev.test_keys`，默认关）：自动化脚本送不进 GLFW 的右键与滚轮，用按键顶上。
+> 三个界面各自实现（相机编辑器 / 路径编辑器 / `BrowserScreen` 一套浏览界面），
+> 且都必须在 `keyPressed` 的**最前面**处理——排在模态窗口或弹窗之后就会失灵。
+> - `F9` 时间轴左移一秒（验证 0 秒处的左边界限制）
+> - `F10` 在鼠标位置补一次右键（各种右键菜单）
+> - `F7` / `F8` 在鼠标位置补一次滚轮上 / 下（列表滚动、时间轴缩放）
+>   —— 用 F 系列而不是 PageUp / PageDown，后者送不进 GLFW
+> - `F12` 全屏的世界内查看
+>
+> 位置取自 `lastMouseX/lastMouseY`（最后一次点击处），所以脚本要先点一下目标位置再按键。
 
 ### 5.8 界面后端（`api.editor`）
 

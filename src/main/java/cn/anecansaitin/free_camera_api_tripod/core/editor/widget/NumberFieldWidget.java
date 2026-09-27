@@ -68,14 +68,6 @@ public class NumberFieldWidget extends EditorWidget {
     }
 
     @Override
-    public void updateHovered(int mouseX, int mouseY) {
-        // 编辑中保持高亮
-        if (!editing) {
-            super.updateHovered(mouseX, mouseY);
-        }
-    }
-
-    @Override
     public void render(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
         Draw.field(graphics, rect(), editing || hovered());
 

@@ -6,6 +6,7 @@ import cn.anecansaitin.free_camera_api_tripod.core.editor.EditorLang;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.layout.UiRect;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.theme.Draw;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.ButtonWidget;
+import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.LabelWidget;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.TextFieldWidget;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
@@ -28,16 +29,11 @@ public class AnimationPanel extends EditorPanel {
     private static final int SCROLLBAR_MARGIN = 4;
 
     private final EditorContext context;
-    private final List<LabelDraw> labels = new ArrayList<>();
     private final List<Runnable> refreshers = new ArrayList<>();
     private @Nullable String lastRevision;
     private int scrollY;
     private int totalHeight;
     private int contentRight;
-
-    /// maxWidth 大于 0 时超出宽度会被省略号截断
-    private record LabelDraw(Component text, int x, int y, int color, int maxWidth) {
-    }
 
     public AnimationPanel(EditorContext context) {
         super(ID, EditorLang.t("panel.animation"));
@@ -63,17 +59,6 @@ public class AnimationPanel extends EditorPanel {
             refresher.run();
         }
 
-        graphics.enableScissor(content.x(), content.y(), content.right(), content.bottom());
-
-        for (LabelDraw label : labels) {
-            if (label.maxWidth() > 0) {
-                Draw.textEllipsized(graphics, label.text().getString(), label.x(), label.y(), label.maxWidth(), label.color());
-            } else {
-                Draw.text(graphics, label.text(), label.x(), label.y(), label.color());
-            }
-        }
-
-        graphics.disableScissor();
         renderScrollbar(graphics, content);
     }
 
@@ -85,7 +70,6 @@ public class AnimationPanel extends EditorPanel {
 
     private void rebuild(UiRect content) {
         lastRevision = revision();
-        labels.clear();
         widgets.clear();
         refreshers.clear();
 
@@ -108,7 +92,8 @@ public class AnimationPanel extends EditorPanel {
 
     /// 动画名可编辑：内容变化时写回动画数据模型
     private int nameRow(int x, int y, int width) {
-        labels.add(new LabelDraw(EditorLang.t("inspector.animation.name"), x, y + 3, Draw.TEXT_DIM, -1));
+        widgets.add(new LabelWidget(new UiRect(x, y, Math.max(8, contentRight - x), FIELD_HEIGHT),
+                EditorLang.t("inspector.animation.name")).color(Draw.TEXT_DIM));
         TextFieldWidget field = new TextFieldWidget(new UiRect(x + LABEL_WIDTH, y + 1, width, FIELD_HEIGHT),
                 context.animation().name(), name -> context.animation().name(name));
         widgets.add(field);
@@ -118,7 +103,8 @@ public class AnimationPanel extends EditorPanel {
 
     /// 运动模式：路径模式与直接坐标模式互斥，切换会清掉另一种模式的通道
     private int motionModeRow(int x, int y, int width) {
-        labels.add(new LabelDraw(EditorLang.t("inspector.animation.motion_mode"), x, y + 3, Draw.TEXT_DIM, -1));
+        widgets.add(new LabelWidget(new UiRect(x, y, Math.max(8, contentRight - x), FIELD_HEIGHT),
+                EditorLang.t("inspector.animation.motion_mode")).color(Draw.TEXT_DIM));
         CameraAnimation.MotionMode[] values = CameraAnimation.MotionMode.values();
         int cell = Math.max(1, (width - (values.length - 1) * 2) / values.length);
 
@@ -151,13 +137,14 @@ public class AnimationPanel extends EditorPanel {
     }
 
     private int section(int x, int y, Component title) {
-        labels.add(new LabelDraw(title, x, y + 2, Draw.ACCENT, -1));
+        widgets.add(new LabelWidget(new UiRect(x, y - 1, Math.max(8, contentRight - x), FIELD_HEIGHT), title).color(Draw.ACCENT));
         return y + ROW_HEIGHT;
     }
 
     private int textRow(int x, int y, Component label, Component value) {
-        labels.add(new LabelDraw(label, x, y + 3, Draw.TEXT_DIM, -1));
-        labels.add(new LabelDraw(value, x + LABEL_WIDTH, y + 3, Draw.TEXT, Math.max(8, contentRight - LABEL_WIDTH - x)));
+        widgets.add(new LabelWidget(new UiRect(x, y, Math.max(8, contentRight - x), FIELD_HEIGHT), label).color(Draw.TEXT_DIM));
+        widgets.add(new LabelWidget(new UiRect(x + LABEL_WIDTH, y, Math.max(8, contentRight - LABEL_WIDTH - x), FIELD_HEIGHT), value)
+                .color(Draw.TEXT));
         return y + ROW_HEIGHT;
     }
 

@@ -3,8 +3,7 @@ package cn.anecansaitin.free_camera_api_tripod.core.editor.panel;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.EvaluateMode;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.Keyframe;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.TrackKey;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.WeightedMode;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.DynamicField;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ValueSource;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.AnimationTrack;
 import cn.anecansaitin.free_camera_api_tripod.core.animation.track.CommandTrack;
 import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.edit.CameraEditorModel;
@@ -14,6 +13,7 @@ import cn.anecansaitin.free_camera_api_tripod.core.editor.layout.UiRect;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.theme.Draw;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.ButtonWidget;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.ExpressionFieldWidget;
+import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.LabelWidget;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.NumberFieldWidget;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.TextFieldWidget;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -23,6 +23,8 @@ import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /// 关键帧面板：展示并编辑当前选中关键帧的属性，包含插值模式与贝塞尔控制点的对称设置。
 public class KeyframePanel extends EditorPanel {
@@ -41,16 +43,13 @@ public class KeyframePanel extends EditorPanel {
     private static final int COMMAND_MAX_LENGTH = 256;
 
     private final EditorContext context;
-    private final List<LabelDraw> labels = new ArrayList<>();
     private final List<Runnable> refreshers = new ArrayList<>();
     private @Nullable String lastRevision;
+    /// 当前正在查看的轨道 id：面板里的公式字段都挂在它上面，表达式窗口靠它判断自嵌套
+    private @Nullable String inspectedTrack;
     private int scrollY;
     private int totalHeight;
     private int contentRight;
-
-    /// maxWidth 大于 0 时超出宽度会被省略号截断
-    private record LabelDraw(Component text, int x, int y, int color, int maxWidth) {
-    }
 
     public KeyframePanel(EditorContext context) {
         super(ID, EditorLang.t("panel.keyframe"));
@@ -76,17 +75,6 @@ public class KeyframePanel extends EditorPanel {
             refresher.run();
         }
 
-        graphics.enableScissor(content.x(), content.y(), content.right(), content.bottom());
-
-        for (LabelDraw label : labels) {
-            if (label.maxWidth() > 0) {
-                Draw.textEllipsized(graphics, label.text().getString(), label.x(), label.y(), label.maxWidth(), label.color());
-            } else {
-                Draw.text(graphics, label.text(), label.x(), label.y(), label.color());
-            }
-        }
-
-        graphics.disableScissor();
         renderScrollbar(graphics, content);
     }
 
@@ -98,7 +86,7 @@ public class KeyframePanel extends EditorPanel {
         TrackKey key = model.selectedKey();
 
         if (key instanceof Keyframe keyframe) {
-            builder.append('|').append(keyframe.evaluateMode()).append('/').append(keyframe.weightedMode());
+            builder.append('|').append(keyframe.evaluateMode());
         }
 
         return builder.toString();
@@ -106,7 +94,6 @@ public class KeyframePanel extends EditorPanel {
 
     private void rebuild(UiRect content) {
         lastRevision = revision();
-        labels.clear();
         widgets.clear();
         refreshers.clear();
 
@@ -118,9 +105,11 @@ public class KeyframePanel extends EditorPanel {
         AnimationTrack track = context.editor().selectedTrack();
         TrackKey selected = context.editor().selectedKey();
         Keyframe key = selected instanceof Keyframe keyframe ? keyframe : null;
+        inspectedTrack = track == null ? null : track.id();
 
         if (track == null || selected == null) {
-            labels.add(new LabelDraw(EditorLang.t("inspector.key.empty"), x, y + 3, Draw.TEXT_DISABLED, Math.max(8, contentRight - x)));
+            widgets.add(new LabelWidget(new UiRect(x, y, Math.max(8, contentRight - x), FIELD_HEIGHT),
+                    EditorLang.t("inspector.key.empty")).color(Draw.TEXT_DISABLED));
             totalHeight = y + scrollY - content.y() + ROW_HEIGHT + 8;
             return;
         }
@@ -136,22 +125,26 @@ public class KeyframePanel extends EditorPanel {
         // 数值类属性一行放两个，面板的垂直占位几乎减半。
         // 时间是唯一不允许变成动态的字段：动态公式要按时间求值，时间本身再挂公式只会绕回自己
         int halfWidth = Math.max(30, (contentRight - x - PAIR_GAP) / 2);
-        y = pairRow(x, y, halfWidth, key,
+        y = pairRow(x, y, halfWidth,
                 new FieldSpec(EditorLang.t("inspector.key.time"), key.time(), 3,
                         value -> key.time(context.snapTime(value)), key::time, null),
-                new FieldSpec(EditorLang.t("inspector.key.value"), key.value(), 3, key::value, key::value, DynamicField.KEY_VALUE));
+                new FieldSpec(EditorLang.t("inspector.key.value"), key.value(), 3, key::value, key::value,
+                        keySource(key::valueSource, key::valueSource)));
         y = modeRow(x, y, fieldWidth, EditorLang.t("inspector.key.evaluate"), EvaluateMode.values(), key.evaluateMode(), key::evaluateMode);
-        y = modeRow(x, y, fieldWidth, EditorLang.t("inspector.key.weighted"), WeightedMode.values(), key.weightedMode(), key::weightedMode);
 
-        // 切线、权重与控制点对称都只服务于贝塞尔（HERMITE）插值：其余模式下求值根本不读这些数，
+        // 两条曲柄与控制点对称都只服务于贝塞尔（HERMITE）插值：其余模式下求值根本不读这些数，
         // 摆着只会让人以为改了有用，所以整组一起跟着插值模式出现或消失
         if (key.evaluateMode() == EvaluateMode.HERMITE) {
-            y = pairRow(x, y, halfWidth, key,
-                    new FieldSpec(EditorLang.t("inspector.key.in_tangent"), key.inTangent(), 3, key::inTangent, key::inTangent, DynamicField.KEY_IN_TANGENT),
-                    new FieldSpec(EditorLang.t("inspector.key.out_tangent"), key.outTangent(), 3, key::outTangent, key::outTangent, DynamicField.KEY_OUT_TANGENT));
-            y = pairRow(x, y, halfWidth, key,
-                    new FieldSpec(EditorLang.t("inspector.key.in_weight"), key.inWeight(), 3, key::inWeight, key::inWeight, DynamicField.KEY_IN_WEIGHT),
-                    new FieldSpec(EditorLang.t("inspector.key.out_weight"), key.outWeight(), 3, key::outWeight, key::outWeight, DynamicField.KEY_OUT_WEIGHT));
+            y = pairRow(x, y, halfWidth,
+                    new FieldSpec(EditorLang.t("inspector.key.in_slope"), key.inSlope(), 3, key::inSlope, key::inSlope,
+                            keySource(key::inSlopeSource, key::inSlopeSource)),
+                    new FieldSpec(EditorLang.t("inspector.key.out_slope"), key.outSlope(), 3, key::outSlope, key::outSlope,
+                            keySource(key::outSlopeSource, key::outSlopeSource)));
+            y = pairRow(x, y, halfWidth,
+                    new FieldSpec(EditorLang.t("inspector.key.in_length"), key.inLength(), 3, key::inLength, key::inLength,
+                            keySource(key::inLengthSource, key::inLengthSource)),
+                    new FieldSpec(EditorLang.t("inspector.key.out_length"), key.outLength(), 3, key::outLength, key::outLength,
+                            keySource(key::outLengthSource, key::outLengthSource)));
             y = symmetricRow(x, y, fieldWidth);
         }
 
@@ -175,7 +168,8 @@ public class KeyframePanel extends EditorPanel {
     /// 非曲线键的时间：键是不可变记录，只能让轨道把它挪到新时间；
     /// 移动后索引可能变化，所以取值一律现查当前选中的键
     private int timeRow(int x, int y, int width, AnimationTrack track) {
-        labels.add(new LabelDraw(EditorLang.t("inspector.key.time"), x, y + 3, Draw.TEXT_DIM, -1));
+        widgets.add(new LabelWidget(new UiRect(x, y, Math.max(8, contentRight - x), FIELD_HEIGHT),
+                EditorLang.t("inspector.key.time")).color(Draw.TEXT_DIM));
         NumberFieldWidget field = new NumberFieldWidget(new UiRect(x + LABEL_WIDTH, y + 1, Math.max(1, width - LABEL_WIDTH), FIELD_HEIGHT),
                 selectedKeyTime(), value -> context.editor().moveKey(track, context.editor().selectedKeyIndex(), context.snapTime(value)));
         field.decimals(3);
@@ -186,7 +180,8 @@ public class KeyframePanel extends EditorPanel {
 
     /// 指令内容：回车或失焦时提交，由命令轨道自己规范化（去掉前导斜杠）后写回
     private int commandRow(int x, int y, int width, CommandTrack track, int index) {
-        labels.add(new LabelDraw(EditorLang.t("inspector.key.command"), x, y + 3, Draw.TEXT_DIM, -1));
+        widgets.add(new LabelWidget(new UiRect(x, y, Math.max(8, contentRight - x), FIELD_HEIGHT),
+                EditorLang.t("inspector.key.command")).color(Draw.TEXT_DIM));
         TextFieldWidget field = new TextFieldWidget(new UiRect(x + LABEL_WIDTH, y + 1, Math.max(1, width - LABEL_WIDTH), FIELD_HEIGHT),
                 commandText(track, index), value -> track.command(index, value));
         field.maxLength(COMMAND_MAX_LENGTH);
@@ -208,32 +203,33 @@ public class KeyframePanel extends EditorPanel {
     // region 行构建
 
     private int section(int x, int y, Component title) {
-        labels.add(new LabelDraw(title, x, y + 2, Draw.ACCENT, -1));
+        widgets.add(new LabelWidget(new UiRect(x, y - 1, Math.max(8, contentRight - x), FIELD_HEIGHT), title).color(Draw.ACCENT));
         return y + ROW_HEIGHT;
     }
 
     private int textRow(int x, int y, Component label, Component value) {
-        labels.add(new LabelDraw(label, x, y + 3, Draw.TEXT_DIM, -1));
-        labels.add(new LabelDraw(value, x + LABEL_WIDTH, y + 3, Draw.TEXT, Math.max(8, contentRight - LABEL_WIDTH - x)));
+        widgets.add(new LabelWidget(new UiRect(x, y, Math.max(8, contentRight - x), FIELD_HEIGHT), label).color(Draw.TEXT_DIM));
+        widgets.add(new LabelWidget(new UiRect(x + LABEL_WIDTH, y, Math.max(8, contentRight - LABEL_WIDTH - x), FIELD_HEIGHT), value)
+                .color(Draw.TEXT));
         return y + ROW_HEIGHT;
     }
 
     /// 一行两个数值字段：左右各占一半，标签宽度按半栏收缩
-    private int pairRow(int x, int y, int halfWidth, Keyframe key, FieldSpec left, FieldSpec right) {
-        fieldCell(x, y, halfWidth, key, left);
+    private int pairRow(int x, int y, int halfWidth, FieldSpec left, FieldSpec right) {
+        fieldCell(x, y, halfWidth, left);
         int rightX = x + halfWidth + PAIR_GAP;
-        fieldCell(rightX, y, Math.max(1, contentRight - rightX), key, right);
+        fieldCell(rightX, y, Math.max(1, contentRight - rightX), right);
         return y + ROW_HEIGHT;
     }
 
-    /// 一个数值字段。挂了动态字段的用 {@link ExpressionFieldWidget}（右侧带模式切换按钮），
+    /// 一个数值字段。带值源入口的用 {@link ExpressionFieldWidget}（右侧带模式切换按钮），
     /// 没有的（时间是唯一一个）就是普通的数值输入框
-    private void fieldCell(int x, int y, int width, Keyframe key, FieldSpec spec) {
+    private void fieldCell(int x, int y, int width, FieldSpec spec) {
         int labelWidth = Math.clamp(width / 2, 12, HALF_LABEL_WIDTH);
-        labels.add(new LabelDraw(spec.label(), x, y + 3, Draw.TEXT_DIM, Math.max(8, labelWidth - 2)));
+        widgets.add(new LabelWidget(new UiRect(x, y, Math.max(8, labelWidth - 2), FIELD_HEIGHT), spec.label()).color(Draw.TEXT_DIM));
         UiRect rect = new UiRect(x + labelWidth, y + 1, Math.max(1, width - labelWidth), FIELD_HEIGHT);
 
-        if (spec.field() == null) {
+        if (spec.dynamic() == null) {
             NumberFieldWidget field = new NumberFieldWidget(rect, spec.value(), spec.setter());
             field.decimals(spec.decimals());
             widgets.add(field);
@@ -241,46 +237,36 @@ public class KeyframePanel extends EditorPanel {
             return;
         }
 
-        ExpressionFieldWidget field = new ExpressionFieldWidget(context, rect, spec.label(), accessor(key, spec));
+        ExpressionFieldWidget field = new ExpressionFieldWidget(context, rect, spec.label(), spec.dynamic()).track(inspectedTrack);
         field.decimals(spec.decimals());
         widgets.add(field);
         refreshers.add(field::refresh);
     }
 
-    /// 关键帧某个字段的读写入口：固定数值走面板原有的 getter / setter，公式存在关键帧自己身上
-    private static ExpressionFieldWidget.Accessor accessor(Keyframe key, FieldSpec spec) {
-        DynamicField field = spec.field();
+    /// 一条数值字段的读写入口：值源本身（固定值 / 公式都在里面）
+    private static ExpressionFieldWidget.Accessor keySource(Supplier<ValueSource> getter, Consumer<ValueSource> setter) {
         return new ExpressionFieldWidget.Accessor() {
             @Override
-            public float value() {
-                return spec.getter().get();
+            public ValueSource source() {
+                return getter.get();
             }
 
             @Override
-            public void value(float value) {
-                spec.setter().set(value);
-            }
-
-            @Override
-            public @Nullable String expression() {
-                return key.expression(field);
-            }
-
-            @Override
-            public void expression(@Nullable String expression) {
-                key.expression(field, expression);
+            public void source(ValueSource source) {
+                setter.accept(source);
             }
         };
     }
 
-    /// 一行里左半边或右半边的一个数值字段；{@code field} 为 null 表示该字段不允许变成动态
+    /// 一行里左半边或右半边的一个数值字段；{@code dynamic} 为 null 表示该字段不允许变成动态
     private record FieldSpec(Component label, float value, int decimals,
-                             NumberFieldWidget.FloatSetter setter, FloatGetter getter, @Nullable DynamicField field) {
+                             NumberFieldWidget.FloatSetter setter, FloatGetter getter,
+                             ExpressionFieldWidget.Accessor dynamic) {
     }
 
     /// 枚举二选一 / 多选一：最后一格吃掉取整余量，右边界与其它行严格对齐
     private <T extends Enum<T>> int modeRow(int x, int y, int width, Component label, T[] values, T current, java.util.function.Consumer<T> setter) {
-        labels.add(new LabelDraw(label, x, y + 3, Draw.TEXT_DIM, -1));
+        widgets.add(new LabelWidget(new UiRect(x, y, Math.max(8, contentRight - x), FIELD_HEIGHT), label).color(Draw.TEXT_DIM));
         int cell = Math.max(1, (width - (values.length - 1) * 2) / values.length);
 
         for (int i = 0; i < values.length; i++) {
@@ -297,7 +283,8 @@ public class KeyframePanel extends EditorPanel {
 
     /// 贝塞尔曲线的两侧控制点是否镜像对称；对称时曲线图里拖一侧另一侧会跟着动
     private int symmetricRow(int x, int y, int width) {
-        labels.add(new LabelDraw(EditorLang.t("inspector.key.symmetric"), x, y + 3, Draw.TEXT_DIM, -1));
+        widgets.add(new LabelWidget(new UiRect(x, y, Math.max(8, contentRight - x), FIELD_HEIGHT),
+                EditorLang.t("inspector.key.symmetric")).color(Draw.TEXT_DIM));
         ButtonWidget button = new ButtonWidget(new UiRect(x + LABEL_WIDTH, y + 1, width, FIELD_HEIGHT), Component.empty(),
                 () -> context.bezierSymmetric(!context.bezierSymmetric()));
         widgets.add(button);
@@ -311,7 +298,6 @@ public class KeyframePanel extends EditorPanel {
     private Component modeLabel(Object mode) {
         return switch (mode) {
             case EvaluateMode value -> EditorLang.t("mode.evaluate." + value.name().toLowerCase(java.util.Locale.ROOT));
-            case WeightedMode value -> EditorLang.t("mode.weighted." + value.name().toLowerCase(java.util.Locale.ROOT));
             default -> Component.literal(mode.toString());
         };
     }

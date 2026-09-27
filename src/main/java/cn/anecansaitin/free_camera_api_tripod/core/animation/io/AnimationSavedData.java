@@ -80,6 +80,14 @@ public final class AnimationSavedData extends SavedData {
         return overworld.getDataStorage().computeIfAbsent(TYPE);
     }
 
+    /// 从任意服务端世界取同一份存档数据。
+    ///
+    /// {@link #get()} 走的是客户端的单机入口，而指令在服务端执行、拿不到那个入口；
+    /// 两者指向的是同一份 SavedData，因此读写结果一致。
+    public static @Nullable AnimationSavedData of(ServerLevel level) {
+        return level == null ? null : level.getDataStorage().computeIfAbsent(TYPE);
+    }
+
     /// 某个文件夹下的直接子文件夹名；folder 为空串表示根，层级用 {@code /} 分隔
     public static List<String> listFolders(boolean path, String folder) {
         AnimationSavedData data = get();
@@ -147,6 +155,11 @@ public final class AnimationSavedData extends SavedData {
         return data == null || name == null ? null : data.animations.getString(name).orElse(null);
     }
 
+    /// 从指定的一份存档数据里读动画；服务端指令拿不到 {@link #get()} 的单机入口，用这个重载
+    public static @Nullable String loadAnimation(@Nullable AnimationSavedData data, String name) {
+        return data == null || name == null ? null : data.animations.getString(name).orElse(null);
+    }
+
     public static @Nullable String loadPath(String name) {
         AnimationSavedData data = get();
         return data == null || name == null ? null : data.paths.getString(name).orElse(null);
@@ -204,6 +217,69 @@ public final class AnimationSavedData extends SavedData {
 
         targets.forEach(tag::remove);
         data.setDirty();
+    }
+
+    /// 重命名一个文件夹：层级只是名字前缀，把前缀下的所有键换到新前缀即可。
+    /// 新名字只改本级（不搬家），返回 false 表示源不存在或新位置已被别的文件夹 / 条目占用
+    public static boolean renameFolder(boolean path, String fullName, String newName) {
+        AnimationSavedData data = get();
+
+        if (data == null || fullName == null || fullName.isEmpty() || newName == null || newName.isEmpty()) {
+            return false;
+        }
+
+        CompoundTag tag = path ? data.paths : data.animations;
+        String target = join(parentOf(fullName), newName);
+
+        if (target.equals(fullName)) {
+            // 名字没改，当作成功
+            return true;
+        }
+
+        String prefix = fullName + SEPARATOR;
+        List<String> sources = new ArrayList<>();
+
+        for (String key : tag.keySet()) {
+            if (key.startsWith(prefix)) {
+                sources.add(key);
+            }
+        }
+
+        if (sources.isEmpty() || occupied(tag, target)) {
+            return false;
+        }
+
+        // 连空文件夹的占位键一起搬，搬完再删原前缀，中间不会出现两份
+        for (String key : sources) {
+            tag.getString(key).ifPresent(value -> tag.putString(target + SEPARATOR + key.substring(prefix.length()), value));
+        }
+
+        sources.forEach(tag::remove);
+        data.setDirty();
+        return true;
+    }
+
+    /// 全名的上一层；已经在顶层时返回空串
+    private static String parentOf(String fullName) {
+        int separator = fullName.lastIndexOf(SEPARATOR);
+        return separator < 0 ? "" : fullName.substring(0, separator);
+    }
+
+    /// 这个全名上是否已经有东西：条目、空文件夹的占位键，或者以它为前缀的更下层
+    private static boolean occupied(CompoundTag tag, String fullName) {
+        if (tag.getString(fullName).isPresent() || tag.getString(fullName + SEPARATOR + FOLDER_MARKER).isPresent()) {
+            return true;
+        }
+
+        String prefix = fullName + SEPARATOR;
+
+        for (String key : tag.keySet()) {
+            if (key.startsWith(prefix)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// 序列化为两个复合标签，编码时会由标签编解码器复制副本

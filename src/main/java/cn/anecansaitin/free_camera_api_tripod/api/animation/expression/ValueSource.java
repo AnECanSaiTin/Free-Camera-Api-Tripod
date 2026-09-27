@@ -1,0 +1,58 @@
+package cn.anecansaitin.free_camera_api_tripod.api.animation.expression;
+
+import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
+
+/// 一个数值的来源：固定值、公式，或（只作变量取值来源的）曲线轨道读数。
+///
+/// 求值约定：
+/// - 求解器为 `null` 表示**静态求值**——只有固定数值可用，公式一律算不出来（返回 NaN）
+/// - 公式非法、变量取不到值、轨道不存在，一律返回 [Float#NaN]；**本接口不做兜底**，
+///   要不要退回固定数值由调用方决定（求值链上唯一的回退点是 [ValueSource#evaluateOrFallback]）
+///
+/// 用**值源对象**而不是"数值 + 字段枚举"来存动态值，好处是公式跟着它自己的数值走，
+/// 新增一个可动态的字段不需要动枚举、也不需要改两个类里的读写三件套。
+@NullMarked
+public sealed interface ValueSource permits ConstantValue, FormulaValue, TrackValue {
+    /// 求值；算不出来返回 NaN
+    float evaluate(@Nullable Solver solver);
+
+    /// 该来源携带的固定数值：常量就是它本身，公式是它的回退值，轨道引用没有（NaN）
+    float constant();
+
+    /// 求值并回退固定数值——求值链上唯一的回退点
+    static float evaluateOrFallback(ValueSource source, @Nullable Solver solver) {
+        float value = source.evaluate(solver);
+
+        if (!Float.isNaN(value)) {
+            return value;
+        }
+
+        float fallback = source.constant();
+        return Float.isNaN(fallback) ? 0f : fallback;
+    }
+
+    /// 把固定数值写进一个值源：固定值源就地改，公式源改它的回退值，其余换成新的固定值源
+    static ValueSource withConstant(ValueSource source, float value) {
+        if (source instanceof ConstantValue constant) {
+            constant.value(value);
+            return constant;
+        }
+
+        if (source instanceof FormulaValue formula) {
+            formula.fallback(value);
+            return formula;
+        }
+
+        return new ConstantValue(value);
+    }
+
+    /// 深拷贝：值源是可变的，装进别的对象时要给副本
+    static ValueSource copy(ValueSource source) {
+        return switch (source) {
+            case ConstantValue constant -> new ConstantValue(constant.value());
+            case FormulaValue formula -> new FormulaValue(formula.expression(), formula.fallback());
+            case TrackValue track -> new TrackValue(track.trackId());
+        };
+    }
+}

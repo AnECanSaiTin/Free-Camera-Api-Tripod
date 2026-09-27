@@ -1,6 +1,11 @@
 package cn.anecansaitin.free_camera_api_tripod.core.editor.panel;
 
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ConstantValue;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Expression;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ExpressionSolver;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.FormulaValue;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.TrackValue;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ValueSource;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Variable;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.CurveTrack;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.EditorContext;
@@ -10,10 +15,10 @@ import cn.anecansaitin.free_camera_api_tripod.core.editor.theme.Draw;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.theme.Icons;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.ButtonWidget;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.ContextMenu;
+import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.LabelWidget;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.NumberFieldWidget;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.TextFieldWidget;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import org.jspecify.annotations.Nullable;
@@ -24,11 +29,16 @@ import java.util.List;
 /// 变量面板：定义表达式里可以按名字引用的变量。
 ///
 /// 每个变量一行：选中标记 + 名字（可编辑，不限字符集，中文也行）+ 取值来源 + 取值。
-/// 取值来源二选一：
-/// - **绑定曲线轨道**：播放时取该轨道在当前时刻的读数，取值列是该读数的只读预览
+/// 取值来源三选一：
 /// - **固定值**：取值列就是一个可编辑的数值框，变量恒等于这个数
+/// - **公式**：变量由一段表达式算出来，可以引用别的变量
+/// - **曲线轨道**：播放时取该轨道在当前时刻的读数（只读静态曲线，见 [ExpressionSolver]）
 ///
+/// 变量之间靠公式里的名字互相引用，成环会让求值原地打转，所以环上的变量会标红并在悬停时说明。
 /// 名字要能被表达式识别成标识符（字母、下划线或非 ASCII 字符开头），改名与新建都会挡掉重名。
+///
+/// 列表最前面还有两行内置变量（播放进度、世界时间）：它们由当前播放状态提供，
+/// 改不了也不需要定义，摆在这里是为了让人知道公式里能直接写什么
 public class VariablePanel extends EditorPanel {
     public static final String ID = "variables";
 
@@ -43,30 +53,20 @@ public class VariablePanel extends EditorPanel {
     private static final int VALUE_WIDTH = 58;
     /// 行内三列之间的间隙
     private static final int GAP = 2;
-    /// 绑定选择器至少要这么宽才画展开箭头
-    private static final int ARROW_MIN_WIDTH = 16;
     /// 变量名长度上限：名字要手写进公式里，太长没意义
     private static final int NAME_MAX_LENGTH = 24;
-    /// 固定值的显示精度
+    /// 固定值与取值的显示精度
     private static final int VALUE_DECIMALS = 3;
 
     private final EditorContext context;
-    private final List<LabelDraw> labels = new ArrayList<>();
     private final List<Runnable> refreshers = new ArrayList<>();
-    private final List<RowRef> rows = new ArrayList<>();
     private @Nullable String selectedName;
     private @Nullable String lastRevision;
+    /// 变量之间的第一条循环引用（变量名，首尾同名）；重建时算一次，界面据此标红
+    private @Nullable List<String> cycle;
     private int scrollY;
     private int totalHeight;
     private int contentRight;
-
-    /// maxWidth 大于 0 时超出宽度会被省略号截断
-    private record LabelDraw(Component text, int x, int y, int color, int maxWidth) {
-    }
-
-    /// 一行的可点区域；标记与取值是每帧现画的（选中状态与播放头都会变），所以只缓存矩形
-    private record RowRef(Variable variable, String name, UiRect marker, UiRect binding, UiRect value) {
-    }
 
     public VariablePanel(EditorContext context) {
         super(ID, EditorLang.t("panel.variables"));
@@ -86,68 +86,42 @@ public class VariablePanel extends EditorPanel {
             rebuild(content);
         }
 
+        // 取值与选中状态每帧都在变：控件摆好位置，文本与配色交给刷新器现算
         for (Runnable refresher : refreshers) {
             refresher.run();
         }
 
-        graphics.enableScissor(content.x(), content.y(), content.right(), content.bottom());
-
-        // 选中标记与当前取值随选中状态、播放头实时变化，不能进标签缓存
-        for (RowRef row : rows) {
-            boolean selected = row.name().equals(selectedName);
-            Draw.text(graphics, selected ? Icons.MARKED : Icons.UNMARKED, row.marker().x() + 1, row.marker().y() + 3,
-                    selected ? Draw.ACCENT : Draw.TEXT_DISABLED);
-            Draw.field(graphics, row.binding(), row.binding().contains(mouseX, mouseY));
-            // 选择器太窄时不画箭头，否则箭头会压到右边的取值列上
-            boolean arrow = row.binding().width() >= ARROW_MIN_WIDTH;
-            Draw.textEllipsized(graphics, bindingLabel(row.variable()), row.binding().x() + 3, row.binding().y() + 3,
-                    row.binding().width() - 6 - (arrow ? 10 : 0), Draw.TEXT);
-
-            if (arrow) {
-                Draw.text(graphics, Icons.COLLAPSE, row.binding().right() - 10, row.binding().y() + 3, Draw.TEXT_DIM);
-            }
-
-            // 固定值模式下取值列是个输入框，值由它自己显示，这里只画绑定模式的只读预览
-            if (row.variable().bound()) {
-                float value = context.evaluateExpression(row.name());
-                // 自嵌套：取值来源的轨道又引用了这个变量，此时读的是轨道上的固定数值，与播放时不一致
-                boolean selfReference = context.animation().selfReferencing(row.variable());
-                int color = Draw.TEXT;
-
-                if (selfReference) {
-                    color = Draw.WARNING;
-                } else if (Float.isNaN(value)) {
-                    color = Draw.TEXT_DISABLED;
-                }
-
-                Draw.textEllipsized(graphics, Float.isNaN(value) ? Icons.INVALID : Draw.num(value, VALUE_DECIMALS),
-                        row.value().x(), row.value().y() + 3, row.value().width() - 3, color);
-
-                if (selfReference && row.value().contains(mouseX, mouseY)) {
-                    graphics.setTooltipForNextFrame(Draw.font(), EditorLang.t("variables.self_reference"), mouseX, mouseY);
-                }
-            }
-        }
-
-        for (LabelDraw label : labels) {
-            if (label.maxWidth() > 0) {
-                Draw.textEllipsized(graphics, label.text().getString(), label.x(), label.y(), label.maxWidth(), label.color());
-            } else {
-                Draw.text(graphics, label.text(), label.x(), label.y(), label.color());
-            }
-        }
-
-        graphics.disableScissor();
         renderScrollbar(graphics, content);
     }
 
-    /// 变量表与曲线轨道变化时重建；选中状态与绑定模式下的实时取值不进 revision，否则每帧都要重建。
-    /// 绑定 / 固定值两种模式的取值列控件不同，所以「是否绑定」必须参与比较
+    /// 这一行的取值是否有问题：成环、自嵌套，或者干脆算不出来（NaN）。
+    /// 来源列与取值列都据此标红，两列颜色对得上
+    private boolean valueInvalid(Variable variable) {
+        return valueProblem(variable) != null || Float.isNaN(variable.source().evaluate(context.solver()));
+    }
+
+    /// 取不到值的原因；算得出值时返回 null。标红的两列共用它，悬停时也拿它当提示
+    private @Nullable Component valueProblem(Variable variable) {
+        List<String> currentCycle = cycle;
+
+        if (currentCycle != null && currentCycle.contains(variable.name())) {
+            return EditorLang.t("variables.cycle", String.join(" → ", currentCycle));
+        }
+
+        if (context.animation().selfReferencing(variable)) {
+            return EditorLang.t("variables.self_reference");
+        }
+
+        return null;
+    }
+
+    /// 变量表与曲线轨道变化时重建；选中状态与只读取值不进 revision，否则每帧都要重建。
+    /// 取值来源的类型与内容都进 revision：换了来源，取值列的控件形态也要跟着换
     private String revision() {
         StringBuilder builder = new StringBuilder();
 
         for (Variable variable : context.animation().variables()) {
-            builder.append(variable.name()).append(':').append(variable.trackId()).append('|');
+            builder.append(variable.name()).append(':').append(variable.source()).append('|');
         }
 
         builder.append('#');
@@ -161,10 +135,10 @@ public class VariablePanel extends EditorPanel {
 
     private void rebuild(UiRect content) {
         lastRevision = revision();
-        labels.clear();
+        // 成环只在重建时算一次：变量表与公式都进了 revision，重建即意味着依赖关系变了
+        cycle = context.animation().variableCycle();
         widgets.clear();
         refreshers.clear();
-        rows.clear();
 
         int x = content.x() + 5;
         contentRight = content.right() - SCROLLBAR_MARGIN - SCROLLBAR_WIDTH;
@@ -172,18 +146,21 @@ public class VariablePanel extends EditorPanel {
         int y = content.y() + 4 - scrollY;
 
         y = actionRow(x, y, width);
+        // 内置变量排在用户变量前面：它们是现成的，公式里直接写变量名就能用
+        y = builtinRow(x, y, ExpressionSolver.TIME_VARIABLE, EditorLang.t("variables.builtin_time"));
+        y = builtinRow(x, y, ExpressionSolver.PROGRESS_VARIABLE, EditorLang.t("variables.builtin_progress"));
+        y = builtinRow(x, y, ExpressionSolver.WORLD_TIME_VARIABLE, EditorLang.t("variables.builtin_world_time"));
         List<Variable> variables = context.animation().variables();
 
         if (variables.isEmpty()) {
-            labels.add(new LabelDraw(EditorLang.t("variables.empty"), x, y + 3, Draw.TEXT_DISABLED, width));
-            y += ROW_HEIGHT;
+            y = hintRow(x, y, EditorLang.t("variables.empty"), Draw.TEXT_DISABLED);
         }
 
         for (Variable variable : variables) {
             y = variableRow(x, y, variable);
         }
 
-        y = hintRow(x, y);
+        y = hintRow(x, y, EditorLang.t("variables.name_hint"), Draw.TEXT_DISABLED);
         totalHeight = y + scrollY - content.y() + 8;
     }
 
@@ -202,6 +179,45 @@ public class VariablePanel extends EditorPanel {
         return y + ROW_HEIGHT;
     }
 
+    /// 一行只读文字：说明、空态提示
+    private int hintRow(int x, int y, Component text, int color) {
+        widgets.add(new LabelWidget(new UiRect(x, y + 1, Math.max(8, contentRight - x), FIELD_HEIGHT), text).color(color));
+        return y + ROW_HEIGHT;
+    }
+
+    /// 一个内置变量：变量名 + 类型 + 取值，三列与变量行对齐（变量名对名字列、类型对来源列、取值对取值列）。
+    /// 三样都改不了，所以整行只摆标签；取值随播放头每帧变，交给刷新器重写文本
+    private int builtinRow(int x, int y, String name, Component type) {
+        UiRect marker = new UiRect(x, y + 1, MARKER_WIDTH, FIELD_HEIGHT);
+        int total = Math.max(0, contentRight - marker.right());
+        int valueWidth = Math.min(VALUE_WIDTH, total / 3);
+        int rest = Math.max(0, total - valueWidth - GAP * 2);
+        int nameWidth = rest / 2;
+        UiRect nameRect = new UiRect(marker.right(), y + 1, nameWidth, FIELD_HEIGHT);
+        UiRect typeRect = new UiRect(nameRect.right() + GAP, y + 1, rest - nameWidth, FIELD_HEIGHT);
+        UiRect valueRect = new UiRect(typeRect.right() + GAP, y + 1, valueWidth, FIELD_HEIGHT);
+
+        widgets.add(new LabelWidget(marker, Component.literal(Icons.UNMARKED)).color(Draw.TEXT_DISABLED));
+        // 三列都挂提示：整行都改不了，鼠标停在哪一列上都该知道为什么
+        Component tip = EditorLang.t("variables.builtin_tooltip");
+        widgets.add(new LabelWidget(nameRect, Component.literal(name)).tooltip(tip));
+        widgets.add(new LabelWidget(typeRect, type).color(Draw.TEXT_DIM).tooltip(tip));
+        LabelWidget value = new LabelWidget(valueRect, Component.empty()).tooltip(tip);
+        widgets.add(value);
+        refreshers.add(() -> value.text(Component.literal(Draw.num(builtinValue(name), VALUE_DECIMALS))));
+        return y + ROW_HEIGHT;
+    }
+
+    /// 内置变量当前的取值
+    private float builtinValue(String name) {
+        ExpressionSolver solver = context.solver();
+        return switch (name) {
+            case ExpressionSolver.PROGRESS_VARIABLE -> solver.progress();
+            case ExpressionSolver.WORLD_TIME_VARIABLE -> solver.worldTime();
+            default -> solver.time();
+        };
+    }
+
     /// 一个变量：标记 + 名字 + 取值来源 + 取值。
     ///
     /// 三列按比例分配、右沿首尾相接：取值列最多占三分之一（再封顶 {@link #VALUE_WIDTH}），
@@ -217,30 +233,50 @@ public class VariablePanel extends EditorPanel {
         UiRect nameRect = new UiRect(marker.right(), y + 1, nameWidth, FIELD_HEIGHT);
         UiRect binding = new UiRect(nameRect.right() + GAP, y + 1, bindingWidth, FIELD_HEIGHT);
         UiRect value = new UiRect(binding.right() + GAP, y + 1, valueWidth, FIELD_HEIGHT);
+
+        // 选中标记：点它就是选中这一行，「删除变量」删的正是它
+        LabelWidget mark = new LabelWidget(marker, Component.empty()).onClick(() -> selectedName = variable.name());
+        widgets.add(mark);
+        refreshers.add(() -> {
+            boolean selected = variable.name().equals(selectedName);
+            mark.text(Component.literal(selected ? Icons.MARKED : Icons.UNMARKED));
+            mark.color(selected ? Draw.ACCENT : Draw.TEXT_DISABLED);
+        });
+
         TextFieldWidget field = new TextFieldWidget(nameRect, variable.name(), name -> renameVariable(variable, name));
         field.maxLength(NAME_MAX_LENGTH);
         widgets.add(field);
         refreshers.add(() -> field.value(variable.name()));
 
-        // 没绑轨道就说明取值来源是固定值，取值列直接给一个可编辑的数值框
-        if (!variable.bound()) {
-            NumberFieldWidget fixed = new NumberFieldWidget(value, variable.value(), variable::value);
+        // 取值来源：点开三选一的菜单。行尾给一个展开箭头，提示这一格点得开
+        LabelWidget source = new LabelWidget(binding, Component.empty()).field(true)
+                .suffix(Component.literal(Icons.COLLAPSE));
+        source.onClick(() -> openSourceMenu(variable, binding));
+        widgets.add(source);
+        refreshers.add(() -> {
+            // 取不到值时公式原文与取值一起标红，一眼能看出是哪条公式出了问题
+            source.text(Component.literal(sourceLabel(variable)));
+            source.color(valueInvalid(variable) ? Draw.WARNING : Draw.TEXT);
+        });
+
+        // 固定值模式下取值列直接给一个可编辑的数值框；公式与轨道读数都是只读预览
+        if (variable.source() instanceof ConstantValue) {
+            NumberFieldWidget fixed = new NumberFieldWidget(value, constantOf(variable),
+                    v -> variable.source(ValueSource.withConstant(variable.source(), v)));
             fixed.decimals(VALUE_DECIMALS);
             widgets.add(fixed);
-            refreshers.add(() -> fixed.value(variable.value()));
+            refreshers.add(() -> fixed.value(constantOf(variable)));
+        } else {
+            LabelWidget readout = new LabelWidget(value, Component.empty()).onClick(() -> selectedName = variable.name());
+            widgets.add(readout);
+            refreshers.add(() -> {
+                float evaluated = variable.source().evaluate(context.solver());
+                readout.text(Component.literal(Float.isNaN(evaluated) ? Icons.INVALID : Draw.num(evaluated, VALUE_DECIMALS)));
+                readout.color(valueInvalid(variable) ? Draw.WARNING : Draw.TEXT);
+                readout.tooltip(valueProblem(variable));
+            });
         }
 
-        rows.add(new RowRef(variable, variable.name(), marker, binding, value));
-        return y + ROW_HEIGHT;
-    }
-
-    /// 末尾的说明：内置变量、取值来源与命名规则
-    private int hintRow(int x, int y) {
-        labels.add(new LabelDraw(EditorLang.t("variables.hint"), x, y + 3, Draw.TEXT_DISABLED, Math.max(8, contentRight - x)));
-        y += ROW_HEIGHT;
-        labels.add(new LabelDraw(EditorLang.t("variables.binding_hint"), x, y + 3, Draw.TEXT_DISABLED, Math.max(8, contentRight - x)));
-        y += ROW_HEIGHT;
-        labels.add(new LabelDraw(EditorLang.t("variables.name_hint"), x, y + 3, Draw.TEXT_DISABLED, Math.max(8, contentRight - x)));
         return y + ROW_HEIGHT;
     }
 
@@ -250,20 +286,36 @@ public class VariablePanel extends EditorPanel {
         return selectedName == null ? null : context.animation().variable(selectedName);
     }
 
-    /// 取值来源的显示文本；未绑定就是固定值（取值列已是一个数值框），
-    /// 绑定了但轨道已被删掉时按未绑定显示
-    private String bindingLabel(Variable variable) {
-        if (!variable.bound()) {
-            return EditorLang.t("variables.fixed").getString();
+    /// 值源携带的固定数值；不是有限值时按 0 处理
+    private static float constantOf(Variable variable) {
+        float value = variable.source().constant();
+        return Float.isFinite(value) ? value : 0f;
+    }
+
+    /// 取值来源的显示文本：固定值、公式原文，或绑定的轨道名
+    private String sourceLabel(Variable variable) {
+        return switch (variable.source()) {
+            case ConstantValue ignored -> EditorLang.t("variables.fixed").getString();
+            case FormulaValue formula -> formula.expression();
+            case TrackValue ignored -> {
+                CurveTrack track = track(variable.trackId());
+                yield track == null ? EditorLang.t("variables.track_missing").getString() : track.label().getString();
+            }
+        };
+    }
+
+    private @Nullable CurveTrack track(@Nullable String id) {
+        if (id == null) {
+            return null;
         }
 
         for (CurveTrack track : context.animation().curveTracks()) {
-            if (track.id().equals(variable.trackId())) {
-                return track.label().getString();
+            if (track.id().equals(id)) {
+                return track;
             }
         }
 
-        return EditorLang.t("variables.fixed").getString();
+        return null;
     }
 
     private void addVariable() {
@@ -322,6 +374,12 @@ public class VariablePanel extends EditorPanel {
             return;
         }
 
+        // 内置变量在求值器里先被认出来，叫同一个名字的变量永远取不到，只能拦在改名这一步
+        if (ExpressionSolver.isBuiltin(name)) {
+            context.notify(EditorLang.t("notify.variable_name_builtin", name));
+            return;
+        }
+
         if (!context.animation().renameVariable(variable.name(), name)) {
             context.notify(EditorLang.t("notify.variable_rename_failed", name));
             return;
@@ -332,41 +390,39 @@ public class VariablePanel extends EditorPanel {
         }
     }
 
-    /// 取值来源菜单：一个「固定值」加全部曲线轨道
-    private void openBindingMenu(RowRef row) {
-        select(row);
+    /// 取值来源菜单：固定值 / 公式，加一个「绑定轨道」子菜单。打开菜单的同时把这个变量选上
+    private void openSourceMenu(Variable variable, UiRect binding) {
+        selectedName = variable.name();
         ContextMenu menu = new ContextMenu();
-        Variable variable = row.variable();
-        menu.toggle("", EditorLang.t("variables.fixed"), () -> !variable.bound(),
-                () -> variable.trackId(""));
+        menu.toggle("", EditorLang.t("variables.fixed"), () -> variable.source() instanceof ConstantValue,
+                () -> variable.source(new ConstantValue(constantOf(variable))));
+        menu.toggle(Icons.FORMULA, EditorLang.t("variables.formula"),
+                () -> variable.source() instanceof FormulaValue, () -> openFormula(variable));
+        List<CurveTrack> tracks = context.animation().curveTracks();
 
-        for (CurveTrack track : context.animation().curveTracks()) {
-            menu.toggle("", track.label(), () -> track.id().equals(variable.trackId()),
-                    () -> variable.trackId(track.id()));
-        }
+        if (!tracks.isEmpty()) {
+            ContextMenu bindingMenu = new ContextMenu();
 
-        openMenu(menu, row.binding().x(), row.binding().bottom() + 1);
-    }
-
-    private void select(RowRef row) {
-        selectedName = row.name();
-    }
-
-    @Override
-    protected boolean contentMouseClicked(MouseButtonEvent event, boolean doubleClick) {
-        for (RowRef row : rows) {
-            if (row.marker().contains(event.x(), event.y()) || row.value().contains(event.x(), event.y())) {
-                select(row);
-                return true;
+            for (CurveTrack track : tracks) {
+                bindingMenu.toggle("", track.label(), () -> track.id().equals(variable.trackId()),
+                        () -> variable.source(new TrackValue(track.id())));
             }
 
-            if (row.binding().contains(event.x(), event.y())) {
-                openBindingMenu(row);
-                return true;
-            }
+            menu.separator().submenu(Icons.TRACK, EditorLang.t("variables.bind_track"), bindingMenu);
         }
 
-        return false;
+        openMenu(menu, binding.x(), binding.bottom() + 1);
+    }
+
+    /// 切到公式并打开编辑窗口；留空（或直接取消）就当没挂公式，仍旧用固定值
+    private void openFormula(Variable variable) {
+        float fallback = constantOf(variable);
+        ValueSource current = variable.source();
+        String expression = current instanceof FormulaValue formula ? formula.expression() : "";
+        // 变量自己的公式不属于任何轨道，也不是函数体，所以既不给轨道上下文也不给参数栏：
+        // 公式里写变量自己属于成环，由窗口的红字提示拦
+        context.openExpressionEditor(EditorLang.t("variables.formula"), expression, null, null, value -> variable.source(
+                value.isBlank() ? new ConstantValue(fallback) : new FormulaValue(value, fallback)));
     }
 
     /// 内容超出高度时在右侧绘制滚动条指示器：轨道底色 + 反映当前滚动位置的滑块

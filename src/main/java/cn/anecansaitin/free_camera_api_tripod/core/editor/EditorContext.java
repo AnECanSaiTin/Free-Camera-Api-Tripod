@@ -1,7 +1,7 @@
 package cn.anecansaitin.free_camera_api_tripod.core.editor;
 
 import cn.anecansaitin.free_camera_api_tripod.api.animation.CameraAnimation;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ExpressionContext;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ExpressionSolver;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.path.Path;
 import cn.anecansaitin.free_camera_api_tripod.core.animation.io.AnimationCodec;
 import cn.anecansaitin.free_camera_api_tripod.core.animation.io.AnimationFiles;
@@ -194,22 +194,37 @@ public final class EditorContext {
 
     // region 表达式
 
-    /// 本帧共用的求值上下文，由 {@link #beginFrame()} 每帧清空
-    private @Nullable ExpressionContext frameContext;
+    /// 本帧共用的求解器，由 [beginFrame] 每帧清空
+    private @Nullable ExpressionSolver frameSolver;
 
     /// 每帧渲染开头调用一次。
     ///
-    /// 表达式求值上下文里缓存着变量的取值，而变量是可以被界面随时改掉的（改名、改固定值、换绑定），
+    /// 求解器里缓存着变量的取值，而变量是可以被界面随时改掉的（改名、改来源、换公式），
     /// 暂停时播放头时间又不动，光靠时间没法判断缓存是否过期，所以按帧清：一帧内复用、跨帧重算。
     /// 漏调不会算错数值，只会让界面预览停在旧值上，因此两个编辑器屏幕都在渲染开头调它
     public void beginFrame() {
-        this.frameContext = null;
+        this.frameSolver = null;
+    }
+
+    /// 本帧共用的求解器（按播放头时间构造）：界面上的预览都通过它求值，
+    /// 同一个变量因此每帧只算一次
+    public ExpressionSolver solver() {
+        if (frameSolver == null) {
+            frameSolver = ExpressionSolver.of(animation, player.time(), player.worldTime());
+        }
+
+        return frameSolver;
     }
 
     /// 打开表达式编辑窗口；窗口自己负责绘制与输入，屏幕只在最上层调用它。
     /// 同一时刻只留一个，后开的会直接顶掉已有的，不会叠出两层。
-    public void openExpressionEditor(Component label, @Nullable String expression, Consumer<String> onConfirm) {
-        this.expressionEditor = new ExpressionEditorWindow(animation, player, label, expression, onConfirm);
+    ///
+    /// `trackId` 是这条公式所属的轨道（不属于任何轨道时给 null）：窗口靠它判断自嵌套；
+    /// `parameters` 是编辑函数体时的参数栏（普通公式编辑给 null），窗口据此摆出参数输入框，
+    /// 预览把参数一律当 1，并且参数写不进公式或函数体编译不过时不让保存
+    public void openExpressionEditor(Component label, @Nullable String expression, @Nullable String trackId,
+                                     ExpressionEditorWindow.@Nullable Parameters parameters, Consumer<String> onConfirm) {
+        this.expressionEditor = new ExpressionEditorWindow(animation, player, label, expression, trackId, parameters, onConfirm);
     }
 
     public @Nullable ExpressionEditorWindow expressionEditor() {
@@ -220,16 +235,9 @@ public final class EditorContext {
         this.expressionEditor = null;
     }
 
-    /// 按播放头所在时刻求值一段公式；公式非法或引用到取不到值的变量时返回 NaN。
-    ///
-    /// 一帧内的多次调用共用一份上下文，同一个变量因此每帧只算一次——
-    /// 变量面板的每一行、每个挂了公式的输入框都会来问一次，不共用就会重复求值
+    /// 按播放头所在时刻求值一段公式；公式非法或引用到取不到值的变量时返回 NaN
     public float evaluateExpression(@Nullable String expression) {
-        if (frameContext == null) {
-            frameContext = new ExpressionContext(animation, player.time());
-        }
-
-        return frameContext.evaluate(expression);
+        return solver().evaluate(expression);
     }
 
     // endregion

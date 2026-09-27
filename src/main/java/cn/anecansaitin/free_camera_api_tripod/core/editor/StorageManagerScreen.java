@@ -2,8 +2,10 @@ package cn.anecansaitin.free_camera_api_tripod.core.editor;
 
 import cn.anecansaitin.free_camera_api_tripod.core.animation.io.AnimationSavedData;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.layout.UiRect;
+import cn.anecansaitin.free_camera_api_tripod.core.editor.theme.Icons;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.ButtonWidget;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.ConfirmDialog;
+import cn.anecansaitin.free_camera_api_tripod.core.editor.widget.ContextMenu;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import org.jspecify.annotations.Nullable;
@@ -21,6 +23,9 @@ import org.jspecify.annotations.Nullable;
 public class StorageManagerScreen extends StorageDataScreen {
     private @Nullable ButtonWidget animationButton;
     private @Nullable ButtonWidget pathButton;
+    /// 正在重命名的行；为 null 表示不在重命名状态。
+    /// 底栏的名字框只在它不为 null 时可编辑，其余时间是选中项名字的只读回显
+    private @Nullable Row renaming;
 
     public StorageManagerScreen() {
         this(false);
@@ -44,6 +49,8 @@ public class StorageManagerScreen extends StorageDataScreen {
         }
 
         this.path = path;
+        // 换了一套数据，正在重命名的那个行已经不属于当前列表了
+        renaming = null;
         folder = "";
         enteredContainer();
     }
@@ -89,25 +96,54 @@ public class StorageManagerScreen extends StorageDataScreen {
         return EditorLang.t("storage_manager.hint", rows.size());
     }
 
-    /// 主按钮就是「删除」，没有选中项时不可用
+    /// 底栏中间的名字框：平时只读回显选中项的名字，右键「重命名」后转成可编辑
+    @Override
+    protected boolean nameFieldPresent() {
+        return true;
+    }
+
+    @Override
+    protected boolean nameFieldEditable() {
+        return renaming != null;
+    }
+
+    @Override
+    protected Component nameLabel() {
+        return EditorLang.t("storage_manager.rename_label");
+    }
+
+    /// 主按钮在重命名时变「重命名」，其余时候是「删除」
     @Override
     protected Component primaryLabel() {
-        return EditorLang.t("storage_manager.delete");
+        return EditorLang.t(renaming != null ? "storage_manager.rename" : "storage_manager.delete");
     }
 
     @Override
     protected boolean primaryEnabled() {
+        if (renaming != null) {
+            // 输入框正在编辑时拿不到编辑中的文本，先按可用处理，点击时提交后再判定
+            return nameFieldEditing() || renameTargetValid(nameFieldValue());
+        }
+
         return selectedRow() != null;
     }
 
     @Override
     protected void primaryAction() {
+        if (renaming != null) {
+            rename();
+            return;
+        }
+
         deleteSelected();
     }
 
     /// 单击选中；双击容器进入下一层，双击条目等同于点「删除」
     @Override
     protected void rowClicked(int index, @Nullable Row row, boolean doubleClick) {
+        // 换了行就不再改原来那个的名字
+        renaming = null;
+
         if (row == null || !doubleClick) {
             return;
         }
@@ -118,6 +154,80 @@ public class StorageManagerScreen extends StorageDataScreen {
         }
 
         deleteSelected();
+    }
+
+    /// 只给文件夹挂右键菜单：菜单里目前只有「重命名」
+    @Override
+    protected void rowRightClicked(int index, Row row, double mouseX, double mouseY) {
+        if (!row.container()) {
+            return;
+        }
+
+        openMenu(new ContextMenu().item(Icons.RENAME, EditorLang.t("storage_manager.rename"), () -> startRename(row)),
+                mouseX, mouseY);
+    }
+
+    /// 「取消」：重命名进行到一半时先退回浏览状态，再按一次才关掉界面
+    @Override
+    protected void cancelAction() {
+        if (renaming != null) {
+            renaming = null;
+            return;
+        }
+
+        super.cancelAction();
+    }
+
+    // endregion
+
+    // region 重命名
+
+    /// 进入重命名：名字框预填原名并直接开打，光标落在里面
+    private void startRename(Row row) {
+        renaming = row;
+        statusMessage = null;
+        nameFieldValue(row.name());
+        focusNameField();
+    }
+
+    /// 执行重命名；失败（原文件夹不在了，或新名字已被占用）时只提示，界面保持原状
+    private void rename() {
+        if (!renameTargetValid(nameFieldValue())) {
+            return;
+        }
+
+        String name = nameFieldValue().strip();
+        Row row = renaming;
+
+        if (!AnimationSavedData.renameFolder(path, row.key(), name)) {
+            statusMessage = EditorLang.t("storage_manager.rename_failed", row.name()).getString();
+            renaming = null;
+            reload();
+            return;
+        }
+
+        renaming = null;
+        statusMessage = EditorLang.t("storage_manager.renamed", row.name(), name).getString();
+        reload();
+
+        for (int i = 0; i < rows.size(); i++) {
+            if (rows.get(i).name().equals(name)) {
+                selectedIndex = i;
+                break;
+            }
+        }
+    }
+
+    /// 新名字能不能用：非空、不带层级分隔符、确实改了，并且没和同级别的文件夹 / 条目撞名
+    private boolean renameTargetValid(String name) {
+        if (renaming == null) {
+            return false;
+        }
+
+        String trimmed = name.strip();
+
+        return !trimmed.isEmpty() && !trimmed.contains(SEPARATOR) && !trimmed.equals(renaming.name())
+                && !takenNames().contains(trimmed);
     }
 
     // endregion

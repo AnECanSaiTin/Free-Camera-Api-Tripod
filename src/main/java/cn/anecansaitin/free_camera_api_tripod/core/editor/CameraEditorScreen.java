@@ -4,7 +4,7 @@ import cn.anecansaitin.free_camera_api_tripod.EditorConfig;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.EvaluateMode;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.Keyframe;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.TrackKey;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.WeightedMode;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ValueSource;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.AnimationTrack;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.CameraAnimation;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.CurveTrack;
@@ -19,6 +19,7 @@ import cn.anecansaitin.free_camera_api_tripod.api.editor.EditorUiHost;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.layout.UiRect;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.panel.AnimationPanel;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.panel.EditorPanel;
+import cn.anecansaitin.free_camera_api_tripod.core.editor.panel.FunctionPanel;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.panel.GraphPanel;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.panel.KeyframePanel;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.panel.PathNodePanel;
@@ -74,6 +75,7 @@ public class CameraEditorScreen extends Screen {
     private final PathNodePanel pathNodePanel;
     private final TimelinePanel timelinePanel;
     private final VariablePanel variablePanel;
+    private final FunctionPanel functionPanel;
     private final WidgetHost fileBar = new WidgetHost();
     private final List<EditorPanel> panels = new ArrayList<>();
     private @Nullable ContextMenu fileMenu;
@@ -125,14 +127,16 @@ public class CameraEditorScreen extends Screen {
         this.pathNodePanel = new PathNodePanel(context);
         this.timelinePanel = new TimelinePanel(context);
         this.variablePanel = new VariablePanel(context);
+        this.functionPanel = new FunctionPanel(context);
 
-        // 默认布局：视口 / 「动画 + 路径 + 曲线图」/ 「关键帧 + 变量」 三列，时间轴在底部
+        // 默认布局：视口 / 「动画 + 路径 + 曲线图」/ 「关键帧 + 变量 + 函数」 三列，时间轴在底部
         layout.addColumn(viewportPanel, 0.30f);
         layout.addColumn(animationPanel, 0.40f);
         layout.stackUnder(animationPanel, pathNodePanel, 0.34f);
         layout.stackUnder(animationPanel, graphPanel, 0.66f);
         layout.addColumn(keyframePanel, 0.30f);
         layout.stackUnder(keyframePanel, variablePanel, 0.35f);
+        layout.stackUnder(variablePanel, functionPanel, 0.45f);
         layout.bottom(timelinePanel);
         // 记住初始结构，供文件菜单的「重置布局」恢复
         layout.captureDefaults();
@@ -143,6 +147,7 @@ public class CameraEditorScreen extends Screen {
         panels.add(keyframePanel);
         panels.add(pathNodePanel);
         panels.add(variablePanel);
+        panels.add(functionPanel);
         panels.add(timelinePanel);
     }
 
@@ -245,6 +250,8 @@ public class CameraEditorScreen extends Screen {
         renderDragFeedback(graphics);
 
         // 悬浮窗口画在停靠面板与分隔条之上，但文件栏仍保持可见
+        Draw.layer(Draw.LAYER_FLOATING);
+
         for (EditorPanel panel : layout.floatingPanels()) {
             panel.render(graphics, hoverX, hoverY);
         }
@@ -252,6 +259,8 @@ public class CameraEditorScreen extends Screen {
         renderFileBar(graphics, hoverX, hoverY);
 
         // 右键菜单最后绘制，保证盖在其它面板之上
+        Draw.layer(Draw.LAYER_MENU);
+
         for (EditorPanel panel : panels) {
             panel.renderMenu(graphics, hoverX, hoverY);
         }
@@ -276,15 +285,39 @@ public class CameraEditorScreen extends Screen {
 
     /// 浮层：文件菜单与被截断文本的悬停提示
     private void renderOverlays(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
+        Draw.layer(Draw.LAYER_MENU);
+
         if (fileMenu != null) {
             fileMenu.render(graphics, mouseX, mouseY);
         }
 
-        Draw.TruncatedText truncated = Draw.truncatedAt(mouseX, mouseY);
+        // 只提示鼠标当前所在那一层的文字：被悬浮窗口或菜单盖住的文字不该弹出提示
+        Draw.TruncatedText truncated = Draw.truncatedAt(mouseX, mouseY, surfaceAt(mouseX, mouseY));
 
         if (truncated != null) {
             Draw.tooltip(graphics, truncated.text(), mouseX, mouseY, width, height);
         }
+    }
+
+    /// 鼠标当前压在哪一层界面上：右键菜单 > 悬浮窗口 / 文件栏 > 停靠面板
+    private int surfaceAt(double mouseX, double mouseY) {
+        if (fileMenu != null && fileMenu.contains(mouseX, mouseY)) {
+            return Draw.LAYER_MENU;
+        }
+
+        for (EditorPanel panel : panels) {
+            ContextMenu menu = panel.contextMenu();
+
+            if (menu != null && menu.contains(mouseX, mouseY)) {
+                return Draw.LAYER_MENU;
+            }
+        }
+
+        if (layout.fileBarRect().contains(mouseX, mouseY) || layout.floatingPanelAt(mouseX, mouseY) != null) {
+            return Draw.LAYER_FLOATING;
+        }
+
+        return Draw.LAYER_DOCKED;
     }
 
     private void renderSplitters(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
@@ -453,6 +486,8 @@ public class CameraEditorScreen extends Screen {
     private void saveAnimationTo(java.nio.file.Path file) {
         file = AnimationFiles.withSuffix(file, AnimationFiles.ANIMATION_SUFFIX);
         String name = AnimationFiles.stem(file);
+        // 文件名即动画名：要在序列化之前改，否则写出去的还是旧名字
+        context.animation().name(name);
         String json = AnimationCodec.animationToJson(context.animation());
 
         if (!AnimationFiles.saveTo(file, json)) {
@@ -460,9 +495,7 @@ public class CameraEditorScreen extends Screen {
             return;
         }
 
-        // 文件名即动画名，保存后让两者保持一致
         animationFile = file;
-        context.animation().name(name);
         context.notify(EditorLang.t("notify.animation_saved", name));
     }
 
@@ -477,8 +510,9 @@ public class CameraEditorScreen extends Screen {
     }
 
     private void saveAnimationToStorage(String name) {
-        AnimationSavedData.saveAnimation(name, AnimationCodec.animationToJson(context.animation()));
+        // 同上：先改名再序列化
         context.animation().name(name);
+        AnimationSavedData.saveAnimation(name, AnimationCodec.animationToJson(context.animation()));
         context.notify(EditorLang.t("notify.animation_saved", name));
     }
 
@@ -574,7 +608,8 @@ public class CameraEditorScreen extends Screen {
         context.editor().pathReplaced();
     }
 
-    /// 复制：把当前选中的关键帧连同其轨道 id 与全部插值参数放进剪贴板
+    /// 复制：把当前选中的关键帧连同其轨道 id 与全部数值来源放进剪贴板。
+    /// 值源要拷副本，否则之后改原键的公式会连带改到剪贴板里的内容
     private void copySelectedKey() {
         TrackKey selected = context.editor().selectedKey();
         AnimationTrack track = context.editor().selectedTrack();
@@ -584,9 +619,10 @@ public class CameraEditorScreen extends Screen {
             return;
         }
 
-        clipboard = new KeyClip(track.id(), keyframe.time(), keyframe.value(),
-                keyframe.inTangent(), keyframe.outTangent(), keyframe.inWeight(), keyframe.outWeight(),
-                keyframe.evaluateMode(), keyframe.weightedMode());
+        clipboard = new KeyClip(track.id(), keyframe.time(),
+                keyframe.valueSource(), keyframe.inSlopeSource(), keyframe.outSlopeSource(),
+                keyframe.inLengthSource(), keyframe.outLengthSource(),
+                keyframe.evaluateMode());
         context.notify(EditorLang.t("notify.key_copied"));
     }
 
@@ -603,13 +639,13 @@ public class CameraEditorScreen extends Screen {
         // 优先粘到当前选中的曲线轨道；没有选中轨道就回到复制时的轨道，轨道已不存在时按 id 重新建出来
         CurveTrack target = selected instanceof CurveTrack curveTrack ? curveTrack : resolveClipTrack(clip.trackId());
         float time = context.snapTime(context.player().time());
-        Keyframe key = Keyframe.create(time, clip.value())
-                .inTangent(clip.inTangent())
-                .outTangent(clip.outTangent())
-                .inWeight(clip.inWeight())
-                .outWeight(clip.outWeight())
-                .evaluateMode(clip.evaluateMode())
-                .weightedMode(clip.weightedMode());
+        Keyframe key = Keyframe.create(time, 0)
+                .evaluateMode(clip.evaluateMode());
+        key.valueSource(ValueSource.copy(clip.value()));
+        key.inSlopeSource(ValueSource.copy(clip.inSlope()));
+        key.outSlopeSource(ValueSource.copy(clip.outSlope()));
+        key.inLengthSource(ValueSource.copy(clip.inLength()));
+        key.outLengthSource(ValueSource.copy(clip.outLength()));
         int index = target.curve().key(key);
 
         if (index < 0) {
@@ -635,9 +671,9 @@ public class CameraEditorScreen extends Screen {
         return track != null ? track : context.animation().addChannel(trackId);
     }
 
-    /// 复制出的关键帧内容：来源轨道 id 与关键帧的全部字段
-    private record KeyClip(String trackId, float time, float value, float inTangent, float outTangent,
-                           float inWeight, float outWeight, EvaluateMode evaluateMode, WeightedMode weightedMode) {
+    /// 复制出的关键帧内容：来源轨道 id、时间、五个数值来源与插值模式
+    private record KeyClip(String trackId, float time, ValueSource value, ValueSource inSlope, ValueSource outSlope,
+                           ValueSource inLength, ValueSource outLength, EvaluateMode evaluateMode) {
     }
 
     // endregion
@@ -1025,6 +1061,12 @@ public class CameraEditorScreen extends Screen {
     public boolean keyPressed(KeyEvent event) {
         int key = event.key();
 
+        // 开发用测试按键：默认关闭，只有配置里打开 dev.test_keys 后才识别。
+        // 必须排在模态窗口之前：它们替身的正是鼠标事件，而窗口里的列表/菜单同样要用鼠标操作
+        if (EditorConfig.DEV_TEST_KEYS.get() && handleTestKey(key)) {
+            return true;
+        }
+
         // 文件菜单打开时：Esc 只关菜单
         if (fileMenu != null) {
             if (key == GLFW.GLFW_KEY_ESCAPE) {
@@ -1083,10 +1125,7 @@ public class CameraEditorScreen extends Screen {
             }
         }
 
-        // 开发用测试按键：默认关闭，只有配置里打开 dev.test_keys 后才识别
-        if (EditorConfig.DEV_TEST_KEYS.get() && handleTestKey(key)) {
-            return true;
-        }
+        // 开发用测试按键已经在方法开头处理过了
 
         for (EditorPanel panel : panels) {
             if (panel.keyPressed(event)) {
@@ -1124,6 +1163,16 @@ public class CameraEditorScreen extends Screen {
             case GLFW.GLFW_KEY_F10 -> {
                 MouseButtonInfo buttonInfo = new MouseButtonInfo(GLFW.GLFW_MOUSE_BUTTON_RIGHT, 0);
                 mouseClicked(new MouseButtonEvent(lastMouseX, lastMouseY, buttonInfo), false);
+                return true;
+            }
+            // 在鼠标位置补一次滚轮上 / 下：脚本同样发不出滚轮，列表与时间轴的滚动靠它。
+            // 用 F7 / F8 而不是 PageUp / PageDown：后者送不进 GLFW
+            case GLFW.GLFW_KEY_F7 -> {
+                mouseScrolled(lastMouseX, lastMouseY, 0, 1);
+                return true;
+            }
+            case GLFW.GLFW_KEY_F8 -> {
+                mouseScrolled(lastMouseX, lastMouseY, 0, -1);
                 return true;
             }
             // 世界内查看
