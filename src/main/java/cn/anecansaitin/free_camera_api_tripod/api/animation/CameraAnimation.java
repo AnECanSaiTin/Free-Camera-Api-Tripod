@@ -86,10 +86,9 @@ public class CameraAnimation implements CameraAnimationc {
         addChannel(CHANNEL_ROTATION_X);
         addChannel(CHANNEL_ROTATION_Y);
         addChannel(CHANNEL_ROTATION_Z);
-        CurveTrack fov = addChannel(CHANNEL_FOV);
+        addChannel(CHANNEL_FOV);
         // 坐标轴不放初始键：没有关键帧的轴不接管该轴，相机保持玩家所在的位置。
         // 补一个值为 0 的键会把相机直接搬到世界原点，那里往往没有加载区块，画面就只剩天空了
-        fov.addKey(0f, AnimationChannelRegistry.get(CHANNEL_FOV).defaultValue());
     }
 
     /// 添加或获取曲线通道，默认值与颜色取自 {@link AnimationChannelRegistry}
@@ -442,7 +441,7 @@ public class CameraAnimation implements CameraAnimationc {
         for (int i = 0; i < curve.size(); i++) {
             Keyframe key = curve.key(i);
 
-            if (key != null && references(key, variable.name())) {
+            if (references(key, variable.name())) {
                 return true;
             }
         }

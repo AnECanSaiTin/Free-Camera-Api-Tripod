@@ -8,16 +8,16 @@ import org.jspecify.annotations.Nullable;
 ///
 /// 表达式在**构造与改写时**编译一次并缓存（见 [Expression#compile]），求值不再扫描字符串；
 /// 编译不过的公式照样能存下来（界面要显示用户写错的内容），只是求值一律返回 NaN，
-/// 于是外面会退回 [fallback]。
+/// 于是外面会退回 [constant]。
 @NullMarked
 public final class FormulaValue implements ValueSource {
     private String expression;
     /// 编译结果；公式编译不过时为 null
     private @Nullable Formula formula;
-    private float fallback;
+    private float constant;
 
-    public FormulaValue(String expression, float fallback) {
-        this.fallback = fallback;
+    public FormulaValue(String expression, float constant) {
+        this.constant = constant;
         this.expression = expression;
         this.formula = Expression.compile(expression);
     }
@@ -33,13 +33,8 @@ public final class FormulaValue implements ValueSource {
         return this;
     }
 
-    /// 公式算不出来时用的固定数值
-    public float fallback() {
-        return fallback;
-    }
-
-    public FormulaValue fallback(float fallback) {
-        this.fallback = fallback;
+    public FormulaValue constant(float constant) {
+        this.constant = constant;
         return this;
     }
 
@@ -57,9 +52,10 @@ public final class FormulaValue implements ValueSource {
         return Expression.evaluate(formula, solver);
     }
 
+    /// 公式算不出来时用的固定数值
     @Override
     public float constant() {
-        return fallback;
+        return constant;
     }
 
     @Override

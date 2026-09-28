@@ -223,7 +223,7 @@ public final class AnimationCodec {
             case FormulaValue formula -> {
                 JsonObject object = new JsonObject();
                 object.addProperty(FIELD_EXPRESSION, formula.expression());
-                object.addProperty(FIELD_FALLBACK, formula.fallback());
+                object.addProperty(FIELD_FALLBACK, formula.constant());
                 yield object;
             }
             case TrackValue track -> {

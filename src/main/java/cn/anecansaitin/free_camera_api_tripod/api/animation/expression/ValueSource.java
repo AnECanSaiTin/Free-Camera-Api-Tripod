@@ -34,24 +34,18 @@ public sealed interface ValueSource permits ConstantValue, FormulaValue, TrackVa
 
     /// 把固定数值写进一个值源：固定值源就地改，公式源改它的回退值，其余换成新的固定值源
     static ValueSource withConstant(ValueSource source, float value) {
-        if (source instanceof ConstantValue constant) {
-            constant.value(value);
-            return constant;
-        }
-
-        if (source instanceof FormulaValue formula) {
-            formula.fallback(value);
-            return formula;
-        }
-
-        return new ConstantValue(value);
+        return switch (source) {
+            case ConstantValue v -> v.value(value);
+            case FormulaValue v -> v.constant(value);
+            default -> new ConstantValue(value);
+        };
     }
 
     /// 深拷贝：值源是可变的，装进别的对象时要给副本
     static ValueSource copy(ValueSource source) {
         return switch (source) {
             case ConstantValue constant -> new ConstantValue(constant.value());
-            case FormulaValue formula -> new FormulaValue(formula.expression(), formula.fallback());
+            case FormulaValue formula -> new FormulaValue(formula.expression(), formula.constant());
             case TrackValue track -> new TrackValue(track.trackId());
         };
     }
