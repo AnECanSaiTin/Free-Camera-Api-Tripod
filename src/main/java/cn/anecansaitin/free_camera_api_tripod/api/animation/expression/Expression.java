@@ -448,7 +448,7 @@ public final class Expression {
                 };
             }
             case "random" -> switch (arguments.size()) {
-                case 0 -> resolver -> RANDOM.nextFloat();
+                case 0 -> _ -> RANDOM.nextFloat();
                 case 2 -> resolver -> {
                     float from = arguments.get(0).evaluate(resolver);
                     float to = arguments.get(1).evaluate(resolver);

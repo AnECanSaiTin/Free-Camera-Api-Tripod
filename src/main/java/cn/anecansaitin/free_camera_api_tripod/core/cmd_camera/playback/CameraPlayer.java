@@ -136,7 +136,7 @@ public class CameraPlayer {
         dest.rotation().set(clip.evaluate(time, rotEvaluator, expression));
         Curve fovCurve = clip.curve(CameraAnimation.CHANNEL_FOV);
 
-        if (fovCurve != null && fovCurve.size() > 0) {
+        if (fovCurve.size() > 0) {
             dest.fov(clip.evaluate(CameraAnimation.CHANNEL_FOV, time, expression));
             dest.fovValid(true);
         } else {
