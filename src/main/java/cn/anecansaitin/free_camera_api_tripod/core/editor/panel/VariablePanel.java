@@ -1,8 +1,9 @@
 package cn.anecansaitin.free_camera_api_tripod.core.editor.panel;
 
+import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.ExpressionScope;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.Scope;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ConstantValue;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Expression;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ExpressionSolver;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.FormulaValue;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.TrackValue;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ValueSource;
@@ -32,7 +33,7 @@ import java.util.List;
 /// 取值来源三选一：
 /// - **固定值**：取值列就是一个可编辑的数值框，变量恒等于这个数
 /// - **公式**：变量由一段表达式算出来，可以引用别的变量
-/// - **曲线轨道**：播放时取该轨道在当前时刻的读数（只读静态曲线，见 [ExpressionSolver]）
+/// - **曲线轨道**：播放时取该轨道在当前时刻的读数（只读静态曲线，见 [ExpressionScope]）
 ///
 /// 变量之间靠公式里的名字互相引用，成环会让求值原地打转，所以环上的变量会标红并在悬停时说明。
 /// 名字要能被表达式识别成标识符（字母、下划线或非 ASCII 字符开头），改名与新建都会挡掉重名。
@@ -97,7 +98,7 @@ public class VariablePanel extends EditorPanel {
     /// 这一行的取值是否有问题：成环、自嵌套，或者干脆算不出来（NaN）。
     /// 来源列与取值列都据此标红，两列颜色对得上
     private boolean valueInvalid(Variable variable) {
-        return valueProblem(variable) != null || Float.isNaN(variable.source().evaluate(context.solver()));
+        return valueProblem(variable) != null || Float.isNaN(variable.source().evaluate(context.scope()));
     }
 
     /// 取不到值的原因；算得出值时返回 null。标红的两列共用它，悬停时也拿它当提示
@@ -147,9 +148,9 @@ public class VariablePanel extends EditorPanel {
 
         y = actionRow(x, y, width);
         // 内置变量排在用户变量前面：它们是现成的，公式里直接写变量名就能用
-        y = builtinRow(x, y, ExpressionSolver.TIME_VARIABLE, EditorLang.t("variables.builtin_time"));
-        y = builtinRow(x, y, ExpressionSolver.PROGRESS_VARIABLE, EditorLang.t("variables.builtin_progress"));
-        y = builtinRow(x, y, ExpressionSolver.WORLD_TIME_VARIABLE, EditorLang.t("variables.builtin_world_time"));
+        y = builtinRow(x, y, ExpressionScope.TIME_VARIABLE, EditorLang.t("variables.builtin_time"));
+        y = builtinRow(x, y, ExpressionScope.PROGRESS_VARIABLE, EditorLang.t("variables.builtin_progress"));
+        y = builtinRow(x, y, ExpressionScope.WORLD_TIME_VARIABLE, EditorLang.t("variables.builtin_world_time"));
         List<Variable> variables = context.animation().variables();
 
         if (variables.isEmpty()) {
@@ -210,11 +211,11 @@ public class VariablePanel extends EditorPanel {
 
     /// 内置变量当前的取值
     private float builtinValue(String name) {
-        ExpressionSolver solver = context.solver();
+        Scope scope = context.scope();
         return switch (name) {
-            case ExpressionSolver.PROGRESS_VARIABLE -> solver.progress();
-            case ExpressionSolver.WORLD_TIME_VARIABLE -> solver.worldTime();
-            default -> solver.time();
+            case ExpressionScope.PROGRESS_VARIABLE -> scope.progress();
+            case ExpressionScope.WORLD_TIME_VARIABLE -> scope.worldTime();
+            default -> scope.time();
         };
     }
 
@@ -270,7 +271,7 @@ public class VariablePanel extends EditorPanel {
             LabelWidget readout = new LabelWidget(value, Component.empty()).onClick(() -> selectedName = variable.name());
             widgets.add(readout);
             refreshers.add(() -> {
-                float evaluated = variable.source().evaluate(context.solver());
+                float evaluated = variable.source().evaluate(context.scope());
                 readout.text(Component.literal(Float.isNaN(evaluated) ? Icons.INVALID : Draw.num(evaluated, VALUE_DECIMALS)));
                 readout.color(valueInvalid(variable) ? Draw.WARNING : Draw.TEXT);
                 readout.tooltip(valueProblem(variable));
@@ -375,7 +376,7 @@ public class VariablePanel extends EditorPanel {
         }
 
         // 内置变量在求值器里先被认出来，叫同一个名字的变量永远取不到，只能拦在改名这一步
-        if (ExpressionSolver.isBuiltin(name)) {
+        if (ExpressionScope.isBuiltin(name)) {
             context.notify(EditorLang.t("notify.variable_name_builtin", name));
             return;
         }

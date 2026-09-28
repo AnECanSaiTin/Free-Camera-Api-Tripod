@@ -1,13 +1,14 @@
 package cn.anecansaitin.free_camera_api_tripod.api.animation.curve;
 
-import cn.anecansaitin.free_camera_api_tripod.api.animation.Evaluator;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.Keyframe;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Solver;
 import org.jspecify.annotations.NullMarked;
-import org.jspecify.annotations.Nullable;
 
 import java.util.HashMap;
 
+/// 曲线集合：属性名 → 曲线，另存片段名与时长。
+///
+/// **只做容器**：取值一律走 `eval.CurveSampler`，它把"按名字取曲线"与"解析 + 插值"接起来，
+/// `Clip` 因此不必认识求值环境。
 @NullMarked
 public class Clip {
     /// 动画片段时长，根据曲线自动计算则为负数，用户设置则为正数
@@ -49,33 +50,6 @@ public class Clip {
 
     public void removeCurve(String property) {
         curves.remove(property);
-    }
-
-    public float evaluate(String property, float time) {
-        return evaluate(property, time, null);
-    }
-
-    /// 带求解器的求值：该属性上挂了公式的关键帧按公式算
-    public float evaluate(String property, float time, @Nullable Solver solver) {
-        Curve curve = curves.get(property);
-        return curve != null ? curve.evaluate(time, solver) : 0;
-    }
-
-    public <T> T evaluate(float time, Evaluator<T> evaluator) {
-        return evaluate(time, evaluator, null);
-    }
-
-    public <T> T evaluate(float time, Evaluator<T> evaluator, @Nullable Solver solver) {
-        String[] properties = evaluator.properties();
-        float[] values = new float[properties.length];
-
-        for (int i = 0, propertiesLength = properties.length; i < propertiesLength; i++) {
-            String property = properties[i];
-            Curve curve = curves.get(property);
-            values[i] = curve != null ? curve.evaluate(time, solver) : 0;
-        }
-
-        return evaluator.build(values);
     }
 
     /// 动画片段时长。

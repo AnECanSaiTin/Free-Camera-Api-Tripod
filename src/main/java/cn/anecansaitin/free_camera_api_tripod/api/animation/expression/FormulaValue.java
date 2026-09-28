@@ -1,5 +1,6 @@
 package cn.anecansaitin.free_camera_api_tripod.api.animation.expression;
 
+import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.Scope;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Expression.Formula;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
@@ -44,12 +45,12 @@ public final class FormulaValue implements ValueSource {
     }
 
     @Override
-    public float evaluate(@Nullable Solver solver) {
-        if (formula == null || solver == null) {
+    public float evaluate(@Nullable Scope scope) {
+        if (formula == null || scope == null) {
             return Float.NaN;
         }
 
-        return Expression.evaluate(formula, solver);
+        return Expression.evaluate(formula, scope);
     }
 
     /// 公式算不出来时用的固定数值

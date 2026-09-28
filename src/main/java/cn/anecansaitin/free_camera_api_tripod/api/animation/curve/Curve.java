@@ -1,8 +1,6 @@
 package cn.anecansaitin.free_camera_api_tripod.api.animation.curve;
 
 import cn.anecansaitin.free_camera_api_tripod.api.animation.Keyframe;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Solver;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ValueSource;
 import net.minecraft.util.Mth;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
@@ -48,14 +46,12 @@ public class Curve implements Curvec {
         this.keys.sort(Keyframe.TIME_COMPARATOR);
     }
 
+    /// 求值：五个数值一律从 [values] 读。
+    ///
+    /// 曲线只做插值，不认识公式——数值是固定值还是按公式算出来的，由 [KeyValues] 的实现决定。
+    /// 求值与画曲线、插键取值走同一个入口，因此画面上看到的与播放出来的永远是同一条曲线
     @Override
-    public float evaluate(float time) {
-        return evaluate(time, null);
-    }
-
-    /// 带求解器的求值：挂了公式的数值按公式算（见 [ValueSource#evaluateOrFallback]），
-    /// 求解器为 null 或公式算不出来时就是普通的固定数值求值
-    public float evaluate(float time, @Nullable Solver solver) {
+    public float evaluate(float time, KeyValues values) {
         int size = keys.size();
 
         if (size == 0) {
@@ -63,44 +59,43 @@ public class Curve implements Curvec {
         }
 
         if (size == 1) {
-            return value(keys.getFirst(), solver);
+            return values.value(0);
         }
 
         time = mapTime(time);
         int index = findFloorIndex(time);
-        Keyframe left = keys.get(index);
+        int next = index + 1;
 
         if (index == size - 1) {
-            return value(left, solver);
+            return values.value(index);
         }
 
-        Keyframe right = keys.get(index + 1);
-        float duration = right.time() - left.time();
+        float duration = keys.get(next).time() - keys.get(index).time();
 
         // 相邻关键帧时间相同（或数据异常）时，归一化时间与切线缩放都会变成 0/0，
         // 插值结果随即变成 NaN 并污染整条通道，这里直接退化成取左值
         if (!(duration > 0)) {
-            return value(left, solver);
+            return values.value(index);
         }
 
-        if (Float.isInfinite(outSlope(left, solver)) || Float.isInfinite(inSlope(right, solver))) {
+        if (Float.isInfinite(values.outSlope(index)) || Float.isInfinite(values.inSlope(next))) {
             // 切线为无限，视为Step插值，取左值
-            return value(left, solver);
+            return values.value(index);
         }
 
         // 归一化时间
-        time = Math.clamp((time - left.time()) / duration, 0, 1);
+        time = Math.clamp((time - keys.get(index).time()) / duration, 0, 1);
 
-        return switch (left.evaluateMode()) {
-            case LINEAR -> evaluateLinear(left, right, time, solver);
-            case STEP -> value(left, solver);
-            case HERMITE -> evaluateBezier(left, right, time, duration, solver);
+        return switch (keys.get(index).evaluateMode()) {
+            case LINEAR -> evaluateLinear(index, next, time, values);
+            case STEP -> values.value(index);
+            case HERMITE -> evaluateBezier(index, next, time, duration, values);
         };
     }
 
-    private float evaluateLinear(Keyframe left, Keyframe right, float time, @Nullable Solver solver) {
-        float leftValue = value(left, solver);
-        return (value(right, solver) - leftValue) * time + leftValue;
+    private float evaluateLinear(int left, int right, float time, KeyValues values) {
+        float leftValue = values.value(left);
+        return (values.value(right) - leftValue) * time + leftValue;
     }
 
     /// 三次贝塞尔求值。
@@ -111,37 +106,16 @@ public class Curve implements Curvec {
     ///
     /// 求值要先按时间反解曲线参数（见 [solveParameter]）。两侧曲柄长度之和不超过整段时长时
     /// 横坐标随参数单调，解唯一
-    private float evaluateBezier(Keyframe left, Keyframe right, float time, float duration, @Nullable Solver solver) {
-        float p0 = value(left, solver);
-        float p1 = value(right, solver);
+    private float evaluateBezier(int left, int right, float time, float duration, KeyValues values) {
+        float p0 = values.value(left);
+        float p1 = values.value(right);
         float span = duration / 3f;
-        float h0 = span * handleLength(outLength(left, solver));
-        float h1 = span * handleLength(inLength(right, solver));
-        float m0 = outSlope(left, solver);
-        float m1 = inSlope(right, solver);
+        float h0 = span * handleLength(values.outLength(left));
+        float h1 = span * handleLength(values.inLength(right));
+        float m0 = values.outSlope(left);
+        float m1 = values.inSlope(right);
         float u = solveParameter(h0 / duration, 1 - h1 / duration, time);
         return bezier(p0, p0 + m0 * h0, p1 - m1 * h1, p1, u);
-    }
-
-    /// 取值 / 斜率 / 曲柄长度的统一出口：算不出来就退回该字段自己的固定数值
-    private static float value(Keyframe key, @Nullable Solver solver) {
-        return ValueSource.evaluateOrFallback(key.valueSource(), solver);
-    }
-
-    private static float inSlope(Keyframe key, @Nullable Solver solver) {
-        return ValueSource.evaluateOrFallback(key.inSlopeSource(), solver);
-    }
-
-    private static float outSlope(Keyframe key, @Nullable Solver solver) {
-        return ValueSource.evaluateOrFallback(key.outSlopeSource(), solver);
-    }
-
-    private static float inLength(Keyframe key, @Nullable Solver solver) {
-        return ValueSource.evaluateOrFallback(key.inLengthSource(), solver);
-    }
-
-    private static float outLength(Keyframe key, @Nullable Solver solver) {
-        return ValueSource.evaluateOrFallback(key.outLengthSource(), solver);
     }
 
     public int key(float time, float value) {

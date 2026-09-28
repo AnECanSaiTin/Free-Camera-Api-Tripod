@@ -1,5 +1,6 @@
 package cn.anecansaitin.free_camera_api_tripod.api.animation.expression;
 
+import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.Scope;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
@@ -22,7 +23,7 @@ public final class ConstantValue implements ValueSource {
     }
 
     @Override
-    public float evaluate(@Nullable Solver solver) {
+    public float evaluate(@Nullable Scope scope) {
         return value;
     }
 

@@ -2,6 +2,7 @@ package cn.anecansaitin.free_camera_api_tripod.api.animation.track;
 
 import cn.anecansaitin.free_camera_api_tripod.api.animation.TrackKey;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.CameraAnimation;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.Scope;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import org.jspecify.annotations.Nullable;
@@ -35,8 +36,19 @@ public interface AnimationTrack {
     @Nullable
     TrackKey key(int index);
 
-    /// 在指定时间插入一个键（取值取该时刻的当前值），返回键索引，失败返回 -1
+    /// 在指定时间插入一个键（取值取该时刻的当前值），返回键索引，失败返回 -1。
+    ///
+    /// 拿不到求值环境时用这个版本，取值只能取固定数值（挂了公式的键取它的回退值）
     int addKey(float time);
+
+    /// 在指定时间插入一个键，取值按 [scope] 解析（挂了公式的键取该时刻的公式值），
+    /// 返回键索引，失败返回 -1。
+    ///
+    /// 只有曲线轨道能按作用域取值，其余轨道与 [addKey] 无异（默认实现直接转过去）。
+    /// 编辑器一律走这个版本，插出来的键才与播放、曲线图上看到的一致
+    default int addKey(float time, @Nullable Scope scope) {
+        return addKey(time);
+    }
 
     boolean removeKey(int index);
 

@@ -5,7 +5,7 @@ import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Curve;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ConstantValue;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.CustomFunction;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Expression;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ExpressionSolver;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.ExpressionScope;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.FormulaValue;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.TrackValue;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ValueSource;
@@ -429,7 +429,7 @@ public class CameraAnimation implements CameraAnimationc {
     /// 变量是否被它自己绑定的轨道引用，也就是自嵌套：该轨道上有关键帧挂了引用这个变量的公式。
     ///
     /// 这种写法不会成环也不会无限递归——变量读轨道时走的是静态曲线，公式在这一步被忽略，
-    /// 用的是键上的固定数值（见 {@link ExpressionSolver}）。但同一个键
+    /// 用的是键上的固定数值（见 {@link ExpressionScope}）。但同一个键
     /// "作为相机属性播放"与"作为变量被引用"会得出不同的值，界面据此给出提示
     public boolean selfReferencing(Variable variable) {
         if (!(tracks.get(variable.trackId()) instanceof CurveTrack track)) {

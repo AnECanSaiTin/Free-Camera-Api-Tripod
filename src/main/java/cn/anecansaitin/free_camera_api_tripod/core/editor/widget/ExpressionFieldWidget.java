@@ -133,7 +133,7 @@ public class ExpressionFieldWidget extends EditorWidget {
         ValueSource source = accessor.source();
         String expression = source instanceof FormulaValue formula ? formula.expression() : "";
         // 求解器算不出来时返回 NaN，正好当作"公式有问题"的信号
-        float evaluated = source.evaluate(context.solver());
+        float evaluated = source.evaluate(context.scope());
         boolean valid = !Float.isNaN(evaluated);
         boolean hovered = area.contains(mouseX, mouseY);
         Draw.field(graphics, area, hovered);

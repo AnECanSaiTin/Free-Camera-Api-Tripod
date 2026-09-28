@@ -861,7 +861,7 @@ public class TimelinePanel extends EditorPanel {
             selectTrackRow(track);
             float time = context.snapTime(xToTime(content, event.x()));
 
-            if (context.editor().addKey(track, time) >= 0) {
+            if (context.editor().addKey(track, time, context.scope()) >= 0) {
                 context.notify(EditorLang.t("notify.key_added", Draw.num(time, 2)));
             }
 
@@ -1044,7 +1044,7 @@ public class TimelinePanel extends EditorPanel {
 
         if (track != null) {
             menu.item(Icons.ADD, EditorLang.t("timeline.add_key"), () -> {
-                if (context.editor().addKey(track, time) >= 0) {
+                if (context.editor().addKey(track, time, context.scope()) >= 0) {
                     context.notify(EditorLang.t("notify.key_added", Draw.num(time, 2)));
                 }
             });

@@ -1,12 +1,13 @@
 package cn.anecansaitin.free_camera_api_tripod.api.animation.expression;
 
+import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.Scope;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
 /// 一个数值的来源：固定值、公式，或（只作变量取值来源的）曲线轨道读数。
 ///
 /// 求值约定：
-/// - 求解器为 `null` 表示**静态求值**——只有固定数值可用，公式一律算不出来（返回 NaN）
+/// - 作用域为 `null` 表示**静态求值**——只有固定数值可用，公式一律算不出来（返回 NaN）
 /// - 公式非法、变量取不到值、轨道不存在，一律返回 [Float#NaN]；**本接口不做兜底**，
 ///   要不要退回固定数值由调用方决定（求值链上唯一的回退点是 [ValueSource#evaluateOrFallback]）
 ///
@@ -15,14 +16,14 @@ import org.jspecify.annotations.Nullable;
 @NullMarked
 public sealed interface ValueSource permits ConstantValue, FormulaValue, TrackValue {
     /// 求值；算不出来返回 NaN
-    float evaluate(@Nullable Solver solver);
+    float evaluate(@Nullable Scope scope);
 
     /// 该来源携带的固定数值：常量就是它本身，公式是它的回退值，轨道引用没有（NaN）
     float constant();
 
     /// 求值并回退固定数值——求值链上唯一的回退点
-    static float evaluateOrFallback(ValueSource source, @Nullable Solver solver) {
-        float value = source.evaluate(solver);
+    static float evaluateOrFallback(ValueSource source, @Nullable Scope scope) {
+        float value = source.evaluate(scope);
 
         if (!Float.isNaN(value)) {
             return value;

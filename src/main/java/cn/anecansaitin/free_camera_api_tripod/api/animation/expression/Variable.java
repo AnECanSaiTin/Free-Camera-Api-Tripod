@@ -7,7 +7,7 @@ import org.jspecify.annotations.Nullable;
 ///
 /// 取值来源可以是固定值、公式，或某条曲线轨道的读数（见 [ValueSource]）；
 /// 公式里按名字引用别的变量，变量之间因此构成一张有向图，成环由 [VariableGraph] 检查、
-/// 由 [ExpressionSolver] 在求值时兜底。
+/// 由 [ExpressionScope] 在求值时兜底。
 ///
 /// 名字不限定字符集，中文也可以，但它要能被表达式识别为标识符（字母、下划线或非 ASCII 字符开头）。
 @NullMarked

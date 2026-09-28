@@ -19,7 +19,8 @@ api/                          对外契约：数据模型 + 扩展点（不依�
 ├── animation/                动画数据模型
 │   ├── Keyframe/Keyframec/TrackKey/Evaluator/EvaluateMode
 │   ├── curve/                Curve / Curvec / Clip / WrapMode
-│   ├── expression/           Expression / ValueSource / Variable / CustomFunction / ExpressionSolver
+│   ├── eval/                 求值层：Scope / ExpressionScope / CurveSampler / ResolvedKeys
+│   ├── expression/           Expression / ValueSource / Variable / CustomFunction
 │   ├── path/                 Path / Pathc / PathNode / PathNodec / PathMode
 │   └── track/                AnimationTrack / TrackType / CurveTrack
 │                             TrackTypeRegistry / AnimationChannelRegistry
@@ -79,15 +80,18 @@ F6 ──► CameraEditorScreen.open()
 | 类型 | 职责 |
 | --- | --- |
 | `TrackKey` | 只读最小契约：`time()`。所有轨道上的键都实现它 |
-| `Keyframec` | 只读关键帧：时间、取值、入/出切线、入/出权重、加权模式、插值模式 |
+| `Keyframec` | 只读关键帧：时间、取值、入/出切线、入/出权重、加权模式、插值模式，**以及五个数值各自的值源** |
 | `Keyframe` | 可写关键帧（可变类；setter 返回自身可链式）；静态工厂 `create/linear/step/hermite`；`set(Keyframec)` 覆盖式拷贝 |
 | `Keyframec` / `Keyframe` 的分工 | 与 `PathNodec` / `PathNode` 一致：读方只认只读接口，`Curve` 内部直接持有可变的 `Keyframe` |
 
 `EvaluateMode`：`LINEAR` / `STEP` / `HERMITE`（`HERMITE` 即按贝塞尔求值）。
 
 关键帧的取值 / 入出斜率 / 入出长度倍数这五个数值各自是一个**值源**（见 2.7），所以每个字段有两套读写：
-`value()` / `value(float)` 这一组看的是**固定数值**（公式的回退值，几何、绘制、界面编辑都用它），
+`value()` / `value(float)` 这一组看的是**固定数值**（公式的回退值，几何计算与界面编辑用它），
 `valueSource()` / `valueSource(ValueSource)` 这一组给的是值源本身（求值与序列化用它）。
+只读接口上也有 `valueSource()` 这一组，只读视图因此同样能参与动态求值。
+
+**时间不进值源**：公式本来就是按时间求值的，时间自己再挂公式只会绕回自己。
 
 四个插值字段就是两端各一条贝塞尔曲柄：**斜率给方向，长度倍数给长度**——
 曲柄长度 = 这段时长的 1/3 × 长度倍数（默认 1，即基准长度）。没有单独的「加权模式」开关，
@@ -100,24 +104,47 @@ F6 ──► CameraEditorScreen.open()
 - `key(time, value)` / `key(Keyframe)`：按时间二分查找插入或覆盖，返回索引
 - `moveKey` / `removeKey` / `smoothTangents`：编辑操作；`smoothTangents` 在两端用差分、中间点用 Catmull-Rom 斜率，
   只改斜率、不动曲柄长度
-- `evaluate(time)`：先按 `preMode` / `postMode`（`WrapMode`：CLAMP / LOOP / PING_PONG）把时间映射进有效区间，
+- `evaluate(time, KeyValues)`：先按 `preMode` / `postMode`（`WrapMode`：CLAMP / LOOP / PING_PONG）把时间映射进有效区间，
   再取相邻两键按左键的 `EvaluateMode` 插值。`HERMITE` 分支按**曲柄位置**求三次贝塞尔：
   两端的曲柄落在 `端点 + 曲柄长度 × (1, 斜率)` 处，曲柄长度由关键帧上的长度倍数决定（`Curve.handleLength` 夹在 0~1.5 倍）。
   因为横坐标也是自由度，求值要先按时间反解曲线参数（牛顿迭代，见 `Curve.solveParameter`）；
   两侧曲柄长度之和不超过整段时长，横坐标才单调、解唯一，这正是长度上限取 1.5 倍的原因
-- `evaluate(time, Solver)`：多带一个求解器，挂了公式的字段按公式取值；求解器为 `null` 就是纯固定数值求值
+- **曲线是纯数值插值**：五个数值一律从 `KeyValues` 读，曲线不认识公式，也不认识求值环境
+  （见 2.2.1 的 `KeyValues` 与 2.8 的 `CurveSampler`）
 - **健壮性处理**：相邻键时间相同、线段长度退化、切线为无穷时直接取左值，避免 `0/0` 产生 NaN 污染整条通道
 - 命中位置用 `lastIndex` + 方向标记做局部近似，退化时才回到二分
 
 `curve/Curvec` 是它的只读视图（`evaluate` / `size` / `key`），只读取值的场景优先用视图。
+
+### 2.2.1 数值读取器 `curve/KeyValues`
+
+```java
+public interface KeyValues {
+    float value(int index);      // 第 index 个键的取值
+    float inSlope(int index);    // 入曲柄斜率
+    float inLength(int index);   // 入曲柄长度倍数
+    float outSlope(int index);
+    float outLength(int index);
+}
+```
+
+曲线只问"第 index 个键的某个数是多少"，**不管这几个数是哪来的**。两个实现：
+
+| 实现 | 取值 | 用在哪 |
+| --- | --- | --- |
+| `StaticKeys` | 键上的固定数值（挂了公式就取它的回退值） | 变量读轨道、没有求值环境时插键 |
+| `eval.ResolvedKeys` | 按 `Scope` 解析：挂了公式的字段按该时刻算，算不出来退回固定数值 | 播放、画曲线、界面预览 |
+
+时间与插值模式不在读取器里——它们不是可动态的字段，曲线直接读键本身。
 
 ### 2.3 曲线集合 `curve/Clip`
 
 `属性名 → Curve` 的集合，另存片段名与时长：
 
 - `duration()`：显式设置过（> 0）直接用，否则按所有曲线最后一个键的时间实时计算
-- `evaluate(property, time [, context])` / `evaluate(time, Evaluator [, context])`：单个属性或按 `Evaluator.properties()` 批量取值后 `build`
-- `evaluateAll(time)`：带缓存的全量求值，播放时避免重复分配
+
+**`Clip` 只做容器**：取值一律走 `eval.CurveSampler`，它把"按属性名取曲线"与"解析 + 插值"接起来，
+不必让 `Clip` 也认识求值环境。
 
 ### 2.4 路径 `path/`
 
@@ -141,8 +168,10 @@ F6 ──► CameraEditorScreen.open()
 
 - `AnimationTrack`：`type/id/label/color/duration/keyCount/key/addKey/removeKey/moveKey`。
   **只放所有轨道都成立的成员**：曲线、指令、事件这类专属能力不进接口——需要"经过即触发"就实现 `TickTrack`，
-  需要交出底层曲线就在自己的实现里提供（`CurveTrack.curve()`），调用方按能力判断
-- `CurveTrack`：把 `Curve` 适配成轨道的默认实现；`addKey(time)` 会继承前一个键的插值与加权模式；
+  需要交出底层曲线就在自己的实现里提供（`CurveTrack.curve()`），调用方按能力判断。
+  `addKey(time, Scope)` 是带求值环境的插键入口（默认实现转给 `addKey(time)`，
+  即"拿不到环境就按固定数值插"），编辑器一律走带环境的版本
+- `CurveTrack`：把 `Curve` 适配成轨道的默认实现；插键会继承前一个键的插值模式；
   取值与取键都走它自己暴露的 `curve()`
 - `TickTrack`：可选能力接口，`advance(fromTime, toTime)` 由播放器每帧带着推进区间调用（命令轨道即此类）
 - `JsonTrack`：可选能力接口，`writeKeys()` / `readKeys(JsonArray)` 由轨道自己决定键的存档形态（不实现就不落盘）
@@ -195,26 +224,12 @@ F6 ──► CameraEditorScreen.open()
 | `FormulaValue` | 一段公式 + 一个回退用的固定值（编译结果也在这里缓存） |
 | `TrackValue` | 某条曲线轨道在当前时刻的读数（**只作变量的取值来源**，不会出现在关键帧的字段上） |
 
-- `evaluate(solver)`：算不出来返回 NaN；`constant()`：该来源携带的固定数值
-- `ValueSource.evaluateOrFallback(source, solver)` 是**求值链上唯一的回退点**：算不出来就退回固定数值
+- `evaluate(scope)`：算不出来返回 NaN；作用域为 `null` 就是静态求值（只有固定数值可用）
+- `ValueSource.evaluateOrFallback(source, scope)` 是**求值链上唯一的回退点**：算不出来就退回固定数值
 - `ValueSource.withConstant(source, value)`：只改那个数，**公式保留**。因此"界面里改数值"不会把公式弄丢
 
-#### 求解器 `Solver` 与 `ExpressionSolver`
-
-```java
-public interface Solver extends Expression.Resolver {
-    float time();                 // 当前求值时间
-    float progress();             // 播放进度：当前时间 / 总时长，归一化到 0~1
-    float worldTime();            // 世界时间：游戏内一天的进度，归一化到 0~1
-    float track(String id);       // 某条曲线轨道在当前时刻的读数
-}
-```
-
-求值链只认这个接口，**不认 `CameraAnimation`**——单条曲线、单个值都能脱离动画求值，好测试也好复用；
-从动画构造的入口是 `ExpressionSolver.of(animation, time, worldTime)`（播放进度由动画时长算出，世界时间由调用方灌入）。
-
 **三个内置变量**：`t`（当前时间）、`p`（播放进度）、`wt`（世界时间），在 `resolve` 里先于用户变量被认出来，
-名字由 `ExpressionSolver.BUILTIN_VARIABLES` 列出（既不让用户取重名，也直接列在变量面板最上面，
+名字由 `ExpressionScope.BUILTIN_VARIABLES` 列出（既不让用户取重名，也直接列在变量面板最上面，
 显示为「变量名 + 类型 + 当前取值」三列）。后两个都归一化到 0~1，
 世界时间由 `CmdCamera` 每帧写进 `CameraPlayer.worldTime()`——播放器本身不认 Minecraft，换算留在外面。
 
@@ -225,9 +240,9 @@ public interface Solver extends Expression.Resolver {
 
 **自定义函数**（`CustomFunction`）是动画里的一份小定义：名字 + 参数名 + 函数体文本。
 名字不在内置清单里时，调用节点在**求值时**向 `Resolver.function(name)` 查一次
-（`ExpressionSolver` 从动画的函数表里取），所以函数随时可加、改完立刻生效，也不必去清编译缓存。
+（`ExpressionScope` 从动画的函数表里取），所以函数随时可加、改完立刻生效，也不必去清编译缓存。
 参数按值绑定：实参先在调用处求值一次，再按参数名喂进函数体；函数体里还能调用别的自定义函数
-（查询转回外层求解器），但不支持递归——表达式没有条件写法，写不出终止条件。
+（查询转回外层作用域），但不支持递归——表达式没有条件写法，写不出终止条件。
 形参个数与实参个数不符时返回 NaN（退回固定数值），不会抛异常。
 
 三者可以这样记：**变量是"值"的名字，函数是"算法"的名字，轨道是"曲线"的容器**——
@@ -237,11 +252,11 @@ public interface Solver extends Expression.Resolver {
 
 - **一次求值内每个变量只算一次**：时间是构造时定下的，变量值在其生命周期内不会变，`resolve` 的结果缓存进 Map。
   同一条公式里写 3 次、或一帧内几十个字段引用同一个变量，都只算一次
-- **变量读轨道走静态曲线**：`curve.evaluate(time)` 不带求解器，所以轨道上的公式在这一步被忽略、用键上的固定数值。
+- **变量读轨道走静态曲线**：轨道按 `StaticKeys` 求值，所以轨道上的公式在这一步被忽略、用键上的固定数值。
   这让"变量指向某条轨道、该轨道的键又引用这个变量"不会无限递归；代价是同一个键
   "作为相机属性播放"与"作为变量被引用"可能得出不同的值，这就是**自嵌套**：
   变量面板会把它标红，表达式编辑窗口在公式引用到绑定本轨道的变量时也会标红并**按住「确定」不让保存**
-- **成环时明确报错**：`V1 = V2 * 2` 且 `V2 = V1 + 1` 这种写法，求值返回 NaN 并把环记录在 `ExpressionSolver.cycle()` 里；
+- **成环时明确报错**：`V1 = V2 * 2` 且 `V2 = V1 + 1` 这种写法，求值返回 NaN 并把环记录在 `ExpressionScope.cycle()` 里；
   变量面板与表达式编辑窗口都会把环上的变量标红并写出链路，不是静默给一个数
 
 #### 表达式求值 `Expression`
@@ -263,12 +278,50 @@ public interface Solver extends Expression.Resolver {
 
 #### 设计要点
 
-- **公式挂在数据上，不挂在求值链上**：字段持有值源，`Curve` / `Clip` / `Path` 的 `evaluate` 只是多带一个 `@Nullable Solver`；
-  传 `null` 就是纯固定数值求值（画曲线、算弧长都走这条路）
+- **公式挂在数据上，不挂在求值链上**：字段持有值源，求值链只把它解析成一个数（见 2.8）
 - **求值失败永远是回退，不是中断**：公式非法、变量取不到值、成环——统统退回固定数值，播放不会因为一条写错的公式而失效
 - **新增一个可动态字段不用改枚举**：以前要靠 `DynamicField` 枚举寻址，现在字段本身就是值源，
   读写入口就是一对 `xxxSource()` 方法（见 `Keyframe`）
-- **时间不进值源**：公式本来就是按时间求值的，时间自己再挂公式只会绕回自己
+
+### 2.8 求值层 `eval/`
+
+把"按公式算出一个数"与"曲线怎么插值"分成两件事，`Curve` 因此不必认识表达式：
+
+```java
+public interface Scope extends Expression.Resolver {
+    float time();                 // 当前求值时间
+    float progress();             // 播放进度：当前时间 / 总时长，归一化到 0~1
+    float worldTime();            // 世界时间：游戏内一天的进度，归一化到 0~1
+    float track(String id);       // 某条曲线轨道在当前时刻的读数
+    default float evaluate(String expression);
+}
+```
+
+| 类 | 职责 |
+| --- | --- |
+| `Scope` | 求值环境接口。求值链只认它，**不认 `CameraAnimation`**——单条曲线、单个值都能脱离动画求值 |
+| `ExpressionScope` | 从动画构造的实现：`of(animation, time, worldTime)`，播放进度由动画时长算出。内置变量、变量缓存、环记录都在这里 |
+| `ResolvedKeys` | `KeyValues` 的动态实现：按 `Scope` 解析关键帧的五个数值，结果按 (键, 字段) **惰性缓存** |
+| `CurveSampler` | **求值的唯一入口**：把"按 `Scope` 解析"与"曲线插值"接起来 |
+
+`CurveSampler` 的三个入口：
+
+- `sample(curve, time, scope)`：按作用域取值。挂了公式的键按该时刻算
+- `sampleOnce(curve, time, scope)`：同上但不复用缓存，适合插键这类偶发取值
+- `sampleStatic(curve, time)`：只读固定数值，不解析公式
+- `sample(clip, time, evaluator, scope)`：一次取多条通道，交给 `Evaluator` 组装
+
+**播放、曲线图、插入关键帧、界面预览一律走 `CurveSampler`**，于是"画面上看到的"与"播放出来的"
+永远是同一条曲线——改造前曲线图走的是不带作用域的求值，画出来的其实是公式的回退值，与播放结果对不上。
+
+缓存的两个约定：
+
+- **惰性**：一次求值只解析落在区间两端的那两个键，不整条曲线解析
+- **自动失效**：换曲线、键数变化、换作用域都会清空。作用域里带着时间，而播放器与编辑器每帧新建作用域，
+  缓存因此自然按帧失效，不必由调用方记着清（作用域被就地复用时才需要 `clear()`）
+
+依赖方向因此是单向的：`eval` → `curve`（采样器要用曲线），`curve` 不认识 `eval`——
+`KeyValues` 放在 `curve` 包里就是为了这个。
 
 
 ---
@@ -287,8 +340,9 @@ public interface Solver extends Expression.Resolver {
 | `CmdCameraKeyMapping` | 快捷键：**F6** 打开编辑器、**F7** 播放/暂停、**F8** 停止、**F9** 打开路径编辑器（均限游戏内） |
 | `CameraCommand` | 客户端命令注册 |
 
-`CameraPlayer.evaluatePose` 的关键分支：每帧先构造一份 `ExpressionSolver`（当前时间 + 动画变量），
-再把它传给曲线求值，挂了公式的关键帧由此按当前时刻取值（路径是纯几何，不接求解器）。
+`CameraPlayer.evaluatePose` 的关键分支：每帧先构造一份 `ExpressionScope`（当前时间 + 动画变量），
+再用 `CurveSampler` 取值，挂了公式的关键帧由此按当前时刻算出来（路径是纯几何，不接求值环境）。
+采样器在播放器里是一个实例字段，同一帧内每条曲线的关键帧只解析一次。
 坐标模式下逐轴判断"有没有键"，有键才写该轴；路径模式下先 `distanceToLength` 再 `Path.evaluate`，并对非有限值做兜底。
 
 ---
@@ -560,6 +614,11 @@ public interface Solver extends Expression.Resolver {
 - **键是可变共享对象**：`Curve.key(int)` 返回的是内部 `Keyframe`，直接改它等于改数据（这也是编辑生效的方式）
 - **路径索引缓存**：改节点后必须让 `Path` 重建弧长表（用它的增删方法即可，不要绕过它们直接改内部表）
 - **只读场景用只读视图**：渲染、信息展示优先用 `Pathc` / `Curvec` / `CameraAnimationc`，避免误改数据
+- **取值一律走 `CurveSampler`**：它是求值的唯一入口。图省事用 `sampleStatic` 或自己 new 一个
+  `StaticKeys`，拿到的就是公式的**回退值**——画出来的曲线、插出来的键会和播放结果对不上，
+  而这种偏差只在使用了公式时才出现，很难发现
+- **作用域里带着时间**：`ResolvedKeys` 的缓存按作用域失效。跨帧复用同一个 `Scope` 对象
+  （或自己实现了一个可变的作用域）时，解析结果不会随播放头更新，要手动 `CurveSampler.clear()`
 - **右键菜单的绘制顺序**：由屏幕在最后统一绘制，面板只持有；否则菜单会被其它面板盖住
 - **会话的编辑动作都作用于"当前选中的轨道"**：`addKey` / `moveKey` / `removeKey` 没有 track 参数，
   外部界面调它们之前得先 `selectTrack(...)`；否则返回 -1 或 false，看起来像"点了没反应"

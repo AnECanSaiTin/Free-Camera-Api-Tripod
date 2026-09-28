@@ -2,6 +2,8 @@ package cn.anecansaitin.free_camera_api_tripod.api.animation.track;
 
 import cn.anecansaitin.free_camera_api_tripod.api.animation.Keyframe;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Curve;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.CurveSampler;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.Scope;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import org.jspecify.annotations.NullMarked;
@@ -60,12 +62,27 @@ public class CurveTrack implements AnimationTrack {
 
     @Override
     public int addKey(float time) {
+        // 没有作用域时取固定数值：读档、命令这类场景拿不到求值环境，退到回退值也算有个合理的起点
+        return addKey(time, CurveSampler.sampleStatic(curve, time));
+    }
+
+    /// 按 [scope] 插入键：取值取该时刻**按公式算出的数**，与播放、曲线图上看到的一致。
+    ///
+    /// 没有作用域时（[addKey(float)]）只能取公式的回退值，插出来的键会与播放结果对不上
+    @Override
+    public int addKey(float time, Scope scope) {
+        return addKey(time, CurveSampler.sampleOnce(curve, time, scope));
+    }
+
+    /// 以指定取值插入键（也可用于初始化默认关键帧）。
+    ///
+    /// 沿用前一个键的插值模式，避免破坏已有曲线形态；轨道还是空的时候没有前键，就用默认模式
+    public int addKey(float time, float value) {
         if (time < 0) {
             return -1;
         }
 
-        // 新键取该时刻的当前值，并沿用前一个键的插值模式，避免破坏已有曲线形态
-        Keyframe key = Keyframe.create(time, curve.evaluate(time));
+        Keyframe key = Keyframe.create(time, value);
         Keyframe pre = curve.preKey(time);
 
         if (pre != null) {
@@ -73,15 +90,6 @@ public class CurveTrack implements AnimationTrack {
         }
 
         return curve.key(key);
-    }
-
-    /// 以指定取值插入键（用于初始化默认关键帧）
-    public int addKey(float time, float value) {
-        if (time < 0) {
-            return -1;
-        }
-
-        return curve.key(Keyframe.create(time, value));
     }
 
     @Override

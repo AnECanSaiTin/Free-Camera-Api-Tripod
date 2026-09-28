@@ -5,6 +5,7 @@ import cn.anecansaitin.free_camera_api_tripod.api.animation.TrackKey;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.AnimationTrack;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.CameraAnimation;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Curve;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.Scope;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.path.Path;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.path.PathNode;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.CurveTrack;
@@ -183,7 +184,9 @@ public class CameraEditorModel {
 
     // region 关键帧编辑
 
-    public int addKey(AnimationTrack track, float time) {
+    /// 插入关键帧，取值按 [scope] 解析：挂了公式的键取该时刻的公式值，与播放、曲线图上看到的一致。
+    /// [scope] 为 null 时只能取固定数值（读档、命令这类场景）
+    public int addKey(AnimationTrack track, float time, @Nullable Scope scope) {
         // 直接坐标模式下位置三轴的默认值取相机当前坐标，避免新建的键落在 0 上
         int axis = positionAxis(track.id());
 
@@ -198,7 +201,7 @@ public class CameraEditorModel {
             return index;
         }
 
-        int index = track.addKey(time);
+        int index = track.addKey(time, scope);
 
         if (index >= 0) {
             selectTrack(track.id());

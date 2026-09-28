@@ -392,7 +392,7 @@ public class WorldViewScreen extends Screen {
 
         float time = context.player().time();
 
-        if (context.editor().addKey(track, time) >= 0) {
+        if (context.editor().addKey(track, time, context.scope()) >= 0) {
             context.notify(EditorLang.t("notify.key_added", Draw.num(time, 2)));
         }
     }

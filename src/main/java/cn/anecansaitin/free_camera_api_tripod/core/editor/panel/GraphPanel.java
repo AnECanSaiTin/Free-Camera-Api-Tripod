@@ -4,6 +4,8 @@ import cn.anecansaitin.free_camera_api_tripod.api.animation.EvaluateMode;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.Keyframe;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.AnimationTrack;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Curve;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.CurveSampler;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.Scope;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.CurveTrack;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.EditorContext;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.EditorLang;
@@ -295,7 +297,10 @@ public class GraphPanel extends EditorPanel {
     }
 
     /// 曲线：整屏采样后按段上色。碰到挂公式（动态模式）的关键帧，那一段改用动态色画成虚线，
-    /// 与静默段一眼可分——其余段仍用轨道自己的颜色
+    /// 与静默段一眼可分——其余段仍用轨道自己的颜色。
+    ///
+    /// 采样走 [CurveSampler]，也就是**与播放同一个入口**：曲线上画的就是播放会走的那条线，
+    /// 公式在这一步已经被算进去了。采样器复用解析缓存，整条曲线画下来每个关键帧只解析一次
     private void renderCurve(GuiGraphicsExtractor graphics, UiRect plot, CurveTrack track, float[] range) {
         Curve curve = track.curve();
 
@@ -305,10 +310,12 @@ public class GraphPanel extends EditorPanel {
 
         graphics.enableScissor(plot.x(), plot.y(), plot.right(), plot.bottom());
 
+        Scope scope = context.scope();
+        CurveSampler sampler = context.sampler();
         // 浮点采样 + 浮点填充：整数取整会让曲线呈阶梯状
         float step = 0.5f;
         float halfThickness = 0.6f;
-        float previousY = valueToYFloat(plot, curve.evaluate(xToTime(plot, plot.x())), range[0], range[1]);
+        float previousY = valueToYFloat(plot, sampler.sample(curve, xToTime(plot, plot.x()), scope), range[0], range[1]);
         int segment = 0;
 
         for (float x = plot.x() + step; x <= plot.right(); x += step) {
@@ -325,7 +332,7 @@ public class GraphPanel extends EditorPanel {
                 segment++;
             }
 
-            float y = valueToYFloat(plot, curve.evaluate(time), range[0], range[1]);
+            float y = valueToYFloat(plot, sampler.sample(curve, time, scope), range[0], range[1]);
             boolean dynamic = touchesDynamic(curve, segment);
             // 虚线就是一截画一截不画：按屏幕位置取方波，斜线看起来也是等距的
             boolean visible = !dynamic || (int) ((x - plot.x()) / DASH_LENGTH) % 2 == 0;
@@ -602,7 +609,7 @@ public class GraphPanel extends EditorPanel {
         if (doubleClick) {
             float time = context.snapTime(xToTime(plot, event.x()));
 
-            if (context.editor().addKey(track, time) >= 0) {
+            if (context.editor().addKey(track, time, context.scope()) >= 0) {
                 context.notify(EditorLang.t("notify.key_added", Draw.num(time, 2)));
             }
         }

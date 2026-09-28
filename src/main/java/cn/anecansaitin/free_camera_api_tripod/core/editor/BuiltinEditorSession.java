@@ -155,7 +155,7 @@ public final class BuiltinEditorSession implements EditorSession {
     @Override
     public int addKey(float time) {
         @Nullable AnimationTrack track = context.editor().selectedTrack();
-        return track == null ? -1 : context.editor().addKey(track, time);
+        return track == null ? -1 : context.editor().addKey(track, time, context.scope());
     }
 
     @Override

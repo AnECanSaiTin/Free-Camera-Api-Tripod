@@ -4,7 +4,9 @@ import cn.anecansaitin.free_camera_api_tripod.api.animation.Evaluator;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.CameraAnimation;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Clip;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Curve;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ExpressionSolver;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.CurveSampler;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.ExpressionScope;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.Scope;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.path.Path;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.AnimationTrack;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.TickTrack;
@@ -27,6 +29,8 @@ public class CameraPlayer {
     private final CameraAnimation animation;
     private final Vector3f posCache = new Vector3f();
     private final RotEvaluator rotEvaluator = new RotEvaluator();
+    /// 求值入口；内部复用解析缓存，同一帧内每条曲线的关键帧只解析一次
+    private final CurveSampler sampler = new CurveSampler();
     private State state = State.STOPPED;
     private float time;
     private float speed = 1f;
@@ -89,8 +93,8 @@ public class CameraPlayer {
     public CameraPose evaluatePose(CameraPose dest) {
         Clip clip = animation.clip();
         Path path = animation.path();
-        // 每帧一份求解器：挂了公式的关键帧 / 路径节点按当前时间算，变量也按当前时间取轨道读数
-        ExpressionSolver expression = ExpressionSolver.of(animation, time, worldTime);
+        // 每帧一份作用域：挂了公式的关键帧按当前时间算，变量也按当前时间取轨道读数
+        Scope scope = ExpressionScope.of(animation, time, worldTime);
 
         if (animation.motionMode() == CameraAnimation.MotionMode.COORDINATE) {
             // 直接坐标模式：位置由三个坐标通道给出，与路径无关。
@@ -104,22 +108,23 @@ public class CameraPlayer {
                 Vector3f position = dest.position();
 
                 if (hasKeys(x)) {
-                    position.x = finiteOr(clip.evaluate(CameraAnimation.CHANNEL_POSITION_X, time, expression), position.x);
+                    position.x = finiteOr(sampler.sample(x, time, scope), position.x);
                 }
 
                 if (hasKeys(y)) {
-                    position.y = finiteOr(clip.evaluate(CameraAnimation.CHANNEL_POSITION_Y, time, expression), position.y);
+                    position.y = finiteOr(sampler.sample(y, time, scope), position.y);
                 }
 
                 if (hasKeys(z)) {
-                    position.z = finiteOr(clip.evaluate(CameraAnimation.CHANNEL_POSITION_Z, time, expression), position.z);
+                    position.z = finiteOr(sampler.sample(z, time, scope), position.z);
                 }
             }
 
             dest.positionValid(any);
         } else if (path.size() > 0) {
             // 位置通道的取值口径由动画决定：绝对距离直接用，百分比先乘总长再采样
-            float distance = animation.distanceToLength(clip.evaluate(CameraAnimation.CHANNEL_POSITION, time, expression));
+            Curve distanceCurve = clip.curve(CameraAnimation.CHANNEL_POSITION);
+            float distance = animation.distanceToLength(distanceCurve == null ? 0f : sampler.sample(distanceCurve, time, scope));
             Vector3f evaluated = path.evaluate(distance, posCache);
 
             // 路径数据异常（总长或切线非有限值）时算出的是 NaN，绝不能把它交给相机
@@ -133,11 +138,11 @@ public class CameraPlayer {
             dest.positionValid(false);
         }
 
-        dest.rotation().set(clip.evaluate(time, rotEvaluator, expression));
+        dest.rotation().set(sampler.sample(clip, time, rotEvaluator, scope));
         Curve fovCurve = clip.curve(CameraAnimation.CHANNEL_FOV);
 
         if (fovCurve.size() > 0) {
-            dest.fov(clip.evaluate(CameraAnimation.CHANNEL_FOV, time, expression));
+            dest.fov(sampler.sample(fovCurve, time, scope));
             dest.fovValid(true);
         } else {
             // fov 通道没有关键帧时求值会得到 0，会把画面压成一个点；交给原版沿用玩家自己的 FOV

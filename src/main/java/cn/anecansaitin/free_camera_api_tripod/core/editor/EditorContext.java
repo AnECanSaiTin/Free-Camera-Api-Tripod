@@ -1,7 +1,9 @@
 package cn.anecansaitin.free_camera_api_tripod.core.editor;
 
 import cn.anecansaitin.free_camera_api_tripod.api.animation.CameraAnimation;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ExpressionSolver;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.CurveSampler;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.ExpressionScope;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.Scope;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.path.Path;
 import cn.anecansaitin.free_camera_api_tripod.core.animation.io.AnimationCodec;
 import cn.anecansaitin.free_camera_api_tripod.core.animation.io.AnimationFiles;
@@ -194,26 +196,35 @@ public final class EditorContext {
 
     // region 表达式
 
-    /// 本帧共用的求解器，由 [beginFrame] 每帧清空
-    private @Nullable ExpressionSolver frameSolver;
+    /// 本帧共用的作用域，由 [beginFrame] 每帧清空
+    private @Nullable Scope frameScope;
+    /// 本帧共用的采样器；解析缓存随作用域变化自动失效，因此只需跟着 [beginFrame] 一起重置
+    private final CurveSampler frameSampler = new CurveSampler();
 
     /// 每帧渲染开头调用一次。
     ///
-    /// 求解器里缓存着变量的取值，而变量是可以被界面随时改掉的（改名、改来源、换公式），
+    /// 作用域里缓存着变量的取值，而变量是可以被界面随时改掉的（改名、改来源、换公式），
     /// 暂停时播放头时间又不动，光靠时间没法判断缓存是否过期，所以按帧清：一帧内复用、跨帧重算。
     /// 漏调不会算错数值，只会让界面预览停在旧值上，因此两个编辑器屏幕都在渲染开头调它
     public void beginFrame() {
-        this.frameSolver = null;
+        this.frameScope = null;
+        this.frameSampler.clear();
     }
 
-    /// 本帧共用的求解器（按播放头时间构造）：界面上的预览都通过它求值，
+    /// 本帧共用的作用域（按播放头时间构造）：界面上的预览都通过它求值，
     /// 同一个变量因此每帧只算一次
-    public ExpressionSolver solver() {
-        if (frameSolver == null) {
-            frameSolver = ExpressionSolver.of(animation, player.time(), player.worldTime());
+    public Scope scope() {
+        if (frameScope == null) {
+            frameScope = ExpressionScope.of(animation, player.time(), player.worldTime());
         }
 
-        return frameSolver;
+        return frameScope;
+    }
+
+    /// 本帧共用的采样器：曲线图与界面预览都通过它取值，
+    /// 于是画面上画的与播放出来的是同一条曲线
+    public CurveSampler sampler() {
+        return frameSampler;
     }
 
     /// 打开表达式编辑窗口；窗口自己负责绘制与输入，屏幕只在最上层调用它。
@@ -237,7 +248,7 @@ public final class EditorContext {
 
     /// 按播放头所在时刻求值一段公式；公式非法或引用到取不到值的变量时返回 NaN
     public float evaluateExpression(@Nullable String expression) {
-        return solver().evaluate(expression);
+        return scope().evaluate(expression);
     }
 
     // endregion

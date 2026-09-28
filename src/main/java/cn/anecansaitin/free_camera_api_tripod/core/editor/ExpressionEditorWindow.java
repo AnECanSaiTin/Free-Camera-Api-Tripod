@@ -3,8 +3,9 @@ package cn.anecansaitin.free_camera_api_tripod.core.editor;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.CameraAnimation;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ConstantValue;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.CustomFunction;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.ExpressionScope;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.Scope;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Expression;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ExpressionSolver;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.FormulaValue;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.TrackValue;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Variable;
@@ -318,9 +319,9 @@ public final class ExpressionEditorWindow {
             status = EditorLang.t("variables.self_reference").getString();
             color = Draw.WARNING;
         } else {
-            ExpressionSolver solver = solver();
-            float evaluated = Expression.evaluate(stripped, previewResolver(solver));
-            List<String> cycle = solver.cycle();
+            ExpressionScope scope = scope();
+            float evaluated = Expression.evaluate(stripped, previewResolver(scope));
+            List<String> cycle = scope.cycle();
 
             if (cycle != null) {
                 status = EditorLang.t("variables.cycle", String.join(" → ", cycle)).getString();
@@ -645,24 +646,24 @@ public final class ExpressionEditorWindow {
 
     // region 编辑动作
 
-    /// 预览用的求解器：函数参数**一律取 1**，方便把它们当单位量试算（`a + b` 预览就是 2）。
+    /// 预览用的作用域：函数参数**一律取 1**，方便把它们当单位量试算（`a + b` 预览就是 2）。
     /// 不这么处理的话，编辑函数体时合法的 `a + b` 会因为参数不是动画变量而被显示成算不出来
-    private Expression.Resolver previewResolver(ExpressionSolver solver) {
+    private Expression.Resolver previewResolver(Scope scope) {
         List<String> names = editingParameters;
 
         if (names.isEmpty()) {
-            return solver;
+            return scope;
         }
 
         return new Expression.Resolver() {
             @Override
             public float resolve(String name) {
-                return names.contains(name) ? 1f : solver.resolve(name);
+                return names.contains(name) ? 1f : scope.resolve(name);
             }
 
             @Override
             public @Nullable CustomFunction function(String name) {
-                return solver.function(name);
+                return scope.function(name);
             }
         };
     }
@@ -920,9 +921,9 @@ public final class ExpressionEditorWindow {
         return lines.size() - 1;
     }
 
-    /// 本次预览用的求解器：每帧现建一份，变量改了当帧就能反映到结果上
-    private ExpressionSolver solver() {
-        return ExpressionSolver.of(animation, player.time(), player.worldTime());
+    /// 本次预览用的作用域：每帧现建一份，变量改了当帧就能反映到结果上
+    private ExpressionScope scope() {
+        return ExpressionScope.of(animation, player.time(), player.worldTime());
     }
 
     private @Nullable CurveTrack track(String id) {
