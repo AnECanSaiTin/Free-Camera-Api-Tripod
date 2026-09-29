@@ -1,16 +1,9 @@
 package cn.anecansaitin.free_camera_api_tripod.api.animation;
 
-import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Clip;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Curve;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ConstantValue;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.CustomFunction;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Expression;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.ExpressionScope;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.FormulaValue;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.TrackValue;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ValueSource;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.SymbolTable;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Variable;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.VariableGraph;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.path.Path;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.AnimationChannelRegistry;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.AnimationTrack;
@@ -27,11 +20,13 @@ import java.util.Set;
 
 /// 相机动画：编辑器与播放器共用的数据模型。
 ///
-/// 由三部分组成：
-/// - {@link Clip}：float 曲线集合（位置距离、旋转、FOV，以及未来的特效参数）
+/// 由两部分组成：
+/// - 曲线：位置距离、旋转、FOV，以及未来的特效参数。曲线**只存一份**，就在 {@link CurveTrack} 里；
+///   按名取曲线走 {@link #curve(String)}，不必再从轨道表里过滤一遍
 /// - {@link Path}：位置通道驱动的三维路径
-/// - 轨道表：曲线通道与扩展轨道（事件、特效、指令）共用一份有序表，顺序即时间轴上的显示顺序，
-///   也是序列化写出的顺序，因此拖拽排序对两类轨道一视同仁
+///
+/// 轨道表是曲线通道与扩展轨道（事件、特效、指令）共用的唯一有序表，顺序即时间轴上的显示顺序，
+/// 也是序列化写出的顺序，因此拖拽排序对两类轨道一视同仁。
 @NullMarked
 public class CameraAnimation implements CameraAnimationc {
     /// 位置通道，取值为沿 {@link Path} 的弧长距离
@@ -61,15 +56,13 @@ public class CameraAnimation implements CameraAnimationc {
     }
 
     private String name;
-    private final Clip clip = new Clip();
     private Path path;
     private MotionMode motionMode = MotionMode.COORDINATE;
     private DistanceMode distanceMode = DistanceMode.ABSOLUTE;
     private final LinkedHashMap<String, AnimationTrack> tracks = new LinkedHashMap<>();
-    /// 变量表：表达式里按名字引用，值取自它绑定的曲线轨道
-    private final List<Variable> variables = new ArrayList<>();
-    /// 自定义函数表，顺序即界面上的显示顺序
-    private final List<CustomFunction> functions = new ArrayList<>();
+    /// 动画级的名字定义：变量与自定义函数，以及它们之间的引用完整性。
+    /// 表不认轨道，轨道改名 / 删除由这里显式通知它改指向（见 {@link SymbolTable}）
+    private final SymbolTable symbols = new SymbolTable();
 
     public CameraAnimation() {
         this("Camera");
@@ -100,9 +93,7 @@ public class CameraAnimation implements CameraAnimationc {
         }
 
         AnimationChannelRegistry.Channel channel = AnimationChannelRegistry.get(property);
-        Curve curve = new Curve();
-        clip.addCurve(property, curve);
-        CurveTrack track = new CurveTrack(property, curve, channel.label(), channel.color());
+        CurveTrack track = new CurveTrack(property, new Curve(), channel.label(), channel.color());
         tracks.put(property, track);
         return track;
     }
@@ -161,14 +152,8 @@ public class CameraAnimation implements CameraAnimationc {
             }
         }
 
-        clip.removeCurve(id);
-        clip.addCurve(newId, track.curve());
-
-        for (Variable variable : variables) {
-            if (variable.source() instanceof TrackValue value && value.trackId().equals(id)) {
-                variable.source(new TrackValue(newId));
-            }
-        }
+        // 绑定在这条轨道上的变量要跟着改指向，否则变量会变成空指向、取值恒为 NaN
+        symbols.rebindTrack(id, newId);
 
         return true;
     }
@@ -180,10 +165,15 @@ public class CameraAnimation implements CameraAnimationc {
         }
 
         tracks.remove(property);
-        clip.removeCurve(property);
         // 绑定在这条轨道上的变量会变成空指向，一并解绑，免得变量的值莫名其妙恒为 0
-        unbindVariables(property);
+        symbols.unbindTrack(property);
         return true;
+    }
+
+    /// 按 id 取曲线轨道的底层曲线；该 id 不是曲线轨道时返回 null
+    @Override
+    public @Nullable Curve curve(String id) {
+        return tracks.get(id) instanceof CurveTrack curveTrack ? curveTrack.curve() : null;
     }
 
     /// 取曲线通道；同名的扩展轨道不会被当成通道返回
@@ -278,159 +268,24 @@ public class CameraAnimation implements CameraAnimationc {
         return List.copyOf(extensions);
     }
 
-    // region 变量
+    // region 符号表
 
-    /// 变量表：表达式按名字引用，取值为其绑定轨道在当前时刻的读数
-    @Override
-    public List<Variable> variables() {
-        return List.copyOf(variables);
-    }
-
-    /// 按名字取变量；不存在返回 null
-    public @Nullable Variable variable(String name) {
-        for (Variable variable : variables) {
-            if (variable.name().equals(name)) {
-                return variable;
-            }
-        }
-
-        return null;
-    }
-
-    /// 新增一个变量；名字为空或已被占用时返回 null。
-    /// 新变量默认不绑定轨道（也就是固定值模式），固定值为 0
-    public @Nullable Variable addVariable(String name) {
-        String trimmed = name == null ? "" : name.strip();
-
-        if (trimmed.isEmpty() || variable(trimmed) != null) {
-            return null;
-        }
-
-        Variable variable = new Variable(trimmed);
-        variables.add(variable);
-        return variable;
-    }
-
-    /// 删除一个变量，返回是否删掉了
-    public boolean removeVariable(String name) {
-        Variable variable = variable(name);
-        return variable != null && variables.remove(variable);
-    }
-
-    /// 把变量名改掉；新名字为空或已被其它变量占用时返回 false。
-    /// 表达式是按名字引用变量的，改名后旧公式里的名字就取不到值了，由调用方提示用户
-    public boolean renameVariable(String name, String newName) {
-        String trimmed = newName == null ? "" : newName.strip();
-        Variable variable = variable(name);
-
-        if (variable == null || trimmed.isEmpty() || name.equals(trimmed)) {
-            return false;
-        }
-
-        Variable occupied = variable(trimmed);
-
-        if (occupied != null && occupied != variable) {
-            return false;
-        }
-
-        variable.name(trimmed);
-        return true;
-    }
-
-    /// 把所有指向该轨道的变量解绑（轨道被删掉时调用）：换成固定值 0，
-    /// 否则变量会一直取不到值，引用它的公式全都算不出来
-    private void unbindVariables(String trackId) {
-        for (Variable variable : variables) {
-            if (trackId.equals(variable.trackId())) {
-                variable.source(new ConstantValue(0));
-            }
-        }
-    }
-
-    /// 变量之间的第一条循环引用（变量名，首尾是同一个名字）；没有环返回 null。
+    /// 符号表：动画里定义的变量与自定义函数。
     ///
-    /// 成环时求值只会返回 NaN 并回退到固定值，光看数值很难排查，界面据此明确报错
-    public @Nullable List<String> variableCycle() {
-        return VariableGraph.findCycle(variables);
-    }
-
-    // endregion
-
-    // 自定义函数表：与变量表并列的第二份小定义，公式里按名字调用
-
-    /// 自定义函数表：公式里按名字调用，形参见 {@link CustomFunction}
+    /// 两张表都归 {@link SymbolTable} 管，包括名字唯一性与"指向轨道的变量跟着轨道走"这类引用完整性，
+    /// 这里只持有它。返回可写的实例：增删与改名归到这一处，调用方不必先转一次类型
     @Override
-    public List<CustomFunction> functions() {
-        return List.copyOf(functions);
-    }
-
-    /// 按名字取函数；不存在返回 null
-    public @Nullable CustomFunction function(String name) {
-        for (CustomFunction function : functions) {
-            if (function.name().equals(name)) {
-                return function;
-            }
-        }
-
-        return null;
-    }
-
-    /// 新建一个函数，名字自动取 f1、f2……；默认两个参数 a、b，函数体就是 `a + b`（拿过来就能用）。
-    /// 与变量一样，名字只是个占位，改成什么名字由调用方负责提示用户同步公式
-    public @Nullable CustomFunction addFunction() {
-        for (int i = 1; i < 1000; i++) {
-            String name = "f" + i;
-
-            if (!functionNameTaken(name)) {
-                return addFunction(name, List.of("a", "b"), "a + b");
-            }
-        }
-
-        return null;
-    }
-
-    /// 按给定内容新建一个函数（读档也走这里）；名字已被占用时返回已有的那个，不覆盖
-    public @Nullable CustomFunction addFunction(String name, List<String> parameters, String body) {
-        CustomFunction existing = function(name);
-
-        if (existing != null) {
-            return existing;
-        }
-
-        CustomFunction function = new CustomFunction(name, parameters, body);
-        functions.add(function);
-        return function;
-    }
-
-    public boolean removeFunction(String name) {
-        CustomFunction function = function(name);
-        return function != null && functions.remove(function);
-    }
-
-    /// 把函数名改掉；新名字为空、已被别的函数占用、或撞上内置函数名时返回 false。
-    /// 公式是按名字调用的，改名后旧公式里的调用会取不到值，由调用方提示用户
-    public boolean renameFunction(String name, String newName) {
-        String trimmed = newName == null ? "" : newName.strip();
-        CustomFunction function = function(name);
-
-        if (function == null || trimmed.isEmpty() || name.equals(trimmed) || functionNameTaken(trimmed)) {
-            return false;
-        }
-
-        function.name(trimmed);
-        return true;
-    }
-
-    /// 名字是否已被内置函数或别的自定义函数占用
-    public boolean functionNameTaken(String name) {
-        return Expression.isBuiltinFunction(name) || function(name) != null;
+    public SymbolTable symbols() {
+        return symbols;
     }
 
     /// 变量是否被它自己绑定的轨道引用，也就是自嵌套：该轨道上有关键帧挂了引用这个变量的公式。
     ///
     /// 这种写法不会成环也不会无限递归——变量读轨道时走的是静态曲线，公式在这一步被忽略，
     /// 用的是键上的固定数值（见 {@link ExpressionScope}）。但同一个键
-    /// "作为相机属性播放"与"作为变量被引用"会得出不同的值，界面据此给出提示
+    /// "作为相机属性播放"与"作为变量被引用"会得出不同的值，界面据此给出提示。
+    ///
+    /// 静态扫描在 {@link SymbolTable#references} 里，这里负责把它按到绑定的那条曲线的每个键上
     public boolean selfReferencing(Variable variable) {
         if (!(tracks.get(variable.trackId()) instanceof CurveTrack track)) {
             return false;
@@ -439,9 +294,7 @@ public class CameraAnimation implements CameraAnimationc {
         Curve curve = track.curve();
 
         for (int i = 0; i < curve.size(); i++) {
-            Keyframe key = curve.key(i);
-
-            if (references(key, variable.name())) {
+            if (SymbolTable.references(curve.key(i), variable.name())) {
                 return true;
             }
         }
@@ -449,34 +302,17 @@ public class CameraAnimation implements CameraAnimationc {
         return false;
     }
 
-    /// 关键帧上任一挂了公式的数值是否引用了该名字
-    private static boolean references(Keyframe key, String name) {
-        return references(key.valueSource(), name)
-                || references(key.inSlopeSource(), name)
-                || references(key.outSlopeSource(), name)
-                || references(key.inLengthSource(), name)
-                || references(key.outLengthSource(), name);
-    }
-
-    private static boolean references(ValueSource source, String name) {
-        return source instanceof FormulaValue formula && Expression.references(formula.expression(), name);
-    }
-
     // endregion
 
     @Override
     public float duration() {
-        float duration = clip.duration();
+        float duration = 0;
 
         for (AnimationTrack track : tracks.values()) {
             duration = Math.max(duration, track.duration());
         }
 
         return duration;
-    }
-
-    public Clip clip() {
-        return clip;
     }
 
     @Override
@@ -644,34 +480,15 @@ public class CameraAnimation implements CameraAnimationc {
         this.distanceMode = other.distanceMode;
         this.path = other.path;
 
-        // 曲线通道要连带清理 clip；扩展轨道不来自通道表，稍后随顺序表一起换掉
-        for (String id : new ArrayList<>(tracks.keySet())) {
-            removeChannel(id);
-        }
-
+        // 轨道表整体换掉；曲线跟着轨道走，没有第二份容器要同步
         tracks.clear();
 
         for (AnimationTrack track : other.tracks()) {
             tracks.put(track.id(), track);
-
-            if (track instanceof CurveTrack curveTrack) {
-                clip.addCurve(curveTrack.id(), curveTrack.curve());
-            }
         }
 
-        // 变量表整体替换；变量是可变对象，装进来的是副本，避免两份动画共享同一个实例
-        variables.clear();
-
-        for (Variable variable : other.variables()) {
-            variables.add(variable.copy());
-        }
-
-        // 函数表同样整体替换，装的也是副本
-        functions.clear();
-
-        for (CustomFunction function : other.functions()) {
-            functions.add(function.copy());
-        }
+        // 符号表整体替换；变量与函数都是可变对象，装进来的是副本，避免两份动画共享同一个实例
+        symbols.replaceFrom(other.symbols());
     }
 
     @Override

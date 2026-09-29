@@ -81,7 +81,7 @@ public class FunctionPanel extends EditorPanel {
     private String revision() {
         StringBuilder builder = new StringBuilder();
 
-        for (CustomFunction function : context.animation().functions()) {
+        for (CustomFunction function : context.animation().symbols().functions()) {
             builder.append(function.name()).append('(').append(String.join(",", function.parameters()))
                     .append(')').append('=').append(function.body()).append('|');
         }
@@ -100,7 +100,7 @@ public class FunctionPanel extends EditorPanel {
         int y = content.y() + 4 - scrollY;
 
         y = actionRow(x, y, width);
-        List<CustomFunction> functions = context.animation().functions();
+        List<CustomFunction> functions = context.animation().symbols().functions();
 
         if (functions.isEmpty()) {
             y = hintRow(x, y, EditorLang.t("functions.empty"));
@@ -203,11 +203,11 @@ public class FunctionPanel extends EditorPanel {
     }
 
     private @Nullable CustomFunction selectedFunction() {
-        return selectedName == null ? null : context.animation().function(selectedName);
+        return selectedName == null ? null : context.animation().symbols().function(selectedName);
     }
 
     private void addFunction() {
-        CustomFunction function = context.animation().addFunction();
+        CustomFunction function = context.animation().symbols().addFunction();
 
         if (function != null) {
             selectedName = function.name();
@@ -224,10 +224,10 @@ public class FunctionPanel extends EditorPanel {
         }
 
         // 记下删除前的位置：删完之后这个下标正好落在"后一个"上
-        List<CustomFunction> functions = context.animation().functions();
+        List<CustomFunction> functions = context.animation().symbols().functions();
         int index = indexOf(functions, function.name());
-        context.animation().removeFunction(function.name());
-        List<CustomFunction> remaining = context.animation().functions();
+        context.animation().symbols().removeFunction(function.name());
+        List<CustomFunction> remaining = context.animation().symbols().functions();
 
         if (remaining.isEmpty()) {
             selectedName = null;
@@ -251,7 +251,7 @@ public class FunctionPanel extends EditorPanel {
 
         String previous = function.name();
 
-        if (!context.animation().renameFunction(previous, trimmed)) {
+        if (!context.animation().symbols().renameFunction(previous, trimmed)) {
             context.notify(EditorLang.t("notify.function_rename_failed", trimmed));
             return;
         }

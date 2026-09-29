@@ -1,0 +1,3 @@
+﻿EXISTS_DIR: True
+COUNT: 0
+CAMFILE: False

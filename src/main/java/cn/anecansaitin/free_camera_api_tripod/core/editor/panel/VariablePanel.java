@@ -121,7 +121,7 @@ public class VariablePanel extends EditorPanel {
     private String revision() {
         StringBuilder builder = new StringBuilder();
 
-        for (Variable variable : context.animation().variables()) {
+        for (Variable variable : context.animation().symbols().variables()) {
             builder.append(variable.name()).append(':').append(variable.source()).append('|');
         }
 
@@ -137,7 +137,7 @@ public class VariablePanel extends EditorPanel {
     private void rebuild(UiRect content) {
         lastRevision = revision();
         // 成环只在重建时算一次：变量表与公式都进了 revision，重建即意味着依赖关系变了
-        cycle = context.animation().variableCycle();
+        cycle = context.animation().symbols().cycle();
         widgets.clear();
         refreshers.clear();
 
@@ -151,7 +151,7 @@ public class VariablePanel extends EditorPanel {
         y = builtinRow(x, y, ExpressionScope.TIME_VARIABLE, EditorLang.t("variables.builtin_time"));
         y = builtinRow(x, y, ExpressionScope.PROGRESS_VARIABLE, EditorLang.t("variables.builtin_progress"));
         y = builtinRow(x, y, ExpressionScope.WORLD_TIME_VARIABLE, EditorLang.t("variables.builtin_world_time"));
-        List<Variable> variables = context.animation().variables();
+        List<Variable> variables = context.animation().symbols().variables();
 
         if (variables.isEmpty()) {
             y = hintRow(x, y, EditorLang.t("variables.empty"), Draw.TEXT_DISABLED);
@@ -284,7 +284,7 @@ public class VariablePanel extends EditorPanel {
     // endregion
 
     private @Nullable Variable selectedVariable() {
-        return selectedName == null ? null : context.animation().variable(selectedName);
+        return selectedName == null ? null : context.animation().symbols().variable(selectedName);
     }
 
     /// 值源携带的固定数值；不是有限值时按 0 处理
@@ -319,15 +319,13 @@ public class VariablePanel extends EditorPanel {
         return null;
     }
 
+    /// 新增变量：名字由符号表从 var1 起找第一个没被占用的
     private void addVariable() {
-        for (int i = 1; i <= 999; i++) {
-            Variable variable = context.animation().addVariable("var" + i);
+        Variable variable = context.animation().symbols().addVariable();
 
-            if (variable != null) {
-                selectedName = variable.name();
-                context.notify(EditorLang.t("notify.variable_added", variable.name()));
-                return;
-            }
+        if (variable != null) {
+            selectedName = variable.name();
+            context.notify(EditorLang.t("notify.variable_added", variable.name()));
         }
     }
 
@@ -340,9 +338,9 @@ public class VariablePanel extends EditorPanel {
         }
 
         // 记下删除前的位置：删完之后这个下标正好落在"后一个"上
-        int index = indexOf(context.animation().variables(), variable.name());
+        int index = indexOf(context.animation().symbols().variables(), variable.name());
 
-        if (!context.animation().removeVariable(variable.name())) {
+        if (!context.animation().symbols().removeVariable(variable.name())) {
             context.notify(EditorLang.t("notify.no_variable_selected"));
             return;
         }
@@ -350,7 +348,7 @@ public class VariablePanel extends EditorPanel {
         context.notify(EditorLang.t("notify.variable_removed", variable.name()));
         // 自动选中相邻的一个：原来是中间或开头就选后一个（原来的下标位置），
         // 原来是末尾就落到新的末尾，也就是前一个
-        List<Variable> remaining = context.animation().variables();
+        List<Variable> remaining = context.animation().symbols().variables();
         selectedName = remaining.isEmpty() ? null : remaining.get(Math.clamp(index, 0, remaining.size() - 1)).name();
     }
 
@@ -381,7 +379,7 @@ public class VariablePanel extends EditorPanel {
             return;
         }
 
-        if (!context.animation().renameVariable(variable.name(), name)) {
+        if (!context.animation().symbols().renameVariable(variable.name(), name)) {
             context.notify(EditorLang.t("notify.variable_rename_failed", name));
             return;
         }

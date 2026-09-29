@@ -1,11 +1,12 @@
 package cn.anecansaitin.free_camera_api_tripod.api.animation;
 
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.CustomFunction;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Variable;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Curve;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.SymbolTablec;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.path.Pathc;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.AnimationTrack;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.CurveTrack;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 import java.util.List;
 
@@ -38,11 +39,14 @@ public interface CameraAnimationc {
     /// 扩展轨道（指令、事件、特效等非曲线轨道）
     List<? extends AnimationTrack> extensionTracks();
 
-    /// 变量表：表达式里按名字引用，值取自它绑定的曲线轨道
-    List<Variable> variables();
+    /// 按 id 取曲线轨道的底层曲线；该 id 不是曲线轨道时返回 null。
+    ///
+    /// 曲线只存一份（就在 {@link CurveTrack} 里），这是唯一的按名入口——求值层与播放器都走它，
+    /// 不必再从轨道表里过滤一遍
+    @Nullable Curve curve(String id);
 
-    /// 自定义函数表：公式里按名字调用，形参见 {@link CustomFunction}
-    List<CustomFunction> functions();
+    /// 符号表（只读）：动画里定义的变量与自定义函数，见 {@link SymbolTablec}
+    SymbolTablec symbols();
 
     /// 把「位置通道」的取值换算成沿路径的弧长（绝对距离）
     float distanceToLength(float value);

@@ -1,7 +1,7 @@
 package cn.anecansaitin.free_camera_api_tripod.api.animation.eval;
 
+import cn.anecansaitin.free_camera_api_tripod.api.animation.CameraAnimationc;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.Evaluator;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Clip;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Curvec;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Curve;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.StaticKeys;
@@ -38,14 +38,15 @@ public final class CurveSampler {
         return curve.evaluate(time, new StaticKeys(curve));
     }
 
-    /// 一次取多条通道：各组数值交给 [Evaluator] 组装（例如把三个旋转轴装成一个向量）
-    public <T> T sample(Clip clip, float time, Evaluator<T> evaluator, Scope scope) {
+    /// 一次取多条通道：各组数值交给 [Evaluator] 组装（例如把三个旋转轴装成一个向量）。
+    /// 缺了某条通道时该组取 NaN——通道缺失不该让整帧求值崩掉
+    public <T> T sample(CameraAnimationc animation, float time, Evaluator<T> evaluator, Scope scope) {
         String[] properties = evaluator.properties();
         float[] values = new float[properties.length];
 
         for (int i = 0; i < properties.length; i++) {
-            Curve curve = clip.curve(properties[i]);
-            values[i] = sample(curve, time, scope);
+            Curve curve = animation.curve(properties[i]);
+            values[i] = curve == null ? Float.NaN : sample(curve, time, scope);
         }
 
         return evaluator.build(values);

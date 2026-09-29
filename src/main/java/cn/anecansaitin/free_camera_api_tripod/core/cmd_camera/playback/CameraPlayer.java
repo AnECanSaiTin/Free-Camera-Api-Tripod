@@ -2,7 +2,6 @@ package cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.playback;
 
 import cn.anecansaitin.free_camera_api_tripod.api.animation.Evaluator;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.CameraAnimation;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Clip;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Curve;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.CurveSampler;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.ExpressionScope;
@@ -91,7 +90,6 @@ public class CameraPlayer {
 
     /// 求值当前时间的相机姿态
     public CameraPose evaluatePose(CameraPose dest) {
-        Clip clip = animation.clip();
         Path path = animation.path();
         // 每帧一份作用域：挂了公式的关键帧按当前时间算，变量也按当前时间取轨道读数
         Scope scope = ExpressionScope.of(animation, time, worldTime);
@@ -99,9 +97,9 @@ public class CameraPlayer {
         if (animation.motionMode() == CameraAnimation.MotionMode.COORDINATE) {
             // 直接坐标模式：位置由三个坐标通道给出，与路径无关。
             // 某个轴上没有关键帧时不接管该轴，让相机沿用原本的坐标（等于不开启该轴的修改）。
-            Curve x = clip.curve(CameraAnimation.CHANNEL_POSITION_X);
-            Curve y = clip.curve(CameraAnimation.CHANNEL_POSITION_Y);
-            Curve z = clip.curve(CameraAnimation.CHANNEL_POSITION_Z);
+            Curve x = animation.curve(CameraAnimation.CHANNEL_POSITION_X);
+            Curve y = animation.curve(CameraAnimation.CHANNEL_POSITION_Y);
+            Curve z = animation.curve(CameraAnimation.CHANNEL_POSITION_Z);
             boolean any = hasKeys(x) || hasKeys(y) || hasKeys(z);
 
             if (any) {
@@ -123,7 +121,7 @@ public class CameraPlayer {
             dest.positionValid(any);
         } else if (path.size() > 0) {
             // 位置通道的取值口径由动画决定：绝对距离直接用，百分比先乘总长再采样
-            Curve distanceCurve = clip.curve(CameraAnimation.CHANNEL_POSITION);
+            Curve distanceCurve = animation.curve(CameraAnimation.CHANNEL_POSITION);
             float distance = animation.distanceToLength(distanceCurve == null ? 0f : sampler.sample(distanceCurve, time, scope));
             Vector3f evaluated = path.evaluate(distance, posCache);
 
@@ -138,8 +136,8 @@ public class CameraPlayer {
             dest.positionValid(false);
         }
 
-        dest.rotation().set(sampler.sample(clip, time, rotEvaluator, scope));
-        Curve fovCurve = clip.curve(CameraAnimation.CHANNEL_FOV);
+        dest.rotation().set(sampler.sample(animation, time, rotEvaluator, scope));
+        Curve fovCurve = animation.curve(CameraAnimation.CHANNEL_FOV);
 
         if (fovCurve.size() > 0) {
             dest.fov(sampler.sample(fovCurve, time, scope));

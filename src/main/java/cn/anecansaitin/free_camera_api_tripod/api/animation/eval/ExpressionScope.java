@@ -7,7 +7,6 @@ import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.StaticKeys;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.CustomFunction;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ValueSource;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Variable;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.track.CurveTrack;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
@@ -61,8 +60,6 @@ public final class ExpressionScope implements Scope {
     private final CurveLookup curves;
     /// 变量取值缓存
     private final Map<String, Float> cache = new HashMap<>();
-    /// 已解析的曲线，避免每次读轨道都扫一遍轨道表
-    private final Map<String, Curve> curveCache = new HashMap<>();
     /// 每条曲线配一份静态读取器，避免每次读数都新建
     private final Map<Curve, KeyValues> staticKeys = new IdentityHashMap<>();
     /// 正在求值的变量（栈），用来发现循环引用
@@ -88,7 +85,7 @@ public final class ExpressionScope implements Scope {
     /// 从动画构造：编辑器与播放器都走这个入口。
     /// 播放进度由动画时长与当前时间算出，世界时间由调用方给出（归一化到 0~1）
     public static ExpressionScope of(CameraAnimationc animation, float time, float worldTime) {
-        return new ExpressionScope(animation.variables(), animation.functions(), id -> findCurve(animation, id), time,
+        return new ExpressionScope(animation.symbols().variables(), animation.symbols().functions(), animation::curve, time,
                 progressOf(animation, time), worldTime);
     }
 
@@ -166,7 +163,8 @@ public final class ExpressionScope implements Scope {
 
     @Override
     public float track(String id) {
-        Curve curve = curveCache.computeIfAbsent(id, curves::curve);
+        // 查曲线本身已经是一次按名取表，这里不再额外缓存一份
+        Curve curve = curves.curve(id);
 
         if (curve == null) {
             return Float.NaN;
@@ -197,15 +195,5 @@ public final class ExpressionScope implements Scope {
         List<String> found = new ArrayList<>(from < 0 ? path : path.subList(from, path.size()));
         found.add(name);
         cycle = List.copyOf(found);
-    }
-
-    private static @Nullable Curve findCurve(CameraAnimationc animation, String id) {
-        for (CurveTrack track : animation.curveTracks()) {
-            if (track.id().equals(id)) {
-                return track.curve();
-            }
-        }
-
-        return null;
     }
 }

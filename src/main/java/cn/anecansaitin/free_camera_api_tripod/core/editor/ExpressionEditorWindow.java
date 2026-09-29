@@ -114,7 +114,7 @@ public final class ExpressionEditorWindow {
             items.add(new FunctionItem(signature, functionName(signature) + "()"));
         }
 
-        for (CustomFunction function : animation.functions()) {
+        for (CustomFunction function : animation.symbols().functions()) {
             items.add(new FunctionItem(function.name() + "(" + String.join(", ", function.parameters()) + ")",
                     function.name() + "()"));
         }
@@ -395,7 +395,7 @@ public final class ExpressionEditorWindow {
     /// 事件会穿透回底板——这样一行里能用多种文字颜色，而可点区域仍只有整行一处。
     /// 只有摘要变了才重摆：每帧重建会不断造出新控件，还会冲掉「按下 → 松开」这类跨帧状态
     private void rebuildRows() {
-        String revision = variableScroll + "|" + variableList + '|' + animation.variables().size()
+        String revision = variableScroll + "|" + variableList + '|' + animation.symbols().variables().size()
                 + '|' + functionScroll + "|" + functionList + '|' + functionItems().size();
 
         if (revision.equals(rowRevision)) {
@@ -404,7 +404,7 @@ public final class ExpressionEditorWindow {
 
         rowRevision = revision;
         clearRows();
-        List<Variable> variables = animation.variables();
+        List<Variable> variables = animation.symbols().variables();
         int visible = visibleRows(variableList);
 
         for (int i = 0; i < visible && i + variableScroll < variables.size(); i++) {
@@ -457,7 +457,7 @@ public final class ExpressionEditorWindow {
         Draw.text(graphics, EditorLang.t("expression.variables"), variableList.x(), variableList.y() - LINE_HEIGHT, Draw.TEXT_DIM);
         Draw.canvas(graphics, variableList, Draw.CANVAS_BG);
         Draw.border(graphics, variableList, Draw.BORDER);
-        List<Variable> variables = animation.variables();
+        List<Variable> variables = animation.symbols().variables();
 
         if (variables.isEmpty()) {
             Draw.textEllipsized(graphics, EditorLang.t("expression.variables.empty").getString(), variableList.x() + 3, variableList.y() + 2,
@@ -583,7 +583,7 @@ public final class ExpressionEditorWindow {
         }
 
         if (variableList.contains(mouseX, mouseY)) {
-            variableScroll = clampScroll(variableScroll + step, animation.variables().size(), visibleRows(variableList));
+            variableScroll = clampScroll(variableScroll + step, animation.symbols().variables().size(), visibleRows(variableList));
             return true;
         }
 
@@ -720,7 +720,7 @@ public final class ExpressionEditorWindow {
         }
 
         for (String name : Expression.identifiers(text)) {
-            Variable variable = animation.variable(name);
+            Variable variable = animation.symbols().variable(name);
 
             if (variable != null && trackId.equals(variable.trackId())) {
                 return true;
@@ -853,23 +853,20 @@ public final class ExpressionEditorWindow {
         insertTemplate(item.template());
     }
 
-    /// 新增变量：名字从 var1 起找第一个没被占用的
+    /// 新增变量：名字由符号表从 var1 起找第一个没被占用的
     private void addVariable() {
-        for (int i = 1; i <= 999; i++) {
-            Variable variable = animation.addVariable("var" + i);
+        Variable variable = animation.symbols().addVariable();
 
-            if (variable != null) {
-                selected = variable;
-                return;
-            }
+        if (variable != null) {
+            selected = variable;
         }
     }
 
     /// 删除当前选中的变量；公式里已经写了它的名字，会因此取不到值（提示器会显示公式非法）
     private void removeVariable() {
-        if (selected != null && animation.removeVariable(selected.name())) {
+        if (selected != null && animation.symbols().removeVariable(selected.name())) {
             selected = null;
-            variableScroll = clampScroll(variableScroll, animation.variables().size(), visibleRows(variableList));
+            variableScroll = clampScroll(variableScroll, animation.symbols().variables().size(), visibleRows(variableList));
         }
     }
 

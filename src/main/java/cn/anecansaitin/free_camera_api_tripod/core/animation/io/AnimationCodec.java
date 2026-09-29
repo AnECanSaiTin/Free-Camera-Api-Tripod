@@ -149,7 +149,7 @@ public final class AnimationCodec {
     private static JsonArray functionsToJson(CameraAnimationc animation) {
         JsonArray functions = new JsonArray();
 
-        for (CustomFunction function : animation.functions()) {
+        for (CustomFunction function : animation.symbols().functions()) {
             JsonObject object = new JsonObject();
             object.addProperty(FIELD_NAME, function.name());
             JsonArray parameters = new JsonArray();
@@ -169,7 +169,7 @@ public final class AnimationCodec {
     private static JsonArray variablesToJson(CameraAnimationc animation) {
         JsonArray variables = new JsonArray();
 
-        for (Variable variable : animation.variables()) {
+        for (Variable variable : animation.symbols().variables()) {
             JsonObject object = new JsonObject();
             object.addProperty(FIELD_NAME, variable.name());
             object.add(FIELD_SOURCE, valueToJson(variable.source()));
@@ -193,7 +193,7 @@ public final class AnimationCodec {
                 continue;
             }
 
-            animation.addFunction(name, readParameters(object), stringValue(object, FIELD_BODY, ""));
+            animation.symbols().addFunction(name, readParameters(object), stringValue(object, FIELD_BODY, ""));
         }
     }
 
@@ -538,7 +538,7 @@ public final class AnimationCodec {
             }
 
             JsonObject object = element.getAsJsonObject();
-            Variable variable = animation.addVariable(stringValue(object, FIELD_NAME, ""));
+            Variable variable = animation.symbols().addVariable(stringValue(object, FIELD_NAME, ""));
 
             if (variable != null) {
                 variable.source(readValue(object.get(FIELD_SOURCE), 0));
