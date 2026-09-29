@@ -18,9 +18,9 @@ api/                          对外契约：数据模型 + 扩展点（不依�
 ├── camera/                   相机数据接口：TripodData / TripodStates / ControlScheme
 ├── animation/                动画数据模型
 │   ├── Keyframe/Keyframec/TrackKey/Evaluator/EvaluateMode
-│   ├── curve/                Curve / Curvec / Clip / WrapMode
+│   ├── curve/                Curve / Curvec / KeyValues / StaticKeys / WrapMode
 │   ├── eval/                 求值层：Scope / ExpressionScope / CurveSampler / ResolvedKeys
-│   ├── expression/           Expression / ValueSource / Variable / CustomFunction
+│   ├── expression/           Expression / ValueSource / Variable / CustomFunction / SymbolTable
 │   ├── path/                 Path / Pathc / PathNode / PathNodec / PathMode
 │   └── track/                AnimationTrack / TrackType / CurveTrack
 │                             TrackTypeRegistry / AnimationChannelRegistry
@@ -137,14 +137,13 @@ public interface KeyValues {
 
 时间与插值模式不在读取器里——它们不是可动态的字段，曲线直接读键本身。
 
-### 2.3 曲线集合 `curve/Clip`
+### 2.3 取曲线：只有一份
 
-`属性名 → Curve` 的集合，另存片段名与时长：
+曲线**只存一份**，就在 `CurveTrack` 里。按属性名取它的入口是 `CameraAnimation#curve(id)`
+（只读接口 `CameraAnimationc#curve(id)` 同样有），没有第二份集合要同步——以前 `curve/Clip`
+是一份与轨道表平行的容器，增删改名都要维护两处，已经删掉。
 
-- `duration()`：显式设置过（> 0）直接用，否则按所有曲线最后一个键的时间实时计算
-
-**`Clip` 只做容器**：取值一律走 `eval.CurveSampler`，它把"按属性名取曲线"与"解析 + 插值"接起来，
-不必让 `Clip` 也认识求值环境。
+取值一律走 `eval.CurveSampler`，它把"按 `Scope` 解析关键帧"与"曲线本身的纯数值插值"接起来。
 
 ### 2.4 路径 `path/`
 
@@ -182,7 +181,7 @@ public interface KeyValues {
 
 ### 2.6 顶层模型 `CameraAnimation`
 
-由三部分组成：`Clip`（float 通道）+ `Path`（位置通道驱动的三维路径）+ 扩展轨道列表。
+由两部分组成：曲线（就在 `CurveTrack` 里，见 2.3）+ `Path`（位置通道驱动的三维路径）+ 扩展轨道列表。
 
 - 通道常量：`CHANNEL_POSITION`（沿路径弧长）、`CHANNEL_POSITION_X/Y/Z`、`CHANNEL_ROTATION_X/Y/Z`、`CHANNEL_FOV`
 - `MotionMode`：`PATH`（位置取自路径）与 `COORDINATE`（位置取自三个坐标通道），**互斥**
@@ -199,16 +198,16 @@ public interface KeyValues {
   `extensionTracks()` 是它的只读过滤视图
 - **通用曲线轨道**：`addCurveTrack(baseName)` 建一条曲线轨道（名字是 `baseName` 加序号，界面传进来的是
   本地化过的「曲线」这类词，所以叫「曲线1」「Curve1」），它不对应任何相机属性，专门给变量读写用；
-  `renameCurveTrack(id, newId)` 改名时会连曲线（`Clip` 的 key）与绑定它的变量一起改指向，
+  `renameCurveTrack(id, newId)` 改名时会把绑定在这条轨道上的变量一起改指向，
   相机自身的属性通道（`isCameraChannel`）不允许改名
 - 实现了 `JsonTrack` 的轨道随动画一起进 JSON；`copyFrom` 会整体替换轨道表（撤销栈与读档都依赖这一点）
-- `variables()`：变量表（见 2.7），`variable(name)` / `addVariable(name)` / `removeVariable(name)` /
-  `renameVariable(name, newName)` 负责增删改；名字要能被表达式当标识符读（`Expression.validName`），重名与空名一律拒绝。
-  `variableCycle()` 给出变量之间的第一条循环引用，`selfReferencing(variable)` 判断自嵌套，两个都供界面报错
-- `functions()`：自定义函数表（见 2.7），`function(name)` / `addFunction()` / `removeFunction(name)` /
-  `renameFunction(name, newName)` 负责增删改；`functionNameTaken(name)` 挡住与内置函数重名
-- `copyFrom(other)`：读档时**原地替换**内容——动画实例被播放器与编辑器各处持有，不能换对象；变量表与函数表也一并换成副本
-- `CameraAnimationc`：只读视图（`name/duration/motionMode/distanceMode/path/tracks/curveTracks/extensionTracks/variables/functions/distanceToLength`）
+- `symbols()`：动画级的符号表，变量与自定义函数都在它身上（见 2.7）：
+  `variables()` / `variable(name)` / `addVariable()` / `removeVariable(name)` / `renameVariable(...)`，
+  以及 `functions()` / `function(name)` / `addFunction()` / `removeFunction(name)` / `renameFunction(...)`。
+  名字唯一性、轨道改名 / 删除时的引用重定向与解绑也都归它管。
+  `selfReferencing(variable)` 判断自嵌套，符号表的 `cycle()` 给出变量之间的第一条循环引用，两个都供界面报错
+- `copyFrom(other)`：读档时**原地替换**内容——动画实例被播放器与编辑器各处持有，不能换对象；符号表也一并换成副本
+- `CameraAnimationc`：只读视图（`name/duration/motionMode/distanceMode/path/tracks/curveTracks/extensionTracks/curve/symbols/distanceToLength`）
 
 ### 2.7 值源、表达式、变量与函数 `expression/`
 
@@ -226,7 +225,9 @@ public interface KeyValues {
 
 - `evaluate(scope)`：算不出来返回 NaN；作用域为 `null` 就是静态求值（只有固定数值可用）
 - `ValueSource.evaluateOrFallback(source, scope)` 是**求值链上唯一的回退点**：算不出来就退回固定数值
-- `ValueSource.withConstant(source, value)`：只改那个数，**公式保留**。因此"界面里改数值"不会把公式弄丢
+- `withConstant(value)`：只改那个数，**公式保留**。因此"界面里改数值"不会把公式弄丢。
+  它是实例方法：固定值改自己、公式改回退值、轨道读数没有固定值可写就整体换成固定值源
+- `copy()`：同样是实例方法，三种来源各自给出自己的副本
 
 **三个内置变量**：`t`（当前时间）、`p`（播放进度）、`wt`（世界时间），在 `resolve` 里先于用户变量被认出来，
 名字由 `ExpressionScope.BUILTIN_VARIABLES` 列出（既不让用户取重名，也直接列在变量面板最上面，
@@ -288,18 +289,23 @@ public interface KeyValues {
 把"按公式算出一个数"与"曲线怎么插值"分成两件事，`Curve` 因此不必认识表达式：
 
 ```java
-public interface Scope extends Expression.Resolver {
+public interface Scope {
     float time();                 // 当前求值时间
     float progress();             // 播放进度：当前时间 / 总时长，归一化到 0~1
     float worldTime();            // 世界时间：游戏内一天的进度，归一化到 0~1
     float track(String id);       // 某条曲线轨道在当前时刻的读数
+    Expression.Resolver resolver(); // 名字解析：内置量 / 用户变量 / 自定义函数
     default float evaluate(String expression);
 }
 ```
 
+`Scope` 只管**环境**（这一帧是什么时候、各条曲线读到多少），名字解析交给 `Expression.Resolver`——
+两者用途不同：只画一条曲线的人不需要解析能力，而解析变量又要反过来读轨道，
+所以 `ExpressionScope` 把两个接口一起实现，`resolver()` 返回它自己。
+
 | 类 | 职责 |
 | --- | --- |
-| `Scope` | 求值环境接口。求值链只认它，**不认 `CameraAnimation`**——单条曲线、单个值都能脱离动画求值 |
+| `Scope` | 求值环境接口（时间 + 轨道读数），名字解析在 `resolver()` 上。求值链只认它，**不认 `CameraAnimation`**——单条曲线、单个值都能脱离动画求值 |
 | `ExpressionScope` | 从动画构造的实现：`of(animation, time, worldTime)`，播放进度由动画时长算出。内置变量、变量缓存、环记录都在这里 |
 | `ResolvedKeys` | `KeyValues` 的动态实现：按 `Scope` 解析关键帧的五个数值，结果按 (键, 字段) **惰性缓存** |
 | `CurveSampler` | **求值的唯一入口**：把"按 `Scope` 解析"与"曲线插值"接起来 |

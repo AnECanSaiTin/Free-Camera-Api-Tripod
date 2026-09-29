@@ -641,11 +641,11 @@ public class CameraEditorScreen extends Screen {
         float time = context.snapTime(context.player().time());
         Keyframe key = Keyframe.create(time, 0)
                 .evaluateMode(clip.evaluateMode());
-        key.valueSource(ValueSource.copy(clip.value()));
-        key.inSlopeSource(ValueSource.copy(clip.inSlope()));
-        key.outSlopeSource(ValueSource.copy(clip.outSlope()));
-        key.inLengthSource(ValueSource.copy(clip.inLength()));
-        key.outLengthSource(ValueSource.copy(clip.outLength()));
+        key.valueSource(clip.value().copy());
+        key.inSlopeSource(clip.inSlope().copy());
+        key.outSlopeSource(clip.outSlope().copy());
+        key.inLengthSource(clip.inLength().copy());
+        key.outLengthSource(clip.outLength().copy());
         int index = target.curve().key(key);
 
         if (index < 0) {

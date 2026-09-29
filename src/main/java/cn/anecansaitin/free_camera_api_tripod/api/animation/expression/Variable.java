@@ -49,7 +49,7 @@ public class Variable {
     }
 
     public Variable copy() {
-        return new Variable(name, ValueSource.copy(source));
+        return new Variable(name, source.copy());
     }
 
     @Override

@@ -38,6 +38,17 @@ public final class TrackValue implements ValueSource {
         return Float.NaN;
     }
 
+    /// 轨道读数没有固定数值可写，只能整体换成一个固定值源
+    @Override
+    public ValueSource withConstant(float value) {
+        return new ConstantValue(value);
+    }
+
+    @Override
+    public ValueSource copy() {
+        return new TrackValue(trackId);
+    }
+
     @Override
     public String toString() {
         return "@" + trackId;

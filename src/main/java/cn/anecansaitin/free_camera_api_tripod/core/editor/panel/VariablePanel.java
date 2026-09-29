@@ -263,7 +263,7 @@ public class VariablePanel extends EditorPanel {
         // 固定值模式下取值列直接给一个可编辑的数值框；公式与轨道读数都是只读预览
         if (variable.source() instanceof ConstantValue) {
             NumberFieldWidget fixed = new NumberFieldWidget(value, constantOf(variable),
-                    v -> variable.source(ValueSource.withConstant(variable.source(), v)));
+                    v -> variable.source(variable.source().withConstant(v)));
             fixed.decimals(VALUE_DECIMALS);
             widgets.add(fixed);
             refreshers.add(() -> fixed.value(constantOf(variable)));

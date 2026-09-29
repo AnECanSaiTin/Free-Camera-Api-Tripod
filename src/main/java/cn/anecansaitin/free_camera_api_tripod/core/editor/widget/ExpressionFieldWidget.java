@@ -92,7 +92,7 @@ public class ExpressionFieldWidget extends EditorWidget {
 
     /// 写固定数值：值源内部只换掉那个数，公式保留
     private void writeConstant(float value) {
-        accessor.source(ValueSource.withConstant(accessor.source(), value));
+        accessor.source(accessor.source().withConstant(value));
     }
 
     /// 输入框占左边，右侧留给模式切换按钮

@@ -84,7 +84,7 @@ public class Keyframe implements Keyframec {
 
     /// 只改固定数值（公式保留，换的只是它的回退值）
     public Keyframe value(float value) {
-        this.value = ValueSource.withConstant(this.value, value);
+        this.value = this.value.withConstant(value);
         return this;
     }
 
@@ -94,7 +94,7 @@ public class Keyframe implements Keyframec {
     }
 
     public Keyframe inSlope(float inSlope) {
-        this.inSlope = ValueSource.withConstant(this.inSlope, inSlope);
+        this.inSlope = this.inSlope.withConstant(inSlope);
         return this;
     }
 
@@ -104,7 +104,7 @@ public class Keyframe implements Keyframec {
     }
 
     public Keyframe outSlope(float outSlope) {
-        this.outSlope = ValueSource.withConstant(this.outSlope, outSlope);
+        this.outSlope = this.outSlope.withConstant(outSlope);
         return this;
     }
 
@@ -114,7 +114,7 @@ public class Keyframe implements Keyframec {
     }
 
     public Keyframe inLength(float inLength) {
-        this.inLength = ValueSource.withConstant(this.inLength, inLength);
+        this.inLength = this.inLength.withConstant(inLength);
         return this;
     }
 
@@ -124,7 +124,7 @@ public class Keyframe implements Keyframec {
     }
 
     public Keyframe outLength(float outLength) {
-        this.outLength = ValueSource.withConstant(this.outLength, outLength);
+        this.outLength = this.outLength.withConstant(outLength);
         return this;
     }
 
@@ -216,11 +216,11 @@ public class Keyframe implements Keyframec {
     }
 
     private void copySources(Keyframe source) {
-        this.value = ValueSource.copy(source.value);
-        this.inSlope = ValueSource.copy(source.inSlope);
-        this.inLength = ValueSource.copy(source.inLength);
-        this.outSlope = ValueSource.copy(source.outSlope);
-        this.outLength = ValueSource.copy(source.outLength);
+        this.value = source.value.copy();
+        this.inSlope = source.inSlope.copy();
+        this.inLength = source.inLength.copy();
+        this.outSlope = source.outSlope.copy();
+        this.outLength = source.outLength.copy();
     }
 
     // endregion

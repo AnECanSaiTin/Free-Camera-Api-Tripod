@@ -5,6 +5,7 @@ import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Curve;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.KeyValues;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.StaticKeys;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.CustomFunction;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Expression;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ValueSource;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Variable;
 import org.jspecify.annotations.NullMarked;
@@ -26,6 +27,10 @@ import java.util.Set;
 /// 它只认[变量表][Variable]与一个[曲线查询][CurveLookup]，**不认整个动画对象**——
 /// 单条曲线、单个值都能脱离动画求值，好测试也好复用；从动画构造的入口是 [ExpressionScope#of]。
 ///
+/// 它同时实现 [Scope]（环境：时间与轨道读数）与 [Expression.Resolver]（名字解析：变量与函数）。
+/// 两者在这一个实现里天然合一——解析变量要读轨道，读轨道又需要当前时间——
+/// 但对**用**它的人来说是分开的两件事，见 [Scope] 的说明。
+///
 /// 三条关键约定：
 /// - **一次求值内每个变量只算一次**：变量值在本次求值期间不会变（时间是构造时定下的），
 ///   结果缓存下来，同一条公式里写 3 次、或一帧内几十个字段引用同一个变量，都只算一次
@@ -34,7 +39,7 @@ import java.util.Set;
 /// - **成环时明确记下来**：`V1` 引用 `V2`、`V2` 又引用 `V1` 时，求值返回 NaN 并把这串环记录在
 ///   [cycle] 里，界面据此报错；不会静默给一个数，也不会递归到栈溢出
 @NullMarked
-public final class ExpressionScope implements Scope {
+public final class ExpressionScope implements Scope, Expression.Resolver {
     /// 内置变量：当前求值时间
     public static final String TIME_VARIABLE = "t";
     /// 内置变量：播放进度（0~1）
@@ -113,6 +118,12 @@ public final class ExpressionScope implements Scope {
     @Override
     public float worldTime() {
         return worldTime;
+    }
+
+    /// 名字解析与函数查询都在本环境上：[Scope] 只认环境，需要解析的调用方从这里取
+    @Override
+    public Expression.Resolver resolver() {
+        return this;
     }
 
     @Override

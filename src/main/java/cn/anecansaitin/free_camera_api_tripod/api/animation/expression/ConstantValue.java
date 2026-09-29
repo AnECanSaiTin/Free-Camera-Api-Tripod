@@ -32,6 +32,17 @@ public final class ConstantValue implements ValueSource {
         return value;
     }
 
+    /// 就地改这个固定值
+    @Override
+    public ValueSource withConstant(float value) {
+        return this.value(value);
+    }
+
+    @Override
+    public ValueSource copy() {
+        return new ConstantValue(value);
+    }
+
     @Override
     public String toString() {
         return Float.toString(value);

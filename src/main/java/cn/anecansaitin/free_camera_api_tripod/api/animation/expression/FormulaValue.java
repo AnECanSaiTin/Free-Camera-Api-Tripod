@@ -50,13 +50,24 @@ public final class FormulaValue implements ValueSource {
             return Float.NaN;
         }
 
-        return Expression.evaluate(formula, scope);
+        return Expression.evaluate(formula, scope.resolver());
     }
 
     /// 公式算不出来时用的固定数值
     @Override
     public float constant() {
         return constant;
+    }
+
+    /// 就地改回退值，公式本身不动——界面上"改成固定值"就是这一条路
+    @Override
+    public ValueSource withConstant(float value) {
+        return this.constant(value);
+    }
+
+    @Override
+    public ValueSource copy() {
+        return new FormulaValue(expression, constant);
     }
 
     @Override

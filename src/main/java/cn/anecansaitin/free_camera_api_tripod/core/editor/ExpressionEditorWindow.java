@@ -652,18 +652,20 @@ public final class ExpressionEditorWindow {
         List<String> names = editingParameters;
 
         if (names.isEmpty()) {
-            return scope;
+            return scope.resolver();
         }
+
+        Expression.Resolver outer = scope.resolver();
 
         return new Expression.Resolver() {
             @Override
             public float resolve(String name) {
-                return names.contains(name) ? 1f : scope.resolve(name);
+                return names.contains(name) ? 1f : outer.resolve(name);
             }
 
             @Override
             public @Nullable CustomFunction function(String name) {
-                return scope.function(name);
+                return outer.function(name);
             }
         };
     }
