@@ -47,6 +47,7 @@ public final class EditorContext {
         this.player = player;
         this.animation = animation;
         this.info = info;
+        this.frameScope = ExpressionScope.of(animation, 0f, 0f);
     }
 
     public CameraEditorModel editor() {
@@ -196,26 +197,28 @@ public final class EditorContext {
 
     // region 表达式
 
-    /// 本帧共用的作用域，由 [beginFrame] 每帧清空
-    private @Nullable Scope frameScope;
-    /// 本帧共用的采样器；解析缓存随作用域变化自动失效，因此只需跟着 [beginFrame] 一起重置
+    /// 本帧共用的作用域：跨帧复用，由 [beginFrame] 打上待刷新标记、首次用到时才真正切帧
+    private final ExpressionScope frameScope;
+    /// 本帧的作用域是否已经切过；跨帧复用时用它代替"每帧新建一个"
+    private boolean frameDirty = true;
+    /// 本帧共用的采样器；解析缓存随作用域的版本号自动失效，因此不必再手动清
     private final CurveSampler frameSampler = new CurveSampler();
 
     /// 每帧渲染开头调用一次。
     ///
     /// 作用域里缓存着变量的取值，而变量是可以被界面随时改掉的（改名、改来源、换公式），
-    /// 暂停时播放头时间又不动，光靠时间没法判断缓存是否过期，所以按帧清：一帧内复用、跨帧重算。
+    /// 暂停时播放头时间又不动，光靠时间没法判断缓存是否过期，所以按帧切一版：一帧内复用、跨帧重算。
     /// 漏调不会算错数值，只会让界面预览停在旧值上，因此两个编辑器屏幕都在渲染开头调它
     public void beginFrame() {
-        this.frameScope = null;
-        this.frameSampler.clear();
+        this.frameDirty = true;
     }
 
     /// 本帧共用的作用域（按播放头时间构造）：界面上的预览都通过它求值，
     /// 同一个变量因此每帧只算一次
     public Scope scope() {
-        if (frameScope == null) {
-            frameScope = ExpressionScope.of(animation, player.time(), player.worldTime());
+        if (frameDirty) {
+            frameScope.frame(player.time(), ExpressionScope.progressOf(animation, player.time()), player.worldTime());
+            frameDirty = false;
         }
 
         return frameScope;

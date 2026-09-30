@@ -12,9 +12,9 @@ import org.jspecify.annotations.NullMarked;
 /// 播放、曲线图、插入关键帧、界面预览一律走它，于是"画面上看到的"与"播放出来的"永远是同一条曲线——
 /// 以前两者分别走带 / 不带求解器的两套求值，图上画的其实是公式的回退值，与播放结果对不上。
 ///
-/// 采样器内部复用一份解析缓存，同一条曲线连续采样时每个键只解析一次；换曲线、换作用域
-/// 都会自动失效（作用域里带着时间，见 [ResolvedKeys]），所以每帧新建作用域时不必手动清。
-/// 作用域被长期复用（例如自己实现了一个可变的 [Scope]）时才需要 [clear]。
+/// 采样器内部复用一份解析缓存，同一条曲线连续采样时每个键只解析一次；换曲线、换作用域、
+/// 或者**同一个作用域换了帧**（版本号变了，见 [Scope#version]）都会自动失效，
+/// 所以作用域跨帧复用时也不必手动清。
 @NullMarked
 public final class CurveSampler {
     private final ResolvedKeys keys = new ResolvedKeys();
@@ -52,7 +52,10 @@ public final class CurveSampler {
         return evaluator.build(values);
     }
 
-    /// 清空解析缓存；作用域被就地复用、时间变了却还是同一个对象时要调一次
+    /// 清空解析缓存。
+    ///
+    /// 平时不必调：作用域跨帧复用时 [Scope#version] 会变，缓存按它自动失效。
+    /// 只在"作用域没换、却想让这条曲线重新解析"时才需要——例如就地改了某个键的公式
     public void clear() {
         keys.clear();
     }

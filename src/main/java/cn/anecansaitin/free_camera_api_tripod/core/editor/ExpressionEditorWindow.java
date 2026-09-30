@@ -920,7 +920,9 @@ public final class ExpressionEditorWindow {
         return lines.size() - 1;
     }
 
-    /// 本次预览用的作用域：每帧现建一份，变量改了当帧就能反映到结果上
+    /// 本次预览用的作用域。这里**故意每帧新建**而不复用：暂停时播放头不动，
+    /// 没法靠"时间变了"判断该不该切帧，而窗口开着时用户随时在改公式与变量，
+    /// 预览必须当帧跟上。播放器与编辑器主界面走的是可复用的那份（见 `ExpressionScope#frame`）
     private ExpressionScope scope() {
         return ExpressionScope.of(animation, player.time(), player.worldTime());
     }

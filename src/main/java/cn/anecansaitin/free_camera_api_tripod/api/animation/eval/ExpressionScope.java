@@ -6,6 +6,7 @@ import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.KeyValues;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.StaticKeys;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.CustomFunction;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Expression;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.SymbolTablec;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ValueSource;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Variable;
 import org.jspecify.annotations.NullMarked;
@@ -17,7 +18,6 @@ import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -56,46 +56,57 @@ public final class ExpressionScope implements Scope, Expression.Resolver {
         @Nullable Curve curve(String id);
     }
 
-    private final float time;
-    private final float progress;
-    private final float worldTime;
-    private final Map<String, Variable> variables = new LinkedHashMap<>();
-    /// 自定义函数，按名字查
-    private final Map<String, CustomFunction> functions = new LinkedHashMap<>();
+    private final SymbolTablec symbols;
     private final CurveLookup curves;
-    /// 变量取值缓存
+    private float time;
+    private float progress;
+    private float worldTime;
+    /// 帧版本；每调一次 [frame] 就 +1，缓存靠它失效（见 [Scope#version]）
+    private long version;
+    /// 变量取值缓存；换帧时清空，Map 本身复用
     private final Map<String, Float> cache = new HashMap<>();
-    /// 每条曲线配一份静态读取器，避免每次读数都新建
+    /// 每条曲线配一份静态读取器，避免同一次求值里反复新建。
+    /// 换帧时清空：作用域会被长期复用，不清的话读档换掉的旧曲线会一直被这张表拽着
     private final Map<Curve, KeyValues> staticKeys = new IdentityHashMap<>();
     /// 正在求值的变量（栈），用来发现循环引用
     private final Deque<String> visiting = new ArrayDeque<>();
     private final Set<String> visitingSet = new HashSet<>();
     private @Nullable List<String> cycle;
 
-    public ExpressionScope(List<Variable> variables, List<CustomFunction> functions, CurveLookup curves, float time, float progress, float worldTime) {
+    /// 绑定一份符号表与曲线查询建出作用域；建好后要用 [frame] 指定当前时刻才能求值。
+    ///
+    /// 符号表是**按引用持有**的，不抄成自己的一份：变量表随时可改（改名、增删、读档整体替换），
+    /// 抄一份就再也同步不了了——界面上改个变量名，播放取的还是旧名字
+    public ExpressionScope(SymbolTablec symbols, CurveLookup curves) {
+        this.symbols = symbols;
+        this.curves = curves;
+    }
+
+    /// 从动画构造：编辑器与播放器都走这个入口。播放进度由动画时长与当前时间算出，
+    /// 世界时间由调用方给出（归一化到 0~1）
+    public static ExpressionScope of(CameraAnimationc animation, float time, float worldTime) {
+        ExpressionScope scope = new ExpressionScope(animation.symbols(), animation::curve);
+        scope.frame(time, progressOf(animation, time), worldTime);
+        return scope;
+    }
+
+    /// 切到新的一帧：更新时间与环境、清掉上一帧的缓存、版本号 +1，返回自身便于链式调用。
+    ///
+    /// 作用域是**可复用**的：播放器与编辑器各持有一份，每帧调一次这个即可，
+    /// 不必每帧新建（原先每帧要分配六个集合）。缓存按版本号失效，见 [ResolvedKeys]
+    public ExpressionScope frame(float time, float progress, float worldTime) {
         this.time = time;
         this.progress = progress;
         this.worldTime = worldTime;
-        this.curves = curves;
-
-        for (Variable variable : variables) {
-            this.variables.put(variable.name(), variable);
-        }
-
-        for (CustomFunction function : functions) {
-            this.functions.put(function.name(), function);
-        }
-    }
-
-    /// 从动画构造：编辑器与播放器都走这个入口。
-    /// 播放进度由动画时长与当前时间算出，世界时间由调用方给出（归一化到 0~1）
-    public static ExpressionScope of(CameraAnimationc animation, float time, float worldTime) {
-        return new ExpressionScope(animation.symbols().variables(), animation.symbols().functions(), animation::curve, time,
-                progressOf(animation, time), worldTime);
+        this.version++;
+        this.cache.clear();
+        this.staticKeys.clear();
+        this.cycle = null;
+        return this;
     }
 
     /// 播放进度：当前时间占总时长的比例，夹在 0~1；空动画没有时长，返回 0
-    private static float progressOf(CameraAnimationc animation, float time) {
+    public static float progressOf(CameraAnimationc animation, float time) {
         float duration = animation.duration();
         return duration > 0 ? Math.clamp(time / duration, 0f, 1f) : 0f;
     }
@@ -146,7 +157,7 @@ public final class ExpressionScope implements Scope, Expression.Resolver {
             return cached;
         }
 
-        Variable variable = variables.get(name);
+        Variable variable = symbols.variable(name);
 
         if (variable == null) {
             return Float.NaN;
@@ -188,12 +199,17 @@ public final class ExpressionScope implements Scope, Expression.Resolver {
     /// 自定义函数查询：公式里名字不在内置清单里时走这里
     @Override
     public @Nullable CustomFunction function(String name) {
-        return functions.get(name);
+        return symbols.function(name);
     }
 
     /// 本次求值遇到的循环引用（变量名按引用顺序，首尾同名）；没遇到返回 null
     public @Nullable List<String> cycle() {
         return cycle;
+    }
+
+    @Override
+    public long version() {
+        return version;
     }
 
     private void recordCycle(String name) {

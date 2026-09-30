@@ -5,7 +5,9 @@ import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /// 一段动画的符号表：[变量][Variable]与[自定义函数][CustomFunction]两张表，外加它们之间的引用关系。
 ///
@@ -25,8 +27,12 @@ public final class SymbolTable implements SymbolTablec {
     public static final String FUNCTION_NAME_PREFIX = "f";
     private static final int NAME_LIMIT = 1000;
 
+    /// 顺序表：界面上的显示顺序，也是序列化写出的顺序
     private final List<Variable> variables = new ArrayList<>();
+    /// 按名字查变量。公式按名字引用，求值每次都要查，所以另留一份索引，别每次扫一遍表
+    private final Map<String, Variable> variablesByName = new HashMap<>();
     private final List<CustomFunction> functions = new ArrayList<>();
+    private final Map<String, CustomFunction> functionsByName = new HashMap<>();
 
     // region 查询
 
@@ -37,13 +43,7 @@ public final class SymbolTable implements SymbolTablec {
 
     @Override
     public @Nullable Variable variable(String name) {
-        for (Variable variable : variables) {
-            if (variable.name().equals(name)) {
-                return variable;
-            }
-        }
-
-        return null;
+        return variablesByName.get(name);
     }
 
     @Override
@@ -53,13 +53,7 @@ public final class SymbolTable implements SymbolTablec {
 
     @Override
     public @Nullable CustomFunction function(String name) {
-        for (CustomFunction function : functions) {
-            if (function.name().equals(name)) {
-                return function;
-            }
-        }
-
-        return null;
+        return functionsByName.get(name);
     }
 
     @Override
@@ -99,13 +93,20 @@ public final class SymbolTable implements SymbolTablec {
 
         Variable variable = new Variable(trimmed);
         variables.add(variable);
+        variablesByName.put(trimmed, variable);
         return variable;
     }
 
     /// 删除一个变量，返回是否删掉了
     public boolean removeVariable(String name) {
         Variable variable = variable(name);
-        return variable != null && variables.remove(variable);
+
+        if (variable == null || !variables.remove(variable)) {
+            return false;
+        }
+
+        variablesByName.remove(name);
+        return true;
     }
 
     /// 把变量名改掉；新名字为空或已被其它变量占用时返回 false。
@@ -124,7 +125,9 @@ public final class SymbolTable implements SymbolTablec {
             return false;
         }
 
+        variablesByName.remove(name);
         variable.name(trimmed);
+        variablesByName.put(trimmed, variable);
         return true;
     }
 
@@ -156,12 +159,19 @@ public final class SymbolTable implements SymbolTablec {
 
         CustomFunction function = new CustomFunction(name, parameters, body);
         functions.add(function);
+        functionsByName.put(name, function);
         return function;
     }
 
     public boolean removeFunction(String name) {
         CustomFunction function = function(name);
-        return function != null && functions.remove(function);
+
+        if (function == null || !functions.remove(function)) {
+            return false;
+        }
+
+        functionsByName.remove(name);
+        return true;
     }
 
     /// 把函数名改掉；新名字为空、已被别的函数占用、或撞上内置函数名时返回 false。
@@ -174,7 +184,9 @@ public final class SymbolTable implements SymbolTablec {
             return false;
         }
 
+        functionsByName.remove(name);
         function.name(trimmed);
+        functionsByName.put(trimmed, function);
         return true;
     }
 
@@ -205,15 +217,21 @@ public final class SymbolTable implements SymbolTablec {
     /// 用另一份表的内容整体替换自身；变量与函数都是可变对象，装进来的是副本，避免两份动画共享同一个实例
     public void replaceFrom(SymbolTablec other) {
         variables.clear();
+        variablesByName.clear();
 
         for (Variable variable : other.variables()) {
-            variables.add(variable.copy());
+            Variable copy = variable.copy();
+            variables.add(copy);
+            variablesByName.put(copy.name(), copy);
         }
 
         functions.clear();
+        functionsByName.clear();
 
         for (CustomFunction function : other.functions()) {
-            functions.add(function.copy());
+            CustomFunction copy = function.copy();
+            functions.add(copy);
+            functionsByName.put(copy.name(), copy);
         }
     }
 

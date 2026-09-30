@@ -30,6 +30,8 @@ public class CameraPlayer {
     private final RotEvaluator rotEvaluator = new RotEvaluator();
     /// 求值入口；内部复用解析缓存，同一帧内每条曲线的关键帧只解析一次
     private final CurveSampler sampler = new CurveSampler();
+    /// 求值环境：**跨帧复用**，每帧 [ExpressionScope#frame] 一次，不每帧新建
+    private final ExpressionScope scope;
     private State state = State.STOPPED;
     private float time;
     private float speed = 1f;
@@ -40,6 +42,7 @@ public class CameraPlayer {
 
     public CameraPlayer(CameraAnimation animation) {
         this.animation = animation;
+        this.scope = ExpressionScope.of(animation, 0f, 0f);
     }
 
     /// 推进时间；仅在播放状态下生效
@@ -91,8 +94,8 @@ public class CameraPlayer {
     /// 求值当前时间的相机姿态
     public CameraPose evaluatePose(CameraPose dest) {
         Path path = animation.path();
-        // 每帧一份作用域：挂了公式的关键帧按当前时间算，变量也按当前时间取轨道读数
-        Scope scope = ExpressionScope.of(animation, time, worldTime);
+        // 作用域是跨帧复用的：切到当前时间即可，不必每帧新建一个（原先每帧要分配六个集合）
+        Scope scope = this.scope.frame(time, ExpressionScope.progressOf(animation, time), worldTime);
 
         if (animation.motionMode() == CameraAnimation.MotionMode.COORDINATE) {
             // 直接坐标模式：位置由三个坐标通道给出，与路径无关。

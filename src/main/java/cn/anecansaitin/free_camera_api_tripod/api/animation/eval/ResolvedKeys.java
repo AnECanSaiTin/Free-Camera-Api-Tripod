@@ -14,8 +14,9 @@ import java.util.Arrays;
 /// 结果按 (键, 字段) **惰性缓存**：只有求值真正读到某个键时才解析它，所以一次求值只解析
 /// 落在区间两端的那两个键；同一条曲线反复采样（画整条曲线、一帧内多个通道求值）时每个键只解析一次。
 ///
-/// 缓存随 [reset] 换曲线或键数变化而清空——公式的值依赖时间，而时间就在 [Scope] 里，
-/// 换作用域必须连带清掉，否则会拿上一时刻的值接着用。
+/// 缓存随 [reset] 换曲线、键数、作用域或**帧版本**而清空——公式的值依赖时间，
+/// 换了一帧就必须连带清掉，否则会拿上一时刻的值接着用。
+/// 作用域是跨帧复用的（见 [Scope#version]），所以除了比对象身份还要比一次版本号。
 @NullMarked
 public final class ResolvedKeys implements KeyValues {
     private static final int FIELDS = 5;
@@ -27,6 +28,8 @@ public final class ResolvedKeys implements KeyValues {
 
     private @Nullable Curvec curve;
     private @Nullable Scope scope;
+    /// 建缓存时的帧版本；作用域可被跨帧复用，光比对象身份不够，见 [#reset]
+    private long version;
     /// 解析结果；未解析的槽位放 NaN（解析出来的值不会是 NaN，见 [ValueSource#evaluateOrFallback]）
     private float[] cache = new float[0];
     private int size;
@@ -35,11 +38,15 @@ public final class ResolvedKeys implements KeyValues {
     ///
     /// 作用域进了比较是因为**公式的值依赖时间**：换了一个作用域（也就是换了一个时刻），
     /// 之前解析出来的数就过期了。播放器与编辑器每帧新建作用域，缓存因此自然按帧失效，
-    /// 不必由调用方记着清
+    /// 不必由调用方记着清。
+    ///
+    /// 作用域改成**可复用**之后（见 [Scope#version]），同一个对象会被反复用来表示不同的帧，
+    /// 身份相同但帧不同，因此还要比一次版本号。两个判断缺一不可：
+    /// 只比身份会漏掉"同一对象换了一帧"，只比版本会漏掉"两个不同对象恰好版本相同"
     public KeyValues reset(Curvec curve, Scope scope) {
         int count = curve.size();
 
-        if (this.curve != curve || count != size || this.scope != scope) {
+        if (this.curve != curve || count != size || this.scope != scope || this.version != scope.version()) {
             this.curve = curve;
             this.size = count;
 
@@ -51,6 +58,7 @@ public final class ResolvedKeys implements KeyValues {
         }
 
         this.scope = scope;
+        this.version = scope.version();
         return this;
     }
 
@@ -58,6 +66,7 @@ public final class ResolvedKeys implements KeyValues {
     public void clear() {
         curve = null;
         scope = null;
+        version = 0;
         size = 0;
         Arrays.fill(cache, Float.NaN);
     }

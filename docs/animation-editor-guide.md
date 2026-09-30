@@ -294,6 +294,7 @@ public interface Scope {
     float progress();             // 播放进度：当前时间 / 总时长，归一化到 0~1
     float worldTime();            // 世界时间：游戏内一天的进度，归一化到 0~1
     float track(String id);       // 某条曲线轨道在当前时刻的读数
+    long version();               // 帧版本：每换一帧 +1，缓存按它失效
     Expression.Resolver resolver(); // 名字解析：内置量 / 用户变量 / 自定义函数
     default float evaluate(String expression);
 }
@@ -303,11 +304,15 @@ public interface Scope {
 两者用途不同：只画一条曲线的人不需要解析能力，而解析变量又要反过来读轨道，
 所以 `ExpressionScope` 把两个接口一起实现，`resolver()` 返回它自己。
 
+**作用域是跨帧复用的**：播放器与编辑器各持有一份，每帧调一次 `frame(time, progress, worldTime)`
+换到当前时刻（版本号 +1、清掉上一帧的缓存），不必每帧新建——原先每帧要分配六个集合。
+缓存因此**不能只按对象身份失效**，见下面的 `ResolvedKeys`。
+
 | 类 | 职责 |
 | --- | --- |
 | `Scope` | 求值环境接口（时间 + 轨道读数），名字解析在 `resolver()` 上。求值链只认它，**不认 `CameraAnimation`**——单条曲线、单个值都能脱离动画求值 |
 | `ExpressionScope` | 从动画构造的实现：`of(animation, time, worldTime)`，播放进度由动画时长算出。内置变量、变量缓存、环记录都在这里 |
-| `ResolvedKeys` | `KeyValues` 的动态实现：按 `Scope` 解析关键帧的五个数值，结果按 (键, 字段) **惰性缓存** |
+| `ResolvedKeys` | `KeyValues` 的动态实现：按 `Scope` 解析关键帧的五个数值，结果按 (键, 字段) **惰性缓存**。缓存失效看「曲线 / 键数 / 作用域对象 / 帧版本号」四者任一变化 |
 | `CurveSampler` | **求值的唯一入口**：把"按 `Scope` 解析"与"曲线插值"接起来 |
 
 `CurveSampler` 的三个入口：
@@ -623,8 +628,10 @@ public interface Scope {
 - **取值一律走 `CurveSampler`**：它是求值的唯一入口。图省事用 `sampleStatic` 或自己 new 一个
   `StaticKeys`，拿到的就是公式的**回退值**——画出来的曲线、插出来的键会和播放结果对不上，
   而这种偏差只在使用了公式时才出现，很难发现
-- **作用域里带着时间**：`ResolvedKeys` 的缓存按作用域失效。跨帧复用同一个 `Scope` 对象
-  （或自己实现了一个可变的作用域）时，解析结果不会随播放头更新，要手动 `CurveSampler.clear()`
+- **作用域是跨帧复用的**：`ExpressionScope` 由播放器 / `EditorContext` 各持有一份，
+  每帧 `frame(...)` 切到当前时刻。缓存按 `Scope#version` 失效，所以复用是安全的；
+  但**自己实现一个可变作用域时，`version()` 必须真的每帧变化**，否则缓存不会重算。
+  表达式编辑窗口是唯一例外：它暂停时时间不动、没法判断该不该切帧，所以每帧新建一份
 - **右键菜单的绘制顺序**：由屏幕在最后统一绘制，面板只持有；否则菜单会被其它面板盖住
 - **会话的编辑动作都作用于"当前选中的轨道"**：`addKey` / `moveKey` / `removeKey` 没有 track 参数，
   外部界面调它们之前得先 `selectTrack(...)`；否则返回 -1 或 false，看起来像"点了没反应"
