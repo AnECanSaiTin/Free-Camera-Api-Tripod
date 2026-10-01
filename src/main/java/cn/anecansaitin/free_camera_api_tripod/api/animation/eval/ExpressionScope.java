@@ -32,11 +32,12 @@ import java.util.Set;
 /// 三条关键约定：
 /// - **一次求值内每个变量只算一次**：变量值在本次求值期间不会变（时间是切帧时定下的），
 ///   结果缓存下来，同一条公式里写 3 次、或一帧内几十个字段引用同一个变量，都只算一次
-/// - **变量读轨道走静态曲线**：轨道按"没有作用域"求值（见 [CurveSample]），所以轨道上的公式
-///   在这一步被忽略，用的是键上的固定数值。于是变量与轨道之间没有回边，求值不会互相拉扯
-/// - **成环是写入期就挡掉的事**：环由 [EvaluationGraph] 在挂公式、绑轨道、读档时判定并拒绝，
-///   正常数据里根本到不了这里。[#cycle] 与 `visiting` 栈因此退化成一道**兜底**——
-///   万一有哪条编辑路径绕过了校验，它保证求值返回 NaN 而不是递归到栈溢出
+/// - **变量读轨道读的是这一帧的真值**：轨道按当前作用域求值（见 [track]），轨道上的公式照常参与，
+///   所以"变量绑的轨道"与"该轨道作为属性播放"给出同一个数。变量与轨道因此构成互递归的一整张图，
+///   由 `EvaluationGraph` 在写入期保证无环
+/// - **成环是写入期就挡掉的事**：环在挂公式、绑轨道、读档三处判定并拒绝，正常数据里到不了这里。
+///   [#cycle] 与 `visiting` 栈因此退化成一道**兜底**——万一有哪条编辑路径绕过了校验，
+///   它保证求值返回 NaN 而不是递归到栈溢出
 @NullMarked
 public final class ExpressionScope implements Scope, Resolver {
     /// 内置变量：当前求值时间
@@ -48,6 +49,10 @@ public final class ExpressionScope implements Scope, Resolver {
 
     /// 内置变量的名字；这些名字被求值环境自己占用，不能拿来当用户变量
     public static final List<String> BUILTIN_VARIABLES = List.of(TIME_VARIABLE, PROGRESS_VARIABLE, WORLD_TIME_VARIABLE);
+
+    /// 变量求值栈的深度上限：只是环没被写入期拦下时的兜底，正常链路远到不了。
+    /// 取一个明显大于任何真实依赖链、又远小于栈容量的数
+    private static final int MAX_TRACK_DEPTH = 64;
 
     /// 按 id 查曲线；没有返回 null
     @FunctionalInterface
@@ -64,14 +69,15 @@ public final class ExpressionScope implements Scope, Resolver {
     private long version;
     /// 变量取值缓存；换帧时清空，Map 本身复用
     private final Map<String, Float> cache = new HashMap<>();
-    /// 每条曲线配一份静态读取器，避免同一次求值里反复新建。
-    /// 换帧时清空：作用域会被长期复用，不清的话读档换掉的旧曲线会一直被这张表拽着。
+    /// 每条曲线配一份读取器，避免同一次求值里反复新建；**带作用域**，所以轨道上的公式照常求值。
+    /// 换帧时清空：作用域会被长期复用，不清的话读档换掉的旧曲线会一直被这张表拽着，
+    /// 上一帧算出来的数也会被继续用。
     ///
     /// **这里刻意不走 [CurveSampler]**：采样器的缓存意义是"同一帧内同一条曲线只解析一次"，
-    /// 而 [track] 是求值环境内部的查询，自己按 [Curve] 缓存一份已经够；
-    /// 硬要共享就会让采样器与本类互相持有，得不偿失
-    private final Map<Curve, CurveSample> staticSamples = new IdentityHashMap<>();
-    /// 正在求值的变量（栈），用来发现循环引用
+    /// 而 [track] 是求值环境内部的查询，自己按 [Curve] 缓存一份已经够；硬要共享就会让
+    /// 采样器与本类互相持有，而且公式求值可能撞上主采样器算到一半的那条曲线
+    private final Map<Curve, CurveSample> trackSamples = new IdentityHashMap<>();
+    /// 正在求值的变量（栈）：既是 [#resolving] 的答案，也是环没被写入期拦下时的兜底
     private final Deque<String> visiting = new ArrayDeque<>();
     private final Set<String> visitingSet = new HashSet<>();
     private @Nullable List<String> cycle;
@@ -104,7 +110,7 @@ public final class ExpressionScope implements Scope, Resolver {
         this.worldTime = worldTime;
         this.version++;
         this.cache.clear();
-        this.staticSamples.clear();
+        this.trackSamples.clear();
         this.cycle = null;
         return this;
     }
@@ -199,6 +205,15 @@ public final class ExpressionScope implements Scope, Resolver {
         return value;
     }
 
+    /// 轨道读数：取这条曲线在**当前时刻**的值，轨道上的公式照常参与求值。
+    ///
+    /// 这和"把该轨道当属性播放"走的是同一段求值（同一份 [CurveSample] + 同一个 `this` 作用域），
+    /// 所以同一个键在两个场景下给出同一个数——原来"变量读轨道走静态曲线"那条规则带来的
+    /// 取值口径歧义就此消失。
+    ///
+    /// 递归一定终止：环在写入期就被 `EvaluationGraph` 拦掉了（挂公式、绑轨道、读档三处），
+    /// 所以这里不需要每次求值再判一次环。万一有哪条路径绕过了校验，[#visiting] 的深度上限
+    /// 兜住它——记一条环并把这一处退成 NaN，而不是栈溢出
     @Override
     public float track(String id) {
         // 查曲线本身已经是一次按名取表，这里不再额外缓存一份
@@ -208,8 +223,11 @@ public final class ExpressionScope implements Scope, Resolver {
             return Float.NaN;
         }
 
-        // 静态读取（作用域为 null）：轨道上的公式在这一步被忽略，变量与轨道因此不会互相拉扯
-        return curve.evaluate(time, staticSamples.computeIfAbsent(curve, CurveSample::staticOf));
+        if (visitingSet.size() >= MAX_TRACK_DEPTH) {
+            return Float.NaN;
+        }
+
+        return curve.evaluate(time, trackSamples.computeIfAbsent(curve, key -> CurveSample.at(key, this)));
     }
 
     /// 自定义函数查询：公式里名字不在内置清单里时走这里

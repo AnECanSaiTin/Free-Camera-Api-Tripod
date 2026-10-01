@@ -52,7 +52,7 @@ public class KeyframePanel extends EditorPanel {
     private final EditorContext context;
     private final List<Runnable> refreshers = new ArrayList<>();
     private @Nullable String lastRevision;
-    /// 当前正在查看的轨道 id：面板里的公式字段都挂在它上面，表达式窗口靠它判断自嵌套
+    /// 当前正在查看的轨道 id：面板里的公式字段都挂在它上面，表达式窗口靠它判环
     private @Nullable String inspectedTrack;
     private int scrollY;
     private int totalHeight;

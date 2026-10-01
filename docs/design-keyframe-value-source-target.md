@@ -35,7 +35,7 @@ api/animation/
 │   ├── NumberSource.java        两态来源：Constant | Formula
 │   ├── ValueSource.java         三态来源：NumberSource | TrackRef（变量专用）
 │   ├── Constant.java  Formula.java  TrackRef.java
-│   ├── Variable.java  VariableGraph.java
+│   ├── Variable.java                变量：名字 + 来源 + 默认值
 │   └── SymbolTable.java  SymbolTablec.java  CustomFunction.java
 │
 ├── curve/                    ⇢ animation
@@ -46,6 +46,7 @@ api/animation/
 ├── eval/                     ⇢ animation, expression, curve
 │   ├── CurveSampler.java         **求值唯一入口**（对外 API 不变）
 │   ├── CurveSample.java          按 Scope 把键解析成 KeyValues（包内实现，缓存）
+│   ├── EvaluationGraph.java      变量 + 轨道的依赖图与判环（第 6.4 节）
 │   └── ExpressionScope.java      从动画构造的 Scope 实现
 │
 ├── path/                     ⇢ 无依赖（纯几何，不参与求值）
@@ -519,21 +520,34 @@ final class CurveSample implements KeyValues {
 - **静态路径不经过采样器**：`CurveSampler` 的缓存意义是"同一帧内同一条曲线只解析一次"，
   而 `track()` 是求值环境内部的查询，自己按 `Curve` 缓存一份已经够；
   硬要共享就会让 `CurveSampler` 与 `ExpressionScope` 互相持有，得不偿失。
-- **求值路径单向**：值源 → `Scope` → 轨道读数 → 静态求值，链路里没有任何回边。
+- **求值路径单向**：值源 → `Scope` → 轨道读数 → 求值，链路里没有任何回边。
+  这是**原设计**的形态：变量读轨道走静态求值（作用域为 `null`），公式在那一跳被忽略。
+  它已经被取代，见 6.4。
 
-### 6.4 自嵌套：这条规则可以顺手修（可选）
+### 6.4 自嵌套：已实现（原为可选）
 
-现在"变量读轨道 → 轨道上的公式引用该变量"靠的是"轨道一律静态求值"这条全局规则，
-代价是**该键作为属性播放与作为变量被引用会得到不同的值**（`ExpressionScope` 类文档自己承认的语义歧义）。
+**原问题**：变量读轨道走静态求值这条全局规则，代价是**该键作为属性播放与作为变量被引用
+会得到不同的值**——`ExpressionScope` 类文档自己承认的语义歧义。
 
-要修的话，思路是：`Scope.resolver()` 增加一个"当前正在求值哪个变量"的查询，
-`CurveSample.resolve` 在准备取某个槽位的公式前问一次——**若这条公式引用了正在求值的那个变量，
-就只让这一个槽位退回固定值**，其余槽位、其余键照常按公式求值。
-于是规则从"整条轨道降级"收窄成"一个槽位降级"，上面那条歧义消失。
+**本条原来提的修法**（把降级从"整条轨道"收窄成"一个槽位"）**没有采用**。它绕了远路：
+真正的前提不是"求值时挑挑拣拣"，而是**环根本就不该存在**。所以实际落地的是另一条路：
 
-代价是要多一个查询方法、以及"公式引用分析"进入求值热路径（可以用 `Expression.references` 的结果缓存来抵消）。
-**建议先不做**：它不解决任何当前报错，只在"变量绑的轨道上又挂了引用该变量的公式"这种写法下才有差别。
-设计上留好接口（`Scope` 上加一个默认返回 `null` 的 `resolving()`），下次要动时不必再改签名。
+1. `eval.EvaluationGraph` 把变量与轨道画进同一张图，把"变量绑轨道、轨道上的公式又引用该变量"
+   这条跨轨道的闭合路径也展开，用 Kahn 拓扑判环；
+2. 环在**写入期**被拒绝——挂公式（编辑窗口点确定）、绑轨道（变量面板）、读档三处；
+3. 于是 `ExpressionScope.track` 可以放心地按**当前作用域**求值：变量读到的就是这一帧的真值，
+   与"该轨道作为属性播放"走同一段求值，得到同一个数。歧义消失。
+
+**6.4 里那条"留好接口"的建议仍然照办了**：`Scope.resolving()` 留着，但用途从"给单槽位降级
+预留"变成**廉价的断言钩子**（实现见 `ExpressionScope`，返回正在求值的变量名）。它同时也是
+兜底手段之一：万一有编辑路径绕过校验形成了环，`ExpressionScope` 的 `visiting` 栈与
+`MAX_TRACK_DEPTH` 会让求值退成 NaN，而不是栈溢出。
+
+**代价**（与原估计不同）：不是"引用分析进热路径"，而是
+（a）`expression` 层多了一条对 slf4j 的依赖（见第 2 节末尾），
+（b）求值图从"变量图"变成"变量 + 轨道的互递归图"，环的判定必须跨越对象边界，
+（c）`ExpressionScope` 要按 `(曲线, 帧版本)` 缓存轨道读取器，且**不能**与 `CurveSampler`
+的缓存共用（公式求值不该撞上主采样器算到一半的曲线）。
 
 ---
 

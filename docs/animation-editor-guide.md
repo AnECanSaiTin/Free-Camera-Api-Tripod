@@ -18,9 +18,13 @@ api/                          对外契约：数据模型 + 扩展点（不依�
 ├── camera/                   相机数据接口：TripodData / TripodStates / ControlScheme
 ├── animation/                动画数据模型
 │   ├── Keyframe/Keyframec/TrackKey/Evaluator/EvaluateMode
-│   ├── curve/                Curve / Curvec / KeyValues / StaticKeys / WrapMode
-│   ├── eval/                 求值层：Scope / ExpressionScope / CurveSampler / ResolvedKeys
-│   ├── expression/           Expression / ValueSource / Variable / CustomFunction / SymbolTable
+│   ├── KeyField/KeyFields    五个可动态槽位的枚举与集合查询
+│   ├── JsonSerializable      能把自己写成 JSON 对象的数据类型
+│   ├── curve/                Curve / Curvec / KeyValues / WrapMode
+│   ├── eval/                 求值层：CurveSampler / CurveSample / ExpressionScope / EvaluationGraph
+│   ├── expression/           数值来源：Scope / Resolver / NumberSource / ValueSource /
+│   │                         Constant / Formula / TrackRef / Variable / SymbolTable /
+│   │                         CustomFunction / Expression
 │   ├── path/                 Path / Pathc / PathNode / PathNodec / PathMode
 │   └── track/                AnimationTrack / TrackType / CurveTrack
 │                             TrackTypeRegistry / AnimationChannelRegistry
@@ -39,7 +43,9 @@ registry/                    Neoforge 注册项：网络载荷、数据附件、
 util/                        通用工具：样条求值/长度、命令构建
 ```
 
-**依赖方向**：`editor / cmd_camera / io` → `api`；`api` 不引用 `core`。
+依赖方向：`expression` 在最底下（**只依赖 slf4j**，见 2.7），`animation` 根包与 `curve` 建在它上面，
+`eval` 同时看得见 `expression` 与 `curve`，`track` 再用 `eval`；
+`editor / cmd_camera / io` → `api`，`api` 不引用 `core`。
 外部界面后端只允许 import 主 mod 的 `api.*`，禁止碰 `core.*`；
 主 mod 完全不认识任何具体后端，反向依赖只有一条：主 mod 的 `EditorUiHost` 会被动接受注册。
 新增公共数据模型请放 `api`，只在编辑器内部用的（面板、控件）放 `core.editor`。
@@ -80,22 +86,38 @@ F6 ──► CameraEditorScreen.open()
 | 类型 | 职责 |
 | --- | --- |
 | `TrackKey` | 只读最小契约：`time()`。所有轨道上的键都实现它 |
-| `Keyframec` | 只读关键帧：时间、取值、入/出切线、入/出权重、加权模式、插值模式，**以及五个数值各自的值源** |
-| `Keyframe` | 可写关键帧（可变类；setter 返回自身可链式）；静态工厂 `create/linear/step/hermite`；`set(Keyframec)` 覆盖式拷贝 |
-| `Keyframec` / `Keyframe` 的分工 | 与 `PathNodec` / `PathNode` 一致：读方只认只读接口，`Curve` 内部直接持有可变的 `Keyframe` |
+| `Keyframec` | 只读关键帧：时间、取值、入/出曲柄的斜率与长度倍数、插值模式，以及"某个槽位的固定数值"。**`sealed permits Keyframe`**，且**不发放任何数值来源** |
+| `Keyframe` | 可写关键帧，`final`；字段是「槽位 → 数值来源」（`EnumMap<KeyField, NumberSource>`）；静态工厂 `create/linear/step/hermite`；`set(Keyframec)` 覆盖式拷贝 |
+| `KeyField` | 五个可动态槽位的**唯一真理来源**：枚举顺序 = 序列化顺序 = 面板行顺序，标签（`labelKey()`）、小数位（`decimals()`）、所属插值模式（`activeIn(mode)`）都挂在它上面 |
+| `KeyFields` | `activeIn(mode)` 的集合版本（"该模式下有哪些槽位参与"），面板据此决定显示哪几行。单独一个类是因为 Java 不允许同名的静态与实例方法共存 |
 
 `EvaluateMode`：`LINEAR` / `STEP` / `HERMITE`（`HERMITE` 即按贝塞尔求值）。
 
-关键帧的取值 / 入出斜率 / 入出长度倍数这五个数值各自是一个**值源**（见 2.7），所以每个字段有两套读写：
-`value()` / `value(float)` 这一组看的是**固定数值**（公式的回退值，几何计算与界面编辑用它），
-`valueSource()` / `valueSource(ValueSource)` 这一组给的是值源本身（求值与序列化用它）。
-只读接口上也有 `valueSource()` 这一组，只读视图因此同样能参与动态求值。
+**取值 / 入出斜率 / 入出长度倍数这五个数值不再各有五个方法，而是按 `KeyField` 寻址**：
+
+```java
+key.constant(KeyField.VALUE);                 // 读固定数值（挂了公式时是它的回退值）
+key.constant(KeyField.VALUE, 1.5f);           // 写固定数值
+key.source(KeyField.VALUE);                   // 读来源本身（NumberSource）
+key.source(KeyField.VALUE, new Formula("t*2", 1.5f));
+key.formula(KeyField.VALUE, "t * 2");         // 挂公式；空串表示不挂
+key.sources();                                // 五个槽位来源的不可变快照（复制粘贴用）
+```
+
+`value()` / `value(float)` / `inSlope()` / `inSlope(float)` 这一组仍在，是 `constant(field, …)`
+的薄转发，只为调用点读得顺——**不是第二套字段入口**。
+
+**写数值会清掉该槽位原有的公式**（`constant(field, v)` 总是换成新的 `Constant`）。
+这是刻意的取舍：原来 `withConstant` 的语义是"只改回退值、公式保留"，但那要求来源自己可变、
+只能就地改，正是它让"改个数要换对象"这件事漏到接口上。现在"公式会不会被弄丢"从**数据层的隐式行为**
+变成**调用点显式选择**——数值输入框走 `constant(field, v)`，公式编辑窗口走 `formula(field, text)`。
 
 **时间不进值源**：公式本来就是按时间求值的，时间自己再挂公式只会绕回自己。
 
 四个插值字段就是两端各一条贝塞尔曲柄：**斜率给方向，长度倍数给长度**——
 曲柄长度 = 这段时长的 1/3 × 长度倍数（默认 1，即基准长度）。没有单独的「加权模式」开关，
 权重总是参与，曲柄在曲线图上能拖多长就生效多长（上限见 2.2）。
+只有左键为 `HERMITE` 的那一段才读这四组数（见 `KeyField.activeIn`）。
 
 ### 2.2 曲线 `curve/Curve`
 
@@ -128,12 +150,10 @@ public interface KeyValues {
 }
 ```
 
-曲线只问"第 index 个键的某个数是多少"，**不管这几个数是哪来的**。两个实现：
-
-| 实现 | 取值 | 用在哪 |
-| --- | --- | --- |
-| `StaticKeys` | 键上的固定数值（挂了公式就取它的回退值） | 变量读轨道、没有求值环境时插键 |
-| `eval.ResolvedKeys` | 按 `Scope` 解析：挂了公式的字段按该时刻算，算不出来退回固定数值 | 播放、画曲线、界面预览 |
+曲线只问"第 index 个键的某个数是多少"，**不管这几个数是哪来的**。实现只有一个，
+就是包内的 `eval.CurveSample`——它按 `(键, 槽位)` 惰性缓存解析结果：
+`scope == null` 时公式一律算不出来，于是走回退值；否则按该时刻的公式求值。
+"有公式 / 没公式 / 有环境 / 没环境"四种组合因此收敛在同一处，不再各写一个读取器类。
 
 时间与插值模式不在读取器里——它们不是可动态的字段，曲线直接读键本身。
 
@@ -204,30 +224,49 @@ public interface KeyValues {
 - `symbols()`：动画级的符号表，变量与自定义函数都在它身上（见 2.7）：
   `variables()` / `variable(name)` / `addVariable()` / `removeVariable(name)` / `renameVariable(...)`，
   以及 `functions()` / `function(name)` / `addFunction()` / `removeFunction(name)` / `renameFunction(...)`。
-  名字唯一性、轨道改名 / 删除时的引用重定向与解绑也都归它管。
-  `selfReferencing(variable)` 判断自嵌套，符号表的 `cycle()` 给出变量之间的第一条循环引用，两个都供界面报错
+  名字唯一性、轨道改名 / 删除时的引用重定向与解绑也都归它管
+- **判环不在符号表上**：`evaluationGraph()` 给出当前的求值依赖图，`cycle()` 给出环上的节点名
+  （变量名与轨道 id 混在一起）。放在动画上是因为环可以跨过轨道边界，而只有动画同时看得见
+  符号表与轨道表——符号表看不见轨道，判不出真正的环（见 2.7 与 2.8）
 - `copyFrom(other)`：读档时**原地替换**内容——动画实例被播放器与编辑器各处持有，不能换对象；符号表也一并换成副本
 - `CameraAnimationc`：只读视图（`name/duration/motionMode/distanceMode/path/tracks/curveTracks/extensionTracks/curve/symbols/distanceToLength`）
 
-### 2.7 值源、表达式、变量与函数 `expression/`
+### 2.7 数值来源、表达式、变量与函数 `expression/`
 
 让"数值"可以随时间变化：一个数值既可以是一个固定的数，也可以挂一条公式，播放时按当前时间算出来。
 
-#### 值源 `ValueSource`
+这是**最底层的一个包**。它只依赖 slf4j（`SourceJson` 读到关键帧字段上出现 `{"track": …}`
+这条非法通路时要记一条警告），除此之外不碰任何 mod 自己的类——这一层能脱离游戏单测。
 
-**每个数值字段自己就是一个值源对象**，而不是"数值 + 一张外挂的公式表"。这是整套设计的支点：
+#### 两态与三态：`NumberSource` / `ValueSource`
 
-| 实现 | 含义 |
-| --- | --- |
-| `ConstantValue` | 固定值 |
-| `FormulaValue` | 一段公式 + 一个回退用的固定值（编译结果也在这里缓存） |
-| `TrackValue` | 某条曲线轨道在当前时刻的读数（**只作变量的取值来源**，不会出现在关键帧的字段上） |
+整套设计的支点是**一个字段就是「槽位 + 来源」这一对**，而"来源"分两层表达：
 
-- `evaluate(scope)`：算不出来返回 NaN；作用域为 `null` 就是静态求值（只有固定数值可用）
-- `ValueSource.evaluateOrFallback(source, scope)` 是**求值链上唯一的回退点**：算不出来就退回固定数值
-- `withConstant(value)`：只改那个数，**公式保留**。因此"界面里改数值"不会把公式弄丢。
-  它是实例方法：固定值改自己、公式改回退值、轨道读数没有固定值可写就整体换成固定值源
-- `copy()`：同样是实例方法，三种来源各自给出自己的副本
+| 接口 | 态 | 实现 | 用在哪 |
+| --- | --- | --- | --- |
+| `NumberSource` | 两态 | `Constant`（固定值）、`Formula`（公式 + 回退值） | **关键帧字段** |
+| `ValueSource` | 三态 | 上面两个，再加 `TrackRef`（某条曲线轨道的读数） | **变量的取值来源** |
+
+**`TrackRef` 有意不实现 `NumberSource`**，所以"把轨道读数挂到关键帧字段上"在**编译期**就是错的，
+不必靠注释或运行期检查约束。这是设计里那条类型级安全边界的落点。
+
+三个实现都是**不可变 record**，因此：
+
+- `copy()` 就是 `this`——**拷贝即快照**，装进别的对象时不必复制（`Keyframe.sources()`
+  返回的那份快照可以直接长期留着，就是复制粘贴的实现方式）
+- 编译结果**不进 `Formula`**：`Expression` 内部按公式文本驻留编译结果（它本来就有缓存），
+  `Formula.evaluate` 每次查一次表。于是序列化与拷贝不再带着语法树走，
+  "同一段文本只解析一次"也从"每个字段各存一份"变成"全局一份"
+
+求值约定：
+
+- `evaluate(scope)`：算不出来返回 NaN；作用域为 `null` = **静态求值**，公式一律算不出来
+- **`evaluateOrFallback(scope)` 是求值链上唯一的回退点**（`NumberSource` 上的默认方法）：
+  evaluate 失败就用 `constant()`，`constant()` 也是 NaN 时用 0。求值、变量、界面三处都调它，不再各写一遍
+- `constant()`：该来源携带的固定数值——常量就是它本身，公式是它的回退值，轨道读数没有（NaN）
+- `isFormula()`：界面问"这个槽位是数值还是公式"只需要这一个判断，不必到处 `instanceof`，
+  求值层因此完全不需要认识具体的实现类型
+- `trackId()`（`ValueSource` 上）：轨道引用返回其 id，数值来源返回 null
 
 **三个内置变量**：`t`（当前时间）、`p`（播放进度）、`wt`（世界时间），在 `resolve` 里先于用户变量被认出来，
 名字由 `ExpressionScope.BUILTIN_VARIABLES` 列出（既不让用户取重名，也直接列在变量面板最上面，
@@ -251,88 +290,156 @@ public interface KeyValues {
 
 三条关键约定：
 
-- **一次求值内每个变量只算一次**：时间是构造时定下的，变量值在其生命周期内不会变，`resolve` 的结果缓存进 Map。
+- **一次求值内每个变量只算一次**：时间是切帧时定下的，变量值在这一帧内不会变，`resolve` 的结果缓存进 Map。
   同一条公式里写 3 次、或一帧内几十个字段引用同一个变量，都只算一次
-- **变量读轨道走静态曲线**：轨道按 `StaticKeys` 求值，所以轨道上的公式在这一步被忽略、用键上的固定数值。
-  这让"变量指向某条轨道、该轨道的键又引用这个变量"不会无限递归；代价是同一个键
-  "作为相机属性播放"与"作为变量被引用"可能得出不同的值，这就是**自嵌套**：
-  变量面板会把它标红，表达式编辑窗口在公式引用到绑定本轨道的变量时也会标红并**按住「确定」不让保存**
-- **成环时明确报错**：`V1 = V2 * 2` 且 `V2 = V1 + 1` 这种写法，求值返回 NaN 并把环记录在 `ExpressionScope.cycle()` 里；
-  变量面板与表达式编辑窗口都会把环上的变量标红并写出链路，不是静默给一个数
+- **变量读轨道读的是这一帧的真值**：轨道按当前作用域求值，轨道上的公式照常参与，
+  所以"变量绑的轨道"与"该轨道作为属性播放"给出**同一个数**。
+  代价是变量与轨道构成一张互递归的图，必须由依赖图保证无环（见 `EvaluationGraph`）
+- **成环在写入期就被拒绝**，不是求值时静默降级。见下面的依赖图
+
+#### 值源的行为在它自己身上
+
+`Constant`（`value()`）、`Formula`（`expression()` / `fallback()` / `broken()`）、
+`TrackRef`（`trackId()`）各自实现自己的行为，外面不必为一个"该按哪种来源处理"的 switch 操心；
+求值层只认 `NumberSource` 这两个方法。
+
+#### 依赖图 `eval.EvaluationGraph`
+
+**这是判环的唯一权威**，放在 `eval` 是因为它要同时看得见 `expression` 与 `curve`：
+
+- 节点是**变量与轨道两类**，边是"公式里按名字引用到了谁"
+- 轨道上的公式引用的变量名要**展开**到变量节点上，所以：
+  `deps(V) = 公式里引用的变量 ∪ deps(V 绑的那条轨道)`，`deps(轨道) = 该轨道所有键、所有槽位公式里引用的变量`
+- 图里存的是**零件**（变量的公式引用、变量绑了谁、每条轨道的引用），完整依赖现算——
+  这样"如果这样改会怎样"的试算就是换掉零件重算一遍，准确且不必猜哪些下游要跟着变
+- 判环用 Kahn 拓扑：入度为 0 的先定值，**一轮下来没被定值的节点就都在环上**，
+  正好是界面要报的那串名字（`cycleText()` 串成 `A → B`）
+- `allowsTrackFormula(trackId, formula)` / `allowsVariableSource(name, source)`：
+  **只试算、不改动任何数据**，供界面在写入前拦一道
+
+为什么不能只装变量（旧 `VariableGraph` 的做法）：环可以跨过轨道边界——
+`V` 绑轨道 `fov`，而 `fov` 上的键又挂了引用 `V` 的公式。只看变量之间的引用看不见这条路径。
+
+#### 变量 `Variable`
+
+变量 = 名字 + 一个**可以为 null** 的 `ValueSource` + 一个默认值。来源三选一：固定值、公式、某条曲线轨道；
+**没绑来源时取默认值**（`evaluate(scope)` 直接返回 `defaultValue`）。
 
 #### 表达式求值 `Expression`
 
 - 递归下降解析**一次**：解析结果是一棵由闭包拼起来的语法树 `Expression.Formula`，按公式文本驻留缓存（上限 512 条），求值不再扫描字符串
 - 支持：`+ - * / %`、括号、一元正负、变量、`min/max/sin/cos/random`
 - 失败一律返回 NaN：语法错误、参数个数不对在**编译期**就返回 null；未知变量不抛异常，让 NaN 顺着算术传播
-- `validName` / `identifiers` / `references`：名字规则与依赖分析用的三个字符串工具（与解析器共用同一套字符规则）
-
-#### 变量 `Variable`
-
-变量 = 名字 + 一个 `ValueSource`。取值来源三选一：固定值、公式、某条曲线轨道。
-公式里按名字引用别的变量，变量之间因此构成有向图：
-
-- `VariableGraph.findCycle(variables)`：深搜找第一条环，返回环上的变量名（首尾同名）
-- `VariableGraph.dependencies(variable, names)`：某变量的公式引用到的其它变量
-- 图里**只有变量**：关键帧上的公式不是节点，变量读轨道又走静态曲线，所以自嵌套那种写法不成环。
-  路径是纯几何、不含公式，自然也不在图上
+- `validName` / `identifiers` / `references` / `valid`：名字规则与依赖分析用的字符串工具（与解析器共用同一套字符规则）
 
 #### 设计要点
 
-- **公式挂在数据上，不挂在求值链上**：字段持有值源，求值链只把它解析成一个数（见 2.8）
-- **求值失败永远是回退，不是中断**：公式非法、变量取不到值、成环——统统退回固定数值，播放不会因为一条写错的公式而失效
-- **新增一个可动态字段不用改枚举**：以前要靠 `DynamicField` 枚举寻址，现在字段本身就是值源，
-  读写入口就是一对 `xxxSource()` 方法（见 `Keyframe`）
+- **公式挂在数据上，不挂在求值链上**：字段持有来源，求值链只把它解析成一个数（见 2.8）
+- **结构性问题写入期拦、数值问题运行期回退**：会成环的公式根本写不进去（确认时拒绝并给出环上节点）；
+  `0/0` 这类算不出来的仍然静默退回固定数值，播放不会因为一条写错的公式而失效
+- **新增一个可动态槽位只改枚举**：字段按 `KeyField` 寻址，加一个槽位就是在枚举里加一行
+  （标签、小数位、所属插值模式都挂在那里），不再需要在两个类里各补一组读写方法
 
 ### 2.8 求值层 `eval/`
 
-把"按公式算出一个数"与"曲线怎么插值"分成两件事，`Curve` 因此不必认识表达式：
-
-```java
-public interface Scope {
-    float time();                 // 当前求值时间
-    float progress();             // 播放进度：当前时间 / 总时长，归一化到 0~1
-    float worldTime();            // 世界时间：游戏内一天的进度，归一化到 0~1
-    float track(String id);       // 某条曲线轨道在当前时刻的读数
-    long version();               // 帧版本：每换一帧 +1，缓存按它失效
-    Expression.Resolver resolver(); // 名字解析：内置量 / 用户变量 / 自定义函数
-    default float evaluate(String expression);
-}
-```
-
-`Scope` 只管**环境**（这一帧是什么时候、各条曲线读到多少），名字解析交给 `Expression.Resolver`——
-两者用途不同：只画一条曲线的人不需要解析能力，而解析变量又要反过来读轨道，
-所以 `ExpressionScope` 把两个接口一起实现，`resolver()` 返回它自己。
-
-**作用域是跨帧复用的**：播放器与编辑器各持有一份，每帧调一次 `frame(time, progress, worldTime)`
-换到当前时刻（版本号 +1、清掉上一帧的缓存），不必每帧新建——原先每帧要分配六个集合。
-缓存因此**不能只按对象身份失效**，见下面的 `ResolvedKeys`。
+把"按公式算出一个数"与"曲线怎么插值"分成两件事，`Curve` 因此不必认识表达式。
+这里只有四个类，**对外入口只有 `CurveSampler` 一个**：
 
 | 类 | 职责 |
 | --- | --- |
-| `Scope` | 求值环境接口（时间 + 轨道读数），名字解析在 `resolver()` 上。求值链只认它，**不认 `CameraAnimation`**——单条曲线、单个值都能脱离动画求值 |
-| `ExpressionScope` | 从动画构造的实现：`of(animation, time, worldTime)`，播放进度由动画时长算出。内置变量、变量缓存、环记录都在这里 |
-| `ResolvedKeys` | `KeyValues` 的动态实现：按 `Scope` 解析关键帧的五个数值，结果按 (键, 字段) **惰性缓存**。缓存失效看「曲线 / 键数 / 作用域对象 / 帧版本号」四者任一变化 |
-| `CurveSampler` | **求值的唯一入口**：把"按 `Scope` 解析"与"曲线插值"接起来 |
+| `CurveSampler` | **求值的唯一入口**：把"按 `Scope` 解析"与"曲线插值"接起来；从动画建环境的工厂也在这里 |
+| `CurveSample` | **包内实现**：把「键 + `Scope`」解析成 `KeyValues`，结果按 (键, 槽位) 惰性缓存。这是全仓唯一需要知道"来源只存在于可写类上"的地方 |
+| `EvaluationGraph` | 变量 + 轨道的依赖图与判环（见 2.7），写入期拦环靠它 |
+| `ExpressionScope` | `Scope` + `Resolver` 的实现：内置变量、变量缓存、轨道读数缓存都在这里 |
 
-`CurveSampler` 的三个入口：
+#### 环境接口：`Scope` / `Resolver` / `TrackLookup`
 
-- `sample(curve, time, scope)`：按作用域取值。挂了公式的键按该时刻算
+```java
+// expression 包
+public interface TrackLookup {                 // 按 id 取轨道读数；不存在返回 NaN
+    float track(String id);
+}
+
+public interface Resolver extends TrackLookup { // 名字解析
+    float resolve(String name);
+    @Nullable CustomFunction function(String name);
+}
+
+public interface Scope {                       // 求值环境：这一帧是什么时候 + 名字怎么解析
+    float time();
+    float progress();
+    float worldTime();
+    long version();                            // 帧版本：每换一帧 +1，缓存按它失效
+    Resolver resolver();
+    default String resolving() { return null; } // 当前正在求值的变量名（断言钩子）
+}
+```
+
+**三者分开是有意的**：环境是"这一帧是什么时候"，解析是"公式里的名字是什么"，
+而只画一条曲线的人只需要最小的 `TrackLookup`。
+`ExpressionScope` 把 `Scope` 与 `Resolver` 一起实现，`resolver()` 返回它自己——
+解析变量要读轨道，读轨道又需要当前时间，两者在这个实现里天然合一。
+
+`Scope` 上原来那个 `evaluate(expression)` 便捷方法回到了 `Expression`：
+求值需要解析器，解析器从 `scope.resolver()` 拿。
+
+**建环境有两个入口，按用途选**：
+
+- `ExpressionScope.of(animation, time, worldTime)` —— 返回具体类型，**要跨帧复用的地方用它**：
+  `CameraPlayer` 与 `EditorContext` 各持有一份，之后每帧调 `frame(...)`
+- `CurveSampler.scope(animation, time, worldTime)` —— 返回接口类型的**一次性**环境，
+  给"只求这一次"的调用方（曲线图、插键）。内部就是转调上面那个
+
+两个都留着是因为用途不同、且都不成环：`ExpressionScope.of` 已经是静态工厂，
+所以 `eval` 并没有"为了建环境而依赖 `track`"这回事；
+`CurveSampler` 那边多给一份，是因为它是**对外唯一入口**——调用方不必知道
+`ExpressionScope` 这个名字，也不必持有具体类型。
+
+> 一条要守住的边界：`ExpressionScope.of` 认 `CameraAnimationc`（建环境要看符号表与曲线表）。
+> 这是设计里承认的既有耦合——`CurveSampler.sample` 同样认它。
+> 只要 `eval` 不认识 `track` 包，`track → eval → track` 这种真环就不会出现。
+
+**作用域是跨帧复用的**：播放器与编辑器各持有一份，每帧调一次 `frame(time, progress, worldTime)`
+换到当前时刻（版本号 +1、清掉上一帧的缓存），不必每帧新建——原先每帧要分配六个集合。
+缓存因此**不能只按对象身份失效**：`CurveSample` 除了比曲线、键数、作用域对象，
+还要比一次版本号（只比身份会漏掉"同一对象换了一帧"，只比版本会漏掉"两个不同对象恰好版本相同"）。
+
+#### `CurveSampler` 的入口
+
+- `sample(curve, time, scope)`：按作用域取值，复用内部缓存。挂了公式的键按该时刻算
 - `sampleOnce(curve, time, scope)`：同上但不复用缓存，适合插键这类偶发取值
-- `sampleStatic(curve, time)`：只读固定数值，不解析公式
-- `sample(clip, time, evaluator, scope)`：一次取多条通道，交给 `Evaluator` 组装
+- `sampleStatic(curve, time)`：只读固定数值。**只用于"本来就没有求值环境"的场景**
+  （命令插键、读档），不是拿来断开变量与轨道之间回边的
+- `sample(animation, time, evaluator, scope)`：一次取多条通道，交给 `Evaluator` 组装
+- `scope(animation, time, worldTime)`：建一份求值环境
+- `clear()`：只在"作用域没换、却想让曲线重新解析"时才需要
 
 **播放、曲线图、插入关键帧、界面预览一律走 `CurveSampler`**，于是"画面上看到的"与"播放出来的"
 永远是同一条曲线——改造前曲线图走的是不带作用域的求值，画出来的其实是公式的回退值，与播放结果对不上。
 
+#### 变量读轨道：读的是这一帧的真值
+
+`ExpressionScope.track(id)` 按**当前作用域**求值（`CurveSample.at(curve, this)`），
+轨道上的公式照常参与，所以变量读到的数与"该轨道作为属性播放"完全一致——
+旧的"轨道一律静态求值"那条规则带来的取值口径歧义就此消失。
+
+三个实现细节：
+
+- **缓存在本类自己身上，不共用 `CurveSampler`**：公式求值可能撞上主采样器算到一半的那条曲线。
+  按 `(曲线, 帧版本)` 缓存，`frame()` 时清空
+- **递归终止靠写入期的无环保证**，不在每次求值时判环
+- **兜底**：万一有编辑路径绕过校验形成了环，`visiting` 栈与 `MAX_TRACK_DEPTH` 让求值退成 NaN
+  并记下环（`cycle()`），而不是栈溢出
+
+#### 依赖方向
+
+`eval` → `expression`、`eval` → `curve`、`eval` → `animation`（建环境要用 `CameraAnimationc`）。
+`curve` 不认识 `eval`——`KeyValues` 放在 `curve` 包里就是为了这个。
+
 缓存的两个约定：
 
 - **惰性**：一次求值只解析落在区间两端的那两个键，不整条曲线解析
-- **自动失效**：换曲线、键数变化、换作用域都会清空。作用域里带着时间，而播放器与编辑器每帧新建作用域，
-  缓存因此自然按帧失效，不必由调用方记着清（作用域被就地复用时才需要 `clear()`）
-
-依赖方向因此是单向的：`eval` → `curve`（采样器要用曲线），`curve` 不认识 `eval`——
-`KeyValues` 放在 `curve` 包里就是为了这个。
+- **自动失效**：换曲线、键数变化、换作用域、同一个作用域换帧（版本号变了）都会清空
 
 
 ---
@@ -351,7 +458,7 @@ public interface Scope {
 | `CmdCameraKeyMapping` | 快捷键：**F6** 打开编辑器、**F7** 播放/暂停、**F8** 停止、**F9** 打开路径编辑器（均限游戏内） |
 | `CameraCommand` | 客户端命令注册 |
 
-`CameraPlayer.evaluatePose` 的关键分支：每帧先构造一份 `ExpressionScope`（当前时间 + 动画变量），
+`CameraPlayer.evaluatePose` 的关键分支：每帧把持有的那份 `ExpressionScope` `frame(...)` 到当前时间，
 再用 `CurveSampler` 取值，挂了公式的关键帧由此按当前时刻算出来（路径是纯几何，不接求值环境）。
 采样器在播放器里是一个实例字段，同一帧内每条曲线的关键帧只解析一次。
 坐标模式下逐轴判断"有没有键"，有键才写该轴；路径模式下先 `distanceToLength` 再 `Path.evaluate`，并对非有限值做兜底。
@@ -362,26 +469,34 @@ public interface Scope {
 
 ### 4.1 `AnimationCodec`——JSON 编解码
 
+**本类只做容器**：顶层字段、轨道表、变量与函数表、路径表在这里；每个数据类自己怎么写 JSON
+由它自己负责（`JsonSerializable`，例如 `Keyframe.write()` / `Keyframe.read(JsonObject)`、
+`Variable.write()` / `Variable.read(JsonObject)`）。格式细节跟着数据走，读写写在一起。
+
 - 顶层字段：`name`、`motionMode`、`distanceMode`、`tracks`（轨道数组）、`variables`（变量数组）、
   `functions`（自定义函数数组）、`path`
 - 轨道数组按动画里的轨道顺序写出（拖拽排序会反映到文件里），两类轨道混排、用 `type` 区分：
   - 曲线轨道：`type` = `free_camera_api_tripod:curve`，字段为 `id`（相机属性名）、`preMode`、`postMode`、
     `keys`（每个键含时间、取值、两条曲柄的 `inSlope` / `outSlope` 与 `inLength` / `outLength`、`evaluateMode`）
   - 扩展轨道：`type` = 该类型 id，字段为 `id`（轨道标识）与 `keys`（键的字段由轨道自己定，见 `JsonTrack`）
-- **一个数值**有两种写法：固定值直接写成数字，公式写成 `{"expression": "…", "fallback": 1.0}`，
-  轨道读数写成 `{"track": "fov"}`。关键帧的取值与曲柄、变量的取值来源都用它，
-  于是文件里"这个数是不是动态的"一眼就能看出来，不必再去别处找公式表
-- **旧文件仍可读**：曲线键里的 `inTangent` / `outTangent` / `inWeight` / `outWeight` / `weightedMode`
-  是「切线 + 权重 + 加权模式」时代的写法，读档时按当时的线性系数换算成曲柄长度
-  （加权模式没覆盖的方向取基准长度 1），形状与当时一致；写出的一律是新字段
-- 变量数组：每项含 `name`（表达式里引用的名字）与 `source`（同一个数值写法）
+- **一个数值**有两种写法：固定值直接写成数字，公式写成 `{"expression": "…", "fallback": 1.0}`
+- **`{"track": "fov"}`（轨道读数）只有变量读得到**：关键帧字段上出现它属于历史遗留的非法通路，
+  类型上已经堵死（`TrackRef` 不是 `NumberSource`），格式上读到会按 `fallback` 降级成固定值
+  并用 `LogUtils` 记一条警告
+- 变量数组：每项含 `name` 与 `source`（数字 = 固定值 / 公式对象 / 轨道对象三选一）
 - 函数数组：每项含 `name`、`parameters`（参数名数组，可为空）与 `body`（函数体文本）
 - 读档按 `type` 分派：curve 走通道与曲线，其余查 `TrackTypeRegistry` 用工厂造实例再交回 `readKeys`；
   类型未注册、没有工厂、id 重复或不实现 `JsonTrack` 的条目跳过
 - 路径是**纯几何**：`name` + `nodes`，节点的 `position` / `inTangent` / `outTangent` 是三个数字的数组，不含公式
 - 反序列化一律宽松（字段缺失/类型错误/枚举名非法都回退默认值），只有整份 JSON 解析失败才返回 null
+- **读档最后会验一次求值图**：带环的文件整体拒绝（返回 null）并记一条带环上节点的警告。
+  环意味着求值会全程退回固定值，与其让用户面对一堆说不清的数字，不如当场拒绝
 - **`tracks` 是权威集合**：JSON 里没出现的通道会在读取后被移除，避免构造动画时的默认通道残留
 - 序列化只读数据：`animationToJson(CameraAnimationc)` / `pathToJson(Pathc)`
+
+> **历史包袱已清**：旧文件里曲线键的 `inTangent` / `outTangent` / `inWeight` / `outWeight` /
+> `weightedMode`（「切线 + 权重 + 加权模式」时代的写法）**不再兼容**，读到时按默认值处理。
+> 需要迁移这类旧文件的话，得用能读它们的旧版本打开再另存一次。
 
 ### 4.2 `AnimationFiles`——本地文件
 
@@ -429,8 +544,10 @@ public interface Scope {
 - 交互反馈：`notify(Component)` 状态行提示、`confirm(...)` 二次确认弹窗
   ——内置界面由屏幕统一绘制与派发；外部界面从 `EditorSession.pendingConfirm()` 取走自己画，
   确认时调 `confirmPending()`。为此 `ConfirmDialog` 的 `confirm()` 与 `message()` 是公开的
-- 表达式：`openExpressionEditor(label, expression, trackId, parameters, onConfirm)` / `expressionEditor()` / `evaluateExpression(expr)`
-  ——`parameters` 是编辑函数体时的参数栏（`ExpressionEditorWindow.Parameters`，普通公式编辑给 null）；
+- 表达式：`openExpressionEditor(label, expression, subject, parameters, onConfirm)` / `expressionEditor()` / `evaluateExpression(expr)`
+  ——`subject` 说明这条公式挂在谁身上（`ExpressionEditorWindow.Subject.Track` 给关键帧槽位、
+  `Subject.Variable` 给变量来源、编辑函数体时给 null），窗口靠它判环；
+  `parameters` 是编辑函数体时的参数栏（`ExpressionEditorWindow.Parameters`，普通公式编辑给 null）；
   表达式编辑窗口与二次确认一样是**模态**的，屏幕在最上层绘制并优先派发输入
 - 复合动作：`chooseAndBindPath` / `switchToPathMode` / `switchToCoordinateMode` / `recordPathNode` / `syncFreePoseFromCamera` 等
   ——"先选文件、再确认、才改数据"这类流程都收敛在这里，面板只调一个方法
@@ -450,10 +567,10 @@ public interface Scope {
 | `PathNodePanel` | `path_node` | 路径节点区：按模式显示入/出切线、自动平滑等 |
 | `PathNodeListPanel` | `path_node_list` | 节点列表：添加/删除节点、上移/下移排序 |
 | `PathNodeDetailPanel` | `path_node_detail` | 当前选中节点的详情与编辑 |
-| `KeyframePanel` | `keyframe` | 选中关键帧的属性、插值模式、贝塞尔对称设置；入/出斜率与入/出长度倍数只在贝塞尔（HERMITE）插值下出现（其余模式求值根本不读它们）；非曲线键显示时间与轨道自带的内容（如指令文本） |
+| `KeyframePanel` | `keyframe` | 选中关键帧的属性、插值模式、贝塞尔对称设置。五个可动态槽位**按 `KeyField` 循环生成**（时间单独一行，其余一行两个），所以"哪些槽位该显示"不必在这里再写一遍：标签、小数位、以及"只有贝塞尔才显示曲柄"的判据全挂在枚举上；非曲线键显示时间与轨道自带的内容（如指令文本） |
 | `GraphPanel` | `graph` | 曲线图：取值曲线与贝塞尔曲柄的绘制与拖拽。曲柄的屏幕位置就是它的两个数据，上下左右都能拖——横向写长度倍数、纵向写斜率，鼠标拖到哪、曲线就变到哪。曲柄只能在自己那一侧伸缩（出侧朝右、入侧朝左），拖过关键帧就卡在最短长度而不是翻到对面；横向最长到基准的 1.5 倍（再长曲线会随时间折返），最短留一点余量免得斜率爆掉。**动态关键帧**（有字段挂了公式）画成蓝点，它两侧的曲线段转成青蓝虚线；底部图例说明点与线各自的颜色。顶部只有轨道名与「适配」：适配时上下左右都留余量，且选中关键帧时范围收缩到它和左右相邻各一个 |
 | `TimelinePanel` | `timeline` | 时间轴：轨道行、折叠分组、播放头、键的拖拽与右键菜单（「插入轨道 ▸」里可选一条**通用曲线轨道**或某个扩展类型，通用曲线轨道可改名与删除；重命名、删除扩展轨道；名称列双击可改名） |
-| `VariablePanel` | `variables` | 变量表：最上面三行是内置变量（`t` 当前时间、`p` 播放进度、`wt` 世界时间）——只读，按「变量名 + 类型 + 当前取值」三列展示，与下面的用户变量同一套列宽；下面是新建/删除变量、改名、选取值来源（固定值 / 公式 / 某条曲线轨道），实时显示取值；成环、自嵌套、算不出来（NaN）时**公式原文与取值一起转红**（取值列显示感叹号）并给出说明。末尾只剩一条命名规则提示 |
+| `VariablePanel` | `variables` | 变量表：最上面三行是内置变量（`t` 当前时间、`p` 播放进度、`wt` 世界时间）——只读，按「变量名 + 类型 + 当前取值」三列展示，与下面的用户变量同一套列宽；下面是新建/删除变量、改名、选取值来源（固定值 / 公式 / 某条曲线轨道），实时显示取值；成环或算不出来（NaN）时**公式原文与取值一起转红**（取值列显示感叹号）并给出说明。绑轨道这条路不经过编辑窗口，所以判环在面板上自己做（`animation.evaluateGraph().allowsVariableSource`），会成环就拒绝并提示。末尾只剩一条命名规则提示 |
 | `FunctionPanel` | `functions` | 函数表：每行是「名字 + 预览」，名字可直接改，预览写成 `(a, b) -> a + b`；**参数与函数体都在表达式编辑窗口里改**——点这一行的预览打开窗口（窗口第二行右端是参数输入框）。预览在函数体编译不过时转红。名字要能写进公式，且不能与内置函数重名 |
 
 > 新增面板：继承 `EditorPanel`，实现 `layoutWidgets` 与 `renderContent`；
@@ -481,7 +598,7 @@ public interface Scope {
 | `LabelWidget` | 只读文本：一行文字 + 可选颜色 / `field` 底框 / `suffix` 行尾图标 / `background` 行底色（常态 + 悬停）/ `onClick` / 悬停提示。**面板与窗口里的只读内容一律摆它**——提示行、空态、只读取值、行首选中标记、列表行都用它，不要手绘 |
 | `TextFieldWidget` | 文本输入：点击进入编辑并按落点定光标、双击全选、右键清空、回车提交、Esc 取消，编辑中左右键移动光标、Home / End 跳首尾；编辑中不被外部刷新覆盖 |
 | `NumberFieldWidget` | 数值输入：拖拽/输入，用于坐标、FOV 等 |
-| `ExpressionFieldWidget` | 数值输入 + 模式切换按钮：默认数值模式，可切成动态模式挂公式；动态模式下数值框变成预览框（公式 + 当前取值），点击打开表达式编辑窗口。时间这类不允许动态的字段仍用 `NumberFieldWidget` |
+| `ExpressionFieldWidget` | 数值输入 + 模式切换按钮：默认数值模式，可切成动态模式挂公式；动态模式下数值框变成预览框（公式 + 当前取值），点击打开表达式编辑窗口。它读写的是 **`NumberSource`（两态）而不是 `ValueSource`**，所以"把轨道读数挂到关键帧字段上"在编译期就是错的。时间这类不允许动态的字段仍用 `NumberFieldWidget` |
 | `ContextMenu` | 自绘右键菜单：图标 + 文本、勾选项、分隔线、二级菜单（悬停展开且不会移开即消失） |
 | `ConfirmDialog` | 二次确认弹窗（覆盖确认、模式切换确认等） |
 | `BreadcrumbBar` | 路径面包屑：每段可点击跳转，段尾箭头展开**同级目录下拉**（可滚动、点空白收起），与资源管理器地址栏一致 |
@@ -490,12 +607,20 @@ public interface Scope {
 > 第二行「属性：xxx」说明在给哪个数值写公式；下面左栏是公式输入区，右栏上为变量表（带 `+` / `−`，点名字插进公式）、
 > 下为函数表（内置函数 + 自定义函数，点一下插入模板并把光标停进括号）。输入区上界与变量区顶部齐平、下界与函数表底部齐平，
 > 三块区域都在内容超出时显示滚动条。它不自绘到面板里，而是由屏幕在最上层绘制并优先派发输入。
-> 标题栏右侧的实时求值结果在自嵌套、成环、公式非法时转红并写出原因；其中**自嵌套会禁用「确定」**，
-> 其余只提示、不拦保存（求值失败时播放链本来就会回退到固定数值）。
+>
+> **公式只在点「确定」时编译与校验一次**，编辑过程中不做任何实时校验：
+> 「确定」始终可按，按下去才把问题一次说清。查三件事，按"用户最该先知道哪一件"排序：
+> 1. **函数本身能不能用**：参数名写不进公式、函数体为空或编译不过
+> 2. **语法**：公式编译不过
+> 3. **结构**：换上去会不会闭合一个环（交给 `EvaluationGraph` 试算，不改动任何数据）
+>
+> 被拒的原因挂在标题栏右侧的红字上，**内容一改就消失**（比对被拒时的那份文本，
+> 比在每个编辑动作里各清一次可靠——插入、退格、粘贴、剪切都改文本，但不必都记得这件事）。
+> 标题栏在没有报错时显示的是"当前文本按这一帧算出来的值"，那只是预览、不是校验：
+> 算不出来就照实显示「无法求值」。
 >
 > 编辑函数体时窗口会多出一条参数栏（第二行右端），**参数与函数体都在这里改**：
-> 预览把每个参数一律当 1（`a + b` 显示 2），便于当单位量试算；参数名写不进公式、函数体为空或编译不过时，
-> 标题栏报出原因并且**「确定」被按住**——存下去也用不了，不如当场拦住。
+> 预览把每个参数一律当 1（`a + b` 显示 2），便于当单位量试算；参数的合法性也在点「确定」时一并检查。
 >
 > 两个列表的行都是 `LabelWidget`：底板铺满整行、管选中 / 悬停底色与点击，文字层叠在上面（不接点击，事件穿透回底板），
 > 所以一行里能用多种文字颜色、可点区域又只有一处。行控件按条目数与滚动位置整批重建，
@@ -623,15 +748,24 @@ public interface Scope {
 - **动画实例是共享的**：读档只能 `CameraAnimation.copyFrom(...)` 原地更新，不能替换对象（播放器与面板都持有引用）
 - **主题是可变静态字段**：不要缓存 `Draw.XXX` 到 `static final`，切主题后不会更新
 - **键是可变共享对象**：`Curve.key(int)` 返回的是内部 `Keyframe`，直接改它等于改数据（这也是编辑生效的方式）
+- **写数值会清掉该槽位的公式**：`key.constant(field, v)` 总是换成新的 `Constant`。
+  要走"只改回退值、保留公式"就显式构造 `new Formula(f.expr(), v)`——
+  数值输入框与公式编辑窗口各自走对入口，否则用户会看到"改个数公式就没了"
 - **路径索引缓存**：改节点后必须让 `Path` 重建弧长表（用它的增删方法即可，不要绕过它们直接改内部表）
 - **只读场景用只读视图**：渲染、信息展示优先用 `Pathc` / `Curvec` / `CameraAnimationc`，避免误改数据
-- **取值一律走 `CurveSampler`**：它是求值的唯一入口。图省事用 `sampleStatic` 或自己 new 一个
-  `StaticKeys`，拿到的就是公式的**回退值**——画出来的曲线、插出来的键会和播放结果对不上，
-  而这种偏差只在使用了公式时才出现，很难发现
-- **作用域是跨帧复用的**：`ExpressionScope` 由播放器 / `EditorContext` 各持有一份，
-  每帧 `frame(...)` 切到当前时刻。缓存按 `Scope#version` 失效，所以复用是安全的；
+- **取值一律走 `CurveSampler`**：它是求值的唯一入口。图省事用 `sampleStatic`，拿到的就是公式的**回退值**——
+  画出来的曲线、插出来的键会和播放结果对不上，而这种偏差只在使用了公式时才出现，很难发现。
+  `sampleStatic` 只留给"本来就没有求值环境"的场景（命令插键、读档）
+- **作用域是跨帧复用的**：`CameraPlayer` 与 `EditorContext` 各持有一份，每帧 `frame(...)` 切到当前时刻。
+  缓存按 `Scope#version` 失效，所以复用是安全的；
   但**自己实现一个可变作用域时，`version()` 必须真的每帧变化**，否则缓存不会重算。
-  表达式编辑窗口是唯一例外：它暂停时时间不动、没法判断该不该切帧，所以每帧新建一份
+  表达式编辑窗口是唯一例外：它每次 `ExpressionScope.of(...)` 新建一份
+- **成环在写入期拦，不在求值期兜**：新增任何会改依赖图的编辑入口，都要过一遍 `EvaluationGraph`
+  （挂公式走编辑窗口的确定、绑轨道走变量面板的判环、读档走 `AnimationCodec` 的最后一道校验）。
+  漏掉一条，环就会绕过校验，然后表现为"整条链路莫名地全变成回退值"
+- **公式的编译与校验只在确认 / 保存时发生**：不要在编辑过程中加实时编译或实时判环——
+  那正是这次刻意去掉的（边打边报错会打断输入，而且判环要遍历整张图）。
+  要提示就等确认，或者用 `Scope#resolving()` 这类廉价钩子
 - **右键菜单的绘制顺序**：由屏幕在最后统一绘制，面板只持有；否则菜单会被其它面板盖住
 - **会话的编辑动作都作用于"当前选中的轨道"**：`addKey` / `moveKey` / `removeKey` 没有 track 参数，
   外部界面调它们之前得先 `selectTrack(...)`；否则返回 -1 或 false，看起来像"点了没反应"

@@ -41,12 +41,15 @@ final class CurveSample implements KeyValues {
     private float[] cache = new float[0];
     private int size;
 
-    /// 一次性构造：静态求值路径（[ExpressionScope#track]）与 [CurveSampler#sampleOnce] 用它
+    /// 一次性构造：公式求值内部的轨道读数（[ExpressionScope#track]）与 [CurveSampler#sampleOnce] 用它
     static CurveSample at(Curvec curve, @Nullable Scope scope) {
         return new CurveSample().reset(curve, scope);
     }
 
-    /// 静态读取器：作用域为 null，只读键上的固定数值
+    /// 静态读取器：作用域为 null，只读键上的固定数值。
+    ///
+    /// 只剩 [CurveSampler#sampleStatic] 在用——那是"本来就没有求值环境"的场景（命令插键、读档），
+    /// 不是拿来断开变量与轨道之间回边的（那条回边现在由 `EvaluationGraph` 在写入期保证不存在）
     static CurveSample staticOf(Curvec curve) {
         return at(curve, null);
     }

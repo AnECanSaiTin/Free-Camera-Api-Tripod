@@ -41,7 +41,7 @@ public class ExpressionFieldWidget extends EditorWidget {
     private final EditorContext context;
     private final Component label;
     private final Accessor accessor;
-    /// 这个字段所属的轨道 id；表达式窗口靠它判断自嵌套，不属于任何轨道时保持 null
+    /// 这个字段所属的轨道 id；表达式窗口靠它判环，不属于任何轨道时保持 null
     private @Nullable String trackId;
     /// 数值模式的输入框；动态模式下既不绘制也不接收事件
     private final NumberFieldWidget field;
