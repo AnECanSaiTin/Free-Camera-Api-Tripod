@@ -28,7 +28,7 @@ api/animation/
 ├── KeyField.java                                     五个可动态槽位的枚举（新）
 ├── CameraAnimation(.c)  Evaluator  EvaluateMode       顶层模型与插值模式
 │
-├── expression/               ⇢ 无依赖（纯 JDK 类型，连 MC 都不碰）
+├── expression/               ⇢ slf4j（只为一处日志，见下）
 │   ├── Expression.java          公式解析与求值（Formula / Resolver / 内置函数清单）
 │   ├── Scope.java               求值环境：这一帧的时间 + 名字解析 + 轨道读数
 │   ├── TrackLookup.java         按 id 取轨道读数（函数式接口）
@@ -67,7 +67,7 @@ api/animation/
 依赖方向一览（→ 表示"依赖"）：
 
 ```
-expression        （无依赖：纯 JDK 类型）
+expression        （只依赖 slf4j：解析非法通路时记一条日志）
     ↑
 animation         Keyframe / Keyframec / KeyField；⇢ expression
     ↑        ↑
@@ -81,10 +81,14 @@ animation         Keyframe / Keyframec / KeyField；⇢ expression
 一句话：**`expression` 在最底下；`curve` 只认 `animation` 的键、不认识来源；
 "来源在哪"这个知识只出现在 `curvesample` 一处；`eval` 仍是唯一入口。**
 
-（一条既有的耦合要说明白：`eval.CurveSampler` 认 `CameraAnimationc`，而 `track.CurveTrack`
+（两条既有的耦合要说明白。一是 `eval.CurveSampler` 认 `CameraAnimationc`，而 `track.CurveTrack`
 调 `CurveSampler` 插键——`track ↔ eval` 是互相依赖，现在就如此。只要 `eval` 不认识 `track`，
 这条就不成环；本次重构把 `ExpressionScope.of(animation, ...)` 换成
-`CurveSampler.scope(animation, ...)`，正是为了避免 `eval → track → eval` 那种真环。）
+`CurveSampler.scope(animation, ...)`，正是为了避免 `eval → track → eval` 那种真环。
+二是 `expression` 层**并非零依赖**：`SourceJson` 读到一个关键帧字段写着 `{"track": …}` 时
+要走 `LogUtils` 记一条警告，因此这一层依赖 slf4j。原设计把它定成"纯 JDK 类型，连 MC 都不碰"，
+是为了让解析与来源模型能脱离游戏单测；这条日志是唯一的例外，改成分层回调会更干净，
+但目前只有一处，不值得为它多接一次线。）
 
 ---
 

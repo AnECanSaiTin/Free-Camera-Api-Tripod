@@ -1,6 +1,5 @@
 package cn.anecansaitin.free_camera_api_tripod.api.animation.expression;
 
-import cn.anecansaitin.free_camera_api_tripod.api.animation.Keyframec;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
@@ -59,11 +58,6 @@ public final class SymbolTable implements SymbolTablec {
     @Override
     public boolean functionNameTaken(String name) {
         return Expression.isBuiltinFunction(name) || function(name) != null;
-    }
-
-    @Override
-    public @Nullable List<String> cycle() {
-        return VariableGraph.findCycle(variables);
     }
 
     // endregion
@@ -198,8 +192,8 @@ public final class SymbolTable implements SymbolTablec {
     /// 漏了这一步的话，变量绑定的名字在轨道表里已经不存在，取值恒为 NaN
     public void rebindTrack(String oldId, String newId) {
         for (Variable variable : variables) {
-            if (variable.source() instanceof TrackValue value && value.trackId().equals(oldId)) {
-                variable.source(new TrackValue(newId));
+            if (variable.source() instanceof TrackRef ref && ref.trackId().equals(oldId)) {
+                variable.source(new TrackRef(newId));
             }
         }
     }
@@ -209,7 +203,7 @@ public final class SymbolTable implements SymbolTablec {
     public void unbindTrack(String trackId) {
         for (Variable variable : variables) {
             if (trackId.equals(variable.trackId())) {
-                variable.source(new ConstantValue(0));
+                variable.source(new Constant(0));
             }
         }
     }
@@ -237,24 +231,11 @@ public final class SymbolTable implements SymbolTablec {
 
     // endregion
 
-    // region 静态扫描
-
-    /// 关键帧上任一挂了公式的数值是否引用了该名字；五个数值（取值与两片曲柄的长度、斜率）都算。
+    /// 数值来源是否以公式的形式引用了该名字；固定值与轨道读数没有公式，永远返回 false。
     ///
-    /// 放在这里是因为"某个键上的公式提到某个名字"正是引用完整性的另一半：变量自增时被引用，
-    /// 由 `CameraAnimation#selfReferencing` 判定
-    public static boolean references(Keyframec key, String name) {
-        return references(key.valueSource(), name)
-                || references(key.inSlopeSource(), name)
-                || references(key.outSlopeSource(), name)
-                || references(key.inLengthSource(), name)
-                || references(key.outLengthSource(), name);
+    /// 依赖分析与判环走 [`eval.EvaluationGraph`][cn.anecansaitin.free_camera_api_tripod.api.animation.eval.EvaluationGraph]，
+    /// 那里按**整张图**（变量 + 轨道）判；这里只回答"这一段公式提没提到这个名字"这一件小事
+    public static boolean references(@Nullable ValueSource source, String name) {
+        return source instanceof Formula formula && Expression.references(formula.expression(), name);
     }
-
-    /// 数值来源是否以公式的形式引用了该名字；固定值与轨道读数没有公式，永远返回 false
-    public static boolean references(ValueSource source, String name) {
-        return source instanceof FormulaValue formula && Expression.references(formula.expression(), name);
-    }
-
-    // endregion
 }

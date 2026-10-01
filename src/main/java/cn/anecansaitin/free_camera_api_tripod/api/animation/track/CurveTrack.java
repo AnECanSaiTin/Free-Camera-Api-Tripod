@@ -3,7 +3,7 @@ package cn.anecansaitin.free_camera_api_tripod.api.animation.track;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.Keyframe;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Curve;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.CurveSampler;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.Scope;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Scope;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import org.jspecify.annotations.NullMarked;

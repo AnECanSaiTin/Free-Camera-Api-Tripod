@@ -2,9 +2,10 @@ package cn.anecansaitin.free_camera_api_tripod.core.editor;
 
 import cn.anecansaitin.free_camera_api_tripod.EditorConfig;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.EvaluateMode;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.KeyField;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.Keyframe;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.TrackKey;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ValueSource;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.NumberSource;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.AnimationTrack;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.CameraAnimation;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.CurveTrack;
@@ -609,7 +610,9 @@ public class CameraEditorScreen extends Screen {
     }
 
     /// 复制：把当前选中的关键帧连同其轨道 id 与全部数值来源放进剪贴板。
-    /// 值源要拷副本，否则之后改原键的公式会连带改到剪贴板里的内容
+    ///
+    /// 来源是不可变 record，所以 [#sources()] 给的那份快照**本身就是拷贝**，
+    /// 之后改原键的公式不会连带改到剪贴板里的内容
     private void copySelectedKey() {
         TrackKey selected = context.editor().selectedKey();
         AnimationTrack track = context.editor().selectedTrack();
@@ -619,10 +622,7 @@ public class CameraEditorScreen extends Screen {
             return;
         }
 
-        clipboard = new KeyClip(track.id(), keyframe.time(),
-                keyframe.valueSource(), keyframe.inSlopeSource(), keyframe.outSlopeSource(),
-                keyframe.inLengthSource(), keyframe.outLengthSource(),
-                keyframe.evaluateMode());
+        clipboard = new KeyClip(track.id(), keyframe.time(), keyframe.sources(), keyframe.evaluateMode());
         context.notify(EditorLang.t("notify.key_copied"));
     }
 
@@ -639,13 +639,8 @@ public class CameraEditorScreen extends Screen {
         // 优先粘到当前选中的曲线轨道；没有选中轨道就回到复制时的轨道，轨道已不存在时按 id 重新建出来
         CurveTrack target = selected instanceof CurveTrack curveTrack ? curveTrack : resolveClipTrack(clip.trackId());
         float time = context.snapTime(context.player().time());
-        Keyframe key = Keyframe.create(time, 0)
-                .evaluateMode(clip.evaluateMode());
-        key.valueSource(clip.value().copy());
-        key.inSlopeSource(clip.inSlope().copy());
-        key.outSlopeSource(clip.outSlope().copy());
-        key.inLengthSource(clip.inLength().copy());
-        key.outLengthSource(clip.outLength().copy());
+        Keyframe key = Keyframe.create(time, 0).evaluateMode(clip.evaluateMode());
+        clip.sources().forEach(key::source);
         int index = target.curve().key(key);
 
         if (index < 0) {
@@ -671,9 +666,9 @@ public class CameraEditorScreen extends Screen {
         return track != null ? track : context.animation().addChannel(trackId);
     }
 
-    /// 复制出的关键帧内容：来源轨道 id、时间、五个数值来源与插值模式
-    private record KeyClip(String trackId, float time, ValueSource value, ValueSource inSlope, ValueSource outSlope,
-                           ValueSource inLength, ValueSource outLength, EvaluateMode evaluateMode) {
+    /// 复制出的关键帧内容：来源轨道 id、时间、五个槽位的来源快照与插值模式。
+    /// 来源不可变，所以这份快照可以长期留着，不必再复制一次
+    private record KeyClip(String trackId, float time, Map<KeyField, NumberSource> sources, EvaluateMode evaluateMode) {
     }
 
     // endregion

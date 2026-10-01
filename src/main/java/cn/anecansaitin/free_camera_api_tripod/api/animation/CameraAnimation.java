@@ -1,7 +1,7 @@
 package cn.anecansaitin.free_camera_api_tripod.api.animation;
 
 import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Curve;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.ExpressionScope;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.EvaluationGraph;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.SymbolTable;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Variable;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.path.Path;
@@ -279,27 +279,19 @@ public class CameraAnimation implements CameraAnimationc {
         return symbols;
     }
 
-    /// 变量是否被它自己绑定的轨道引用，也就是自嵌套：该轨道上有关键帧挂了引用这个变量的公式。
+    /// 当前的求值依赖图：谁依赖谁、有没有环。**环的权威判定就在这一处。**
     ///
-    /// 这种写法不会成环也不会无限递归——变量读轨道时走的是静态曲线，公式在这一步被忽略，
-    /// 用的是键上的固定数值（见 {@link ExpressionScope}）。但同一个键
-    /// "作为相机属性播放"与"作为变量被引用"会得出不同的值，界面据此给出提示。
+    /// 放在动画上而不是符号表上，是因为环可以跨过轨道边界（变量绑轨道、轨道上的公式又引用该变量），
+    /// 而只有动画同时看得见符号表与轨道表。每次按需现算，图很小
+    public EvaluationGraph evaluationGraph() {
+        return EvaluationGraph.of(this);
+    }
+
+    /// 环上的节点名（变量名与轨道 id 混在一起）；没有环返回 null。
     ///
-    /// 静态扫描在 {@link SymbolTable#references} 里，这里负责把它按到绑定的那条曲线的每个键上
-    public boolean selfReferencing(Variable variable) {
-        if (!(tracks.get(variable.trackId()) instanceof CurveTrack track)) {
-            return false;
-        }
-
-        Curve curve = track.curve();
-
-        for (int i = 0; i < curve.size(); i++) {
-            if (SymbolTable.references(curve.key(i), variable.name())) {
-                return true;
-            }
-        }
-
-        return false;
+    /// 取代了旧的 `SymbolTable#cycle()`：那个只看变量之间，看不见跨轨道的那条闭合路径
+    public @Nullable List<String> cycle() {
+        return evaluationGraph().cycle();
     }
 
     // endregion

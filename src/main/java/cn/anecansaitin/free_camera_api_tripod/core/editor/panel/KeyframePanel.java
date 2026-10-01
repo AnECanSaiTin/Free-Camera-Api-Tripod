@@ -1,9 +1,11 @@
 package cn.anecansaitin.free_camera_api_tripod.core.editor.panel;
 
 import cn.anecansaitin.free_camera_api_tripod.api.animation.EvaluateMode;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.KeyField;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.KeyFields;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.Keyframe;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.TrackKey;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ValueSource;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.NumberSource;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.AnimationTrack;
 import cn.anecansaitin.free_camera_api_tripod.core.animation.track.CommandTrack;
 import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.edit.CameraEditorModel;
@@ -24,9 +26,12 @@ import org.jspecify.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
-import java.util.function.Supplier;
 
 /// 关键帧面板：展示并编辑当前选中关键帧的属性，包含插值模式与贝塞尔控制点的对称设置。
+///
+/// 五个可动态槽位**按 [KeyField] 循环生成**（见 [KeyFields#activeIn(EvaluateMode)]），
+/// 所以"哪些槽位该显示、哪些参与求值"这件事不必在这里再写一遍：
+/// 标签、小数位、以及"只有贝塞尔才显示曲柄"的判据全都挂在枚举上。
 public class KeyframePanel extends EditorPanel {
     public static final String ID = "keyframe";
 
@@ -39,6 +44,8 @@ public class KeyframePanel extends EditorPanel {
     private static final int HALF_LABEL_WIDTH = 34;
     private static final int SCROLLBAR_WIDTH = 3;
     private static final int SCROLLBAR_MARGIN = 4;
+    /// 一行放两个槽位
+    private static final int PER_ROW = 2;
     /// 指令文本的输入上限：原版命令最长也就百来字符，留出余量
     private static final int COMMAND_MAX_LENGTH = 256;
 
@@ -122,29 +129,34 @@ public class KeyframePanel extends EditorPanel {
 
         y = section(x, y, EditorLang.t("inspector.section.keyframe"));
         y = textRow(x, y, EditorLang.t("inspector.key.track"), track.label());
+
         // 数值类属性一行放两个，面板的垂直占位几乎减半。
         // 时间是唯一不允许变成动态的字段：动态公式要按时间求值，时间本身再挂公式只会绕回自己
         int halfWidth = Math.max(30, (contentRight - x - PAIR_GAP) / 2);
         y = pairRow(x, y, halfWidth,
-                new FieldSpec(EditorLang.t("inspector.key.time"), key.time(), 3,
-                        value -> key.time(context.snapTime(value)), key::time, null),
-                new FieldSpec(EditorLang.t("inspector.key.value"), key.value(), 3, key::value, key::value,
-                        keySource(key::valueSource, key::valueSource)));
+                numberField(EditorLang.t("inspector.key.time"), key.time(), 3,
+                        value -> key.time(context.snapTime(value)), key::time),
+                expressionField(key, KeyField.VALUE));
+
+        // 曲柄槽位只服务于贝塞尔（HERMITE）插值：其余模式下求值根本不读这些数，
+        // 摆着只会让人以为改了有用，所以整组一起跟着插值模式出现或消失。
+        // "哪些槽位属于该模式"只有 KeyField 一处定义
+        List<KeyField> active = new ArrayList<>(KeyFields.activeIn(key.evaluateMode()));
+        active.remove(KeyField.VALUE);
+
+        for (int i = 0; i < active.size(); i += PER_ROW) {
+            FieldSpec left = expressionField(key, active.get(i));
+
+            if (i + 1 < active.size()) {
+                y = pairRow(x, y, halfWidth, left, expressionField(key, active.get(i + 1)));
+            } else {
+                y = singleRow(x, y, fieldWidth, left);
+            }
+        }
+
         y = modeRow(x, y, fieldWidth, EditorLang.t("inspector.key.evaluate"), EvaluateMode.values(), key.evaluateMode(), key::evaluateMode);
 
-        // 两条曲柄与控制点对称都只服务于贝塞尔（HERMITE）插值：其余模式下求值根本不读这些数，
-        // 摆着只会让人以为改了有用，所以整组一起跟着插值模式出现或消失
         if (key.evaluateMode() == EvaluateMode.HERMITE) {
-            y = pairRow(x, y, halfWidth,
-                    new FieldSpec(EditorLang.t("inspector.key.in_slope"), key.inSlope(), 3, key::inSlope, key::inSlope,
-                            keySource(key::inSlopeSource, key::inSlopeSource)),
-                    new FieldSpec(EditorLang.t("inspector.key.out_slope"), key.outSlope(), 3, key::outSlope, key::outSlope,
-                            keySource(key::outSlopeSource, key::outSlopeSource)));
-            y = pairRow(x, y, halfWidth,
-                    new FieldSpec(EditorLang.t("inspector.key.in_length"), key.inLength(), 3, key::inLength, key::inLength,
-                            keySource(key::inLengthSource, key::inLengthSource)),
-                    new FieldSpec(EditorLang.t("inspector.key.out_length"), key.outLength(), 3, key::outLength, key::outLength,
-                            keySource(key::outLengthSource, key::outLengthSource)));
             y = symmetricRow(x, y, fieldWidth);
         }
 
@@ -222,14 +234,20 @@ public class KeyframePanel extends EditorPanel {
         return y + ROW_HEIGHT;
     }
 
-    /// 一个数值字段。带值源入口的用 {@link ExpressionFieldWidget}（右侧带模式切换按钮），
+    /// 一行一个数值字段：占满整行
+    private int singleRow(int x, int y, int width, FieldSpec spec) {
+        fieldCell(x, y, width, spec);
+        return y + ROW_HEIGHT;
+    }
+
+    /// 一个数值字段：带槽位的用 {@link ExpressionFieldWidget}（右侧带模式切换按钮），
     /// 没有的（时间是唯一一个）就是普通的数值输入框
     private void fieldCell(int x, int y, int width, FieldSpec spec) {
         int labelWidth = Math.clamp(width / 2, 12, HALF_LABEL_WIDTH);
         widgets.add(new LabelWidget(new UiRect(x, y, Math.max(8, labelWidth - 2), FIELD_HEIGHT), spec.label()).color(Draw.TEXT_DIM));
         UiRect rect = new UiRect(x + labelWidth, y + 1, Math.max(1, width - labelWidth), FIELD_HEIGHT);
 
-        if (spec.dynamic() == null) {
+        if (spec.field() == null) {
             NumberFieldWidget field = new NumberFieldWidget(rect, spec.value(), spec.setter());
             field.decimals(spec.decimals());
             widgets.add(field);
@@ -237,35 +255,51 @@ public class KeyframePanel extends EditorPanel {
             return;
         }
 
-        ExpressionFieldWidget field = new ExpressionFieldWidget(context, rect, spec.label(), spec.dynamic()).track(inspectedTrack);
+        ExpressionFieldWidget field = new ExpressionFieldWidget(context, rect, spec.label(), new KeyframeAccessor(spec.key(), spec.field()))
+                .track(inspectedTrack);
         field.decimals(spec.decimals());
         widgets.add(field);
         refreshers.add(field::refresh);
     }
 
-    /// 一条数值字段的读写入口：值源本身（固定值 / 公式都在里面）
-    private static ExpressionFieldWidget.Accessor keySource(Supplier<ValueSource> getter, Consumer<ValueSource> setter) {
-        return new ExpressionFieldWidget.Accessor() {
-            @Override
-            public ValueSource source() {
-                return getter.get();
-            }
-
-            @Override
-            public void source(ValueSource source) {
-                setter.accept(source);
-            }
-        };
-    }
-
-    /// 一行里左半边或右半边的一个数值字段；{@code dynamic} 为 null 表示该字段不允许变成动态
+    /// 数值字段描述：标签、当帧显示的数值、小数位与读写入口。
+    /// 槽位为 null 表示这个字段不允许变成动态（时间是唯一一个），用普通的数值输入框。
+    ///
+    /// 之所以不是两个 record：两种字段在 [fieldCell] 里只差最后一段，用同一条描述更好读
     private record FieldSpec(Component label, float value, int decimals,
                              NumberFieldWidget.FloatSetter setter, FloatGetter getter,
-                             ExpressionFieldWidget.Accessor dynamic) {
+                             @Nullable Keyframe key, @Nullable KeyField field) {
+    }
+
+    /// 不可动态的数值字段
+    private static FieldSpec numberField(Component label, float value, int decimals,
+                                         NumberFieldWidget.FloatSetter setter, FloatGetter getter) {
+        return new FieldSpec(label, value, decimals, setter, getter, null, null);
+    }
+
+    /// 可挂公式的槽位：标签、小数位与"公式的回退值"都从 [KeyField] 与 [Keyframe] 上取，
+    /// 所以这里不必再逐个字段写一遍
+    private static FieldSpec expressionField(Keyframe key, KeyField field) {
+        return new FieldSpec(EditorLang.t(field.labelKey()), key.constant(field), field.decimals(),
+                value -> key.constant(field, value), () -> key.constant(field), key, field);
+    }
+
+    /// 值源读写入口：**两个方法体各一行，且不认识具体是哪个槽位**。
+    /// 签名收成 [NumberSource]（两态），轨道读数在编译期就进不来
+    private record KeyframeAccessor(Keyframe key, KeyField field) implements ExpressionFieldWidget.Accessor {
+        @Override
+        public NumberSource source() {
+            return key.source(field);
+        }
+
+        @Override
+        public void source(NumberSource source) {
+            key.source(field, source);
+        }
     }
 
     /// 枚举二选一 / 多选一：最后一格吃掉取整余量，右边界与其它行严格对齐
-    private <T extends Enum<T>> int modeRow(int x, int y, int width, Component label, T[] values, T current, java.util.function.Consumer<T> setter) {
+    private <T extends Enum<T>> int modeRow(int x, int y, int width, Component label, T[] values, T current, Consumer<T> setter) {
         widgets.add(new LabelWidget(new UiRect(x, y, Math.max(8, contentRight - x), FIELD_HEIGHT), label).color(Draw.TEXT_DIM));
         int cell = Math.max(1, (width - (values.length - 1) * 2) / values.length);
 

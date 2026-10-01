@@ -103,6 +103,7 @@
   "free_camera_api_tripod.editor.expression.preview.result": "= %s",
   "free_camera_api_tripod.editor.expression.preview.empty": "The value at the playhead shows up here",
   "free_camera_api_tripod.editor.expression.invalid": "cannot be evaluated",
+  "free_camera_api_tripod.editor.expression.invalid_hint": "This formula does not compile, check brackets and function names",
 
   "free_camera_api_tripod.editor.variables.add": "New Variable",
   "free_camera_api_tripod.editor.variables.remove": "Delete Selected",
@@ -111,6 +112,7 @@
   "free_camera_api_tripod.editor.variables.bind_track": "Bind Track",
   "free_camera_api_tripod.editor.variables.track_missing": "Track is gone",
   "free_camera_api_tripod.editor.variables.cycle": "Circular reference: %s",
+  "free_camera_api_tripod.editor.variables.cycle_blocked": "This would create a circular reference: %s. Break one of them first, or replace its formula with a fixed value",
   "free_camera_api_tripod.editor.variables.empty": "No variables yet",
   "free_camera_api_tripod.editor.variables.builtin_time": "Current Time",
   "free_camera_api_tripod.editor.variables.builtin_progress": "Play Progress",

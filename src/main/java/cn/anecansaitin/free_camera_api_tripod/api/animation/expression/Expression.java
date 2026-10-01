@@ -22,6 +22,10 @@ import java.util.concurrent.ConcurrentHashMap;
 /// 公式先**编译**成 [Formula]（一棵由闭包拼起来的语法树）再缓存，同一段文本只解析一次；
 /// 求值失败（语法错误、未知变量、参数个数不对）一律返回 [Float#NaN]，由调用方回退到固定数值。
 /// 未知变量不抛异常而是让 NaN 顺着算术传播，这样 `min(V, 3)` 这种写法也能按预期失败。
+///
+/// 编译缓存是**全局**的、按公式文本驻留：`Formula`（数值来源里的那个 record）因此不必自己带着
+/// 语法树走，序列化与拷贝都不会捎上编译产物，"同一段文本只解析一次"也从"每个字段各存一份"
+/// 变成了"整个进程一份"
 public final class Expression {
     /// 编译结果缓存上限；超出后整体清空——公式总量很小，没必要做精细淘汰
     private static final int CACHE_LIMIT = 512;
@@ -63,17 +67,6 @@ public final class Expression {
     @FunctionalInterface
     public interface Formula {
         float evaluate(Resolver resolver);
-    }
-
-    /// 变量取值入口；未知变量返回 NaN
-    @FunctionalInterface
-    public interface Resolver {
-        float resolve(String name);
-
-        /// 自定义函数查询；没有重写时一律当作"不存在"。函数名不在内置清单里时调用时查这里
-        default @Nullable CustomFunction function(String name) {
-            return null;
-        }
     }
 
     // region 编译与求值

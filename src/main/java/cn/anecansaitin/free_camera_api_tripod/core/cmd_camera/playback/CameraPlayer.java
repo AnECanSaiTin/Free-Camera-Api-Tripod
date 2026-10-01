@@ -5,7 +5,7 @@ import cn.anecansaitin.free_camera_api_tripod.api.animation.CameraAnimation;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Curve;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.CurveSampler;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.ExpressionScope;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.Scope;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Scope;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.path.Path;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.AnimationTrack;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.TickTrack;

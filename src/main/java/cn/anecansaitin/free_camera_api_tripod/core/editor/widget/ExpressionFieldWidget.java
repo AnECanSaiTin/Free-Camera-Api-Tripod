@@ -1,10 +1,11 @@
 package cn.anecansaitin.free_camera_api_tripod.core.editor.widget;
 
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ConstantValue;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.FormulaValue;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ValueSource;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Constant;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Formula;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.NumberSource;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.EditorContext;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.EditorLang;
+import cn.anecansaitin.free_camera_api_tripod.core.editor.ExpressionEditorWindow;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.layout.UiRect;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.theme.Draw;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.theme.Icons;
@@ -15,24 +16,26 @@ import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import org.jspecify.annotations.Nullable;
 
-import java.util.List;
-
 /// 数值输入框 + 模式切换按钮：默认数值模式（编辑固定值），可切到动态模式挂一条公式。
 ///
 /// 动态模式下数值框退化为**预览框**：左边是公式文本，右边是它按当前时刻算出的值；
 /// 点击预览框即打开表达式编辑窗口。公式非法（或引用了取不到值的变量）时数值转成红色感叹号，
-/// 求值失败本身不影响播放——求值链会退回值源里带的固定数值。
+/// 求值失败本身不影响播放——求值链会退回来源里带的固定数值。
+///
+/// 读写的是 [NumberSource]（**两态**：固定值或公式），**不是 [cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ValueSource]**：
+/// 轨道读数只有变量用得上，签名收窄之后"把轨道读数挂到关键帧字段上"在编译期就是错的。
+/// 全仓只有 `KeyframePanel` 用它；变量面板与表达式编辑窗口自己处理变量的三态来源。
 ///
 /// 时间这类不允许变成动态的字段直接用 [NumberFieldWidget]，不经这里。
 public class ExpressionFieldWidget extends EditorWidget {
     /// 右侧模式切换按钮的宽度
     private static final int MODE_BUTTON_WIDTH = 12;
 
-    /// 字段的读写入口：直接拿值源，固定值还是公式都在里面
+    /// 字段的读写入口：直接拿数值来源，固定值还是公式都在里面
     public interface Accessor {
-        ValueSource source();
+        NumberSource source();
 
-        void source(ValueSource source);
+        void source(NumberSource source);
     }
 
     private final EditorContext context;
@@ -51,7 +54,7 @@ public class ExpressionFieldWidget extends EditorWidget {
         this.label = label;
         this.accessor = accessor;
         this.field = new NumberFieldWidget(fieldRect(), constantOf(accessor.source()), this::writeConstant);
-        this.dynamic = accessor.source() instanceof FormulaValue;
+        this.dynamic = accessor.source().isFormula();
     }
 
     public ExpressionFieldWidget decimals(int decimals) {
@@ -68,7 +71,7 @@ public class ExpressionFieldWidget extends EditorWidget {
 
     /// 每帧同步一次：外部改了固定数值、或者读档换掉了公式，都要跟着变
     public void refresh() {
-        boolean current = accessor.source() instanceof FormulaValue;
+        boolean current = accessor.source().isFormula();
 
         if (current != dynamic) {
             // 切走时把正在编辑的输入框提交掉，免得留在编辑态
@@ -84,15 +87,16 @@ public class ExpressionFieldWidget extends EditorWidget {
         }
     }
 
-    /// 值源携带的固定数值；不是有限值时按 0 显示，免得输入框里出现 NaN
-    private static float constantOf(ValueSource source) {
+    /// 来源携带的固定数值；不是有限值时按 0 显示，免得输入框里出现 NaN
+    private static float constantOf(NumberSource source) {
         float value = source.constant();
         return Float.isFinite(value) ? value : 0f;
     }
 
-    /// 写固定数值：值源内部只换掉那个数，公式保留
+    /// 写固定数值。**会清掉这个槽位原有的公式**——数值模式本来就没有公式，所以这是对的；
+    /// 想保留公式只改回退值，走公式编辑窗口（它会用 `Formula(expression, fallback)` 换一个来源）
     private void writeConstant(float value) {
-        accessor.source(accessor.source().withConstant(value));
+        accessor.source(new Constant(value));
     }
 
     /// 输入框占左边，右侧留给模式切换按钮
@@ -130,8 +134,8 @@ public class ExpressionFieldWidget extends EditorWidget {
     /// 预览框：公式文本 + 当前取值
     private void renderPreview(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
         UiRect area = fieldRect();
-        ValueSource source = accessor.source();
-        String expression = source instanceof FormulaValue formula ? formula.expression() : "";
+        NumberSource source = accessor.source();
+        String expression = source instanceof Formula formula ? formula.expression() : "";
         // 求解器算不出来时返回 NaN，正好当作"公式有问题"的信号
         float evaluated = source.evaluate(context.scope());
         boolean valid = !Float.isNaN(evaluated);
@@ -202,38 +206,36 @@ public class ExpressionFieldWidget extends EditorWidget {
     /// 想改公式再点预览框打开编辑窗口——切换本身不弹窗口，免得只想看看就切一下的人被打断；
     /// 切回数值模式会把公式丢掉、只留下它的固定数值——"数值模式"的含义就是用这个数，
     /// 公式要是还在，下次求值又会盖过它。
+    /// 这就是设计里那条"写数值会清掉公式"的显式选择点：**数值入口换来源，公式入口保留**
     private void toggleMode() {
-        ValueSource source = accessor.source();
+        NumberSource source = accessor.source();
 
-        if (source instanceof FormulaValue formula) {
-            accessor.source(new ConstantValue(constantOf(formula)));
+        if (source instanceof Formula formula) {
+            accessor.source(new Constant(constantOf(formula)));
             dynamic = false;
             field.value(constantOf(accessor.source()));
             return;
         }
 
         float value = constantOf(source);
-        accessor.source(new FormulaValue(Draw.num(value, decimals), value));
+        accessor.source(new Formula(Draw.num(value, decimals), value));
         dynamic = true;
         field.focused(false);
     }
 
     private void openEditor() {
-        ValueSource source = accessor.source();
-        String expression = source instanceof FormulaValue formula ? formula.expression() : "";
-        context.openExpressionEditor(label, expression, trackId, null, this::applyExpression);
+        NumberSource source = accessor.source();
+        String expression = source instanceof Formula formula ? formula.expression() : "";
+        // 槽位的公式挂在轨道上，判环要按轨道问；不属于任何轨道时（trackId 为 null）不判
+        context.openExpressionEditor(label, expression,
+                trackId == null ? null : new ExpressionEditorWindow.Subject.Track(trackId),
+                null, this::applyExpression);
     }
 
     /// 编辑窗口确认后写回：留空表示不挂公式，退回固定数值
     private void applyExpression(String expression) {
-        ValueSource source = accessor.source();
-        float fallback = constantOf(source);
+        float fallback = constantOf(accessor.source());
 
-        if (expression.isBlank()) {
-            accessor.source(new ConstantValue(fallback));
-            return;
-        }
-
-        accessor.source(new FormulaValue(expression, fallback));
+        accessor.source(expression.isBlank() ? new Constant(fallback) : new Formula(expression, fallback));
     }
 }

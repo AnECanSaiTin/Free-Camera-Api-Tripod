@@ -2,7 +2,7 @@ package cn.anecansaitin.free_camera_api_tripod.api.animation.track;
 
 import cn.anecansaitin.free_camera_api_tripod.api.animation.TrackKey;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.CameraAnimation;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.Scope;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Scope;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import org.jspecify.annotations.Nullable;

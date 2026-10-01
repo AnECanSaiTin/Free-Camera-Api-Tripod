@@ -11,7 +11,7 @@ import org.jspecify.annotations.NullMarked;
 public interface Curvec {
     /// 该时刻的曲线取值；曲线为空时返回 0。
     ///
-    /// 数值一律从 [values] 读：挂了公式的键按公式取值，还是只读固定数值，由读取器决定。
+    /// 数值一律从 [KeyValues] 读：挂了公式的键按公式取值，还是只读固定数值，由读取器决定。
     /// 一次性求值用 `eval.CurveSampler`，它负责把解析与插值接起来
     float evaluate(float time, KeyValues values);
 

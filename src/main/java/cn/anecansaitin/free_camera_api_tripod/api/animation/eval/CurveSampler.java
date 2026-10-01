@@ -2,9 +2,9 @@ package cn.anecansaitin.free_camera_api_tripod.api.animation.eval;
 
 import cn.anecansaitin.free_camera_api_tripod.api.animation.CameraAnimationc;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.Evaluator;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Curvec;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Curve;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.StaticKeys;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Curvec;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Scope;
 import org.jspecify.annotations.NullMarked;
 
 /// 曲线采样：**求值的唯一入口**。把「按 [Scope] 解析关键帧」与「曲线本身的纯数值插值」接起来。
@@ -17,25 +17,35 @@ import org.jspecify.annotations.NullMarked;
 /// 所以作用域跨帧复用时也不必手动清。
 @NullMarked
 public final class CurveSampler {
-    private final ResolvedKeys keys = new ResolvedKeys();
+    private final CurveSample sample = new CurveSample();
+
+    /// 从动画建一份求值环境。
+    ///
+    /// 放在这里而不是 `ExpressionScope` 上，是为了让 `eval` 不必认识 `track` 包：
+    /// 反过来 `track.CurveTrack` 要调 [#sampleOnce] 插键，那是 `track → eval` 的单向依赖
+    public static Scope scope(CameraAnimationc animation, float time, float worldTime) {
+        return ExpressionScope.of(animation, time, worldTime);
+    }
 
     /// 按 [Scope] 采样：挂了公式的键按该时刻的公式值参与插值
     public float sample(Curvec curve, float time, Scope scope) {
-        return curve.evaluate(time, keys.reset(curve, scope));
+        return curve.evaluate(time, sample.reset(curve, scope));
     }
 
     /// 一次性采样：不复用缓存，适合插入关键帧、读档这类偶发取值。
-    /// 连续采样（画整条曲线、一帧内多个通道）请用实例方法 [#sample(Curvec, float, Scope)sample]
+    /// 连续采样（画整条曲线、一帧内多个通道）请用实例方法 [#sample(Curvec, float, Scope)]
     public static float sampleOnce(Curvec curve, float time, Scope scope) {
-        return curve.evaluate(time, new ResolvedKeys().reset(curve, scope));
+        return curve.evaluate(time, CurveSample.at(curve, scope));
     }
 
     /// 静态采样：只读键上的固定数值（挂了公式的键取它的回退值），不解析公式。
     ///
-    /// 变量读轨道走的就是这一条路径（见 [ExpressionScope#track]），
+    /// 走的就是"作用域为 null"这一条路径——`Formula.evaluate(null)` 返回 NaN，
+    /// `evaluateOrFallback` 接住并给出回退值，**和挂着公式但作用域缺失时是同一条路径**。
+    /// 变量读轨道也走这一条（见 [ExpressionScope#track]），
     /// 所以"变量指向的轨道又引用该变量"不会无限递归
     public static float sampleStatic(Curvec curve, float time) {
-        return curve.evaluate(time, new StaticKeys(curve));
+        return curve.evaluate(time, CurveSample.staticOf(curve));
     }
 
     /// 一次取多条通道：各组数值交给 [Evaluator] 组装（例如把三个旋转轴装成一个向量）。
@@ -57,6 +67,6 @@ public final class CurveSampler {
     /// 平时不必调：作用域跨帧复用时 [Scope#version] 会变，缓存按它自动失效。
     /// 只在"作用域没换、却想让这条曲线重新解析"时才需要——例如就地改了某个键的公式
     public void clear() {
-        keys.clear();
+        sample.clear();
     }
 }

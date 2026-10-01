@@ -1,16 +1,18 @@
 package cn.anecansaitin.free_camera_api_tripod.core.editor.panel;
 
+import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.EvaluationGraph;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.ExpressionScope;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.Scope;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ConstantValue;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Constant;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Expression;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.FormulaValue;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.TrackValue;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Formula;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Scope;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.TrackRef;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ValueSource;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Variable;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.CurveTrack;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.EditorContext;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.EditorLang;
+import cn.anecansaitin.free_camera_api_tripod.core.editor.ExpressionEditorWindow;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.layout.UiRect;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.theme.Draw;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.theme.Icons;
@@ -95,22 +97,22 @@ public class VariablePanel extends EditorPanel {
         renderScrollbar(graphics, content);
     }
 
-    /// 这一行的取值是否有问题：成环、自嵌套，或者干脆算不出来（NaN）。
+    /// 这一行的取值是否有问题：成环，或者干脆算不出来（NaN）。
     /// 来源列与取值列都据此标红，两列颜色对得上
     private boolean valueInvalid(Variable variable) {
-        return valueProblem(variable) != null || Float.isNaN(variable.source().evaluate(context.scope()));
+        return valueProblem(variable) != null || Float.isNaN(variable.evaluate(context.scope()));
     }
 
-    /// 取不到值的原因；算得出值时返回 null。标红的两列共用它，悬停时也拿它当提示
+    /// 取不到值的原因；算得出值时返回 null。标红的两列共用它，悬停时也拿它当提示。
+    ///
+    /// 成环的判定来自 [EvaluationGraph]——它把"变量绑轨道、轨道上的公式又引用该变量"这条
+    /// 跨轨道的闭合路径也算进去了，所以旧的 `selfReferencing` 提示已经没有单独存在的必要：
+    /// 那种写法现在本身就是环
     private @Nullable Component valueProblem(Variable variable) {
         List<String> currentCycle = cycle;
 
         if (currentCycle != null && currentCycle.contains(variable.name())) {
             return EditorLang.t("variables.cycle", String.join(" → ", currentCycle));
-        }
-
-        if (context.animation().selfReferencing(variable)) {
-            return EditorLang.t("variables.self_reference");
         }
 
         return null;
@@ -137,7 +139,7 @@ public class VariablePanel extends EditorPanel {
     private void rebuild(UiRect content) {
         lastRevision = revision();
         // 成环只在重建时算一次：变量表与公式都进了 revision，重建即意味着依赖关系变了
-        cycle = context.animation().symbols().cycle();
+        cycle = context.animation().cycle();
         widgets.clear();
         refreshers.clear();
 
@@ -260,10 +262,11 @@ public class VariablePanel extends EditorPanel {
             source.color(valueInvalid(variable) ? Draw.WARNING : Draw.TEXT);
         });
 
-        // 固定值模式下取值列直接给一个可编辑的数值框；公式与轨道读数都是只读预览
-        if (variable.source() instanceof ConstantValue) {
+        // 固定值模式下取值列直接给一个可编辑的数值框；公式与轨道读数都是只读预览。
+        // 没绑来源的变量按固定值处理：界面上改的就是它的默认值
+        if (variable.source() == null || variable.source() instanceof Constant) {
             NumberFieldWidget fixed = new NumberFieldWidget(value, constantOf(variable),
-                    v -> variable.source(variable.source().withConstant(v)));
+                    v -> variable.source(new Constant(v)));
             fixed.decimals(VALUE_DECIMALS);
             widgets.add(fixed);
             refreshers.add(() -> fixed.value(constantOf(variable)));
@@ -271,7 +274,7 @@ public class VariablePanel extends EditorPanel {
             LabelWidget readout = new LabelWidget(value, Component.empty()).onClick(() -> selectedName = variable.name());
             widgets.add(readout);
             refreshers.add(() -> {
-                float evaluated = variable.source().evaluate(context.scope());
+                float evaluated = variable.evaluate(context.scope());
                 readout.text(Component.literal(Float.isNaN(evaluated) ? Icons.INVALID : Draw.num(evaluated, VALUE_DECIMALS)));
                 readout.color(valueInvalid(variable) ? Draw.WARNING : Draw.TEXT);
                 readout.tooltip(valueProblem(variable));
@@ -287,18 +290,24 @@ public class VariablePanel extends EditorPanel {
         return selectedName == null ? null : context.animation().symbols().variable(selectedName);
     }
 
-    /// 值源携带的固定数值；不是有限值时按 0 处理
+    /// 值源携带的固定数值；固定值与公式各有自己的那个数，轨道读数与"没绑来源"都退回默认值
     private static float constantOf(Variable variable) {
-        float value = variable.source().constant();
+        float value = switch (variable.source()) {
+            case Constant constant -> constant.value();
+            case Formula formula -> formula.fallback();
+            case null, default -> variable.defaultValue();
+        };
+
         return Float.isFinite(value) ? value : 0f;
     }
 
     /// 取值来源的显示文本：固定值、公式原文，或绑定的轨道名
     private String sourceLabel(Variable variable) {
         return switch (variable.source()) {
-            case ConstantValue ignored -> EditorLang.t("variables.fixed").getString();
-            case FormulaValue formula -> formula.expression();
-            case TrackValue ignored -> {
+            case null -> EditorLang.t("variables.fixed").getString();
+            case Constant ignored -> EditorLang.t("variables.fixed").getString();
+            case Formula formula -> formula.expression();
+            case TrackRef ignored -> {
                 CurveTrack track = track(variable.trackId());
                 yield track == null ? EditorLang.t("variables.track_missing").getString() : track.label().getString();
             }
@@ -393,10 +402,11 @@ public class VariablePanel extends EditorPanel {
     private void openSourceMenu(Variable variable, UiRect binding) {
         selectedName = variable.name();
         ContextMenu menu = new ContextMenu();
-        menu.toggle("", EditorLang.t("variables.fixed"), () -> variable.source() instanceof ConstantValue,
-                () -> variable.source(new ConstantValue(constantOf(variable))));
+        // 固定值与公式都由编辑窗口在「确定」时校验；换成固定值只会减少依赖，不可能成环
+        menu.toggle("", EditorLang.t("variables.fixed"), () -> variable.source() instanceof Constant || variable.source() == null,
+                () -> variable.source(new Constant(constantOf(variable))));
         menu.toggle(Icons.FORMULA, EditorLang.t("variables.formula"),
-                () -> variable.source() instanceof FormulaValue, () -> openFormula(variable));
+                () -> variable.source() instanceof Formula, () -> openFormula(variable));
         List<CurveTrack> tracks = context.animation().curveTracks();
 
         if (!tracks.isEmpty()) {
@@ -404,7 +414,7 @@ public class VariablePanel extends EditorPanel {
 
             for (CurveTrack track : tracks) {
                 bindingMenu.toggle("", track.label(), () -> track.id().equals(variable.trackId()),
-                        () -> variable.source(new TrackValue(track.id())));
+                        () -> bindTrack(variable, track.id()));
             }
 
             menu.separator().submenu(Icons.TRACK, EditorLang.t("variables.bind_track"), bindingMenu);
@@ -413,15 +423,30 @@ public class VariablePanel extends EditorPanel {
         openMenu(menu, binding.x(), binding.bottom() + 1);
     }
 
+    /// 绑轨道：**这条路径不经过编辑窗口**，所以判环要在这里自己做一次。
+    ///
+    /// 绑上去就把"那条轨道上的公式"变成这个变量的依赖，若其中正好引用了这个变量就成了环
+    private void bindTrack(Variable variable, String trackId) {
+        EvaluationGraph graph = context.animation().evaluationGraph();
+
+        if (!graph.allowsVariableSource(variable.name(), new TrackRef(trackId))) {
+            context.notify(EditorLang.t("variables.cycle_blocked", graph.cycleText()));
+            return;
+        }
+
+        variable.source(new TrackRef(trackId));
+    }
+
     /// 切到公式并打开编辑窗口；留空（或直接取消）就当没挂公式，仍旧用固定值
     private void openFormula(Variable variable) {
         float fallback = constantOf(variable);
         ValueSource current = variable.source();
-        String expression = current instanceof FormulaValue formula ? formula.expression() : "";
-        // 变量自己的公式不属于任何轨道，也不是函数体，所以既不给轨道上下文也不给参数栏：
-        // 公式里写变量自己属于成环，由窗口的红字提示拦
-        context.openExpressionEditor(EditorLang.t("variables.formula"), expression, null, null, value -> variable.source(
-                value.isBlank() ? new ConstantValue(fallback) : new FormulaValue(value, fallback)));
+        String expression = current instanceof Formula formula ? formula.expression() : "";
+        // 变量自己的公式不属于任何轨道，也不是函数体，所以给的是变量主体、不给参数栏：
+        // "这条公式会不会让变量成环"由窗口在点确定时按依赖图判
+        context.openExpressionEditor(EditorLang.t("variables.formula"), expression,
+                new ExpressionEditorWindow.Subject.Variable(variable.name()), null, value -> variable.source(
+                        value.isBlank() ? new Constant(fallback) : new Formula(value, fallback)));
     }
 
     /// 内容超出高度时在右侧绘制滚动条指示器：轨道底色 + 反映当前滚动位置的滑块

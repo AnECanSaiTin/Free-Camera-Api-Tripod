@@ -2,15 +2,10 @@ package cn.anecansaitin.free_camera_api_tripod.core.animation.io;
 
 import cn.anecansaitin.free_camera_api_tripod.api.animation.CameraAnimation;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.CameraAnimationc;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.EvaluateMode;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.Keyframe;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Curve;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.WrapMode;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ConstantValue;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.CustomFunction;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.FormulaValue;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.TrackValue;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ValueSource;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Variable;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.path.Path;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.path.PathMode;
@@ -29,12 +24,13 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
-import com.google.gson.JsonPrimitive;
+import com.mojang.logging.LogUtils;
 import net.minecraft.resources.Identifier;
 import org.joml.Vector3f;
 import org.joml.Vector3fc;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -43,18 +39,23 @@ import java.util.Set;
 
 /// 相机动画与路径的 JSON 编解码。
 ///
+/// **本类只做容器**：顶层字段、轨道表、变量与函数表、路径表都在这里；每个数据类自己怎么写成
+/// JSON 由它自己负责（见 {@link cn.anecansaitin.free_camera_api_tripod.api.animation.JsonSerializable}，
+/// 例如 {@link Keyframe#write()} / {@link Keyframe#read(JsonObject)}、
+/// {@link Variable#write()} / {@link Variable#read(JsonObject)}）。
+///
 /// 顶层字段：{@code name}（动画名）、{@code motionMode}（运动模式）、{@code tracks}（轨道数组）、
 /// {@code variables}（变量数组）、{@code path}（路径）。
 /// 轨道数组按动画里的轨道顺序写出，两类轨道混排、用 {@code type} 区分：
 /// - 曲线轨道（{@code type} 为 {@code free_camera_api_tripod:curve}）：{@code id}（相机属性名）、
 ///   {@code preMode}、{@code postMode} 与 {@code keys}；每个关键帧含时间、取值、两条曲柄的斜率与长度倍数、
-///   插值模式。旧文件里的 {@code inTangent}/{@code outTangent}/{@code inWeight}/{@code outWeight}/{@code weightedMode}
-///   仍可读入，长度按当时的线性系数换算（见 {@code legacyLength}）
+///   插值模式
 /// - 扩展轨道：{@code id}（轨道标识）与 {@code keys}（字段由轨道自己定，见 {@link JsonTrack}）
 ///
-/// **一个数值**有两种写法：固定值直接写成数字，公式写成 {@code {"expression": "…", "fallback": 1.0}}，
-/// 轨道读数写成 {@code {"track": "fov"}}。关键帧的取值与曲柄、变量的取值来源都用它，
-/// 于是文件里"这个数是不是动态的"一眼就能看出来，不必再去别处找公式表。
+/// **一个数值**有两种写法：固定值直接写成数字，公式写成 {@code {"expression": "…", "fallback": 1.0}}。
+/// 关键帧的取值与曲柄只用这两种；**变量**的取值来源还多一种 {@code {"track": "fov"}}（轨道读数）。
+/// "轨道读数只有变量读得到"这条约束在类型与格式两处都对齐：类型上 `TrackRef` 不是 `NumberSource`，
+/// 格式上关键帧字段根本不认 `track`（读到会按回退值降级并记一条日志）。
 ///
 /// 变量数组里每项是 {@code name} 加一个 {@code source}（同一个数值写法）。
 ///
@@ -75,33 +76,15 @@ public final class AnimationCodec {
     private static final String FIELD_PATH = "path";
     private static final String FIELD_TYPE = "type";
     private static final String FIELD_ID = "id";
-    private static final String FIELD_TRACK = "track";
-    private static final String FIELD_SOURCE = "source";
-    private static final String FIELD_EXPRESSION = "expression";
-    private static final String FIELD_FALLBACK = "fallback";
     private static final String FIELD_PRE_MODE = "preMode";
     private static final String FIELD_POST_MODE = "postMode";
     private static final String FIELD_KEYS = "keys";
     private static final String FIELD_FUNCTIONS = "functions";
     private static final String FIELD_PARAMETERS = "parameters";
     private static final String FIELD_BODY = "body";
-    private static final String FIELD_TIME = "time";
-    private static final String FIELD_VALUE = "value";
-    /// 关键帧两侧的曲柄：斜率与长度倍数
-    private static final String FIELD_IN_SLOPE = "inSlope";
-    private static final String FIELD_OUT_SLOPE = "outSlope";
-    private static final String FIELD_IN_LENGTH = "inLength";
-    private static final String FIELD_OUT_LENGTH = "outLength";
-    /// 路径节点的入/出切线；关键帧在旧格式里也用这两个名字存斜率
+    /// 路径节点的入/出切线
     private static final String FIELD_IN_TANGENT = "inTangent";
     private static final String FIELD_OUT_TANGENT = "outTangent";
-    /// 旧格式的曲线权重与加权模式，只用于读档时换算成曲柄长度
-    private static final String FIELD_LEGACY_IN_WEIGHT = "inWeight";
-    private static final String FIELD_LEGACY_OUT_WEIGHT = "outWeight";
-    private static final String FIELD_LEGACY_WEIGHTED_MODE = "weightedMode";
-    /// 旧格式把权重线性换算成曲柄长度倍数，系数取它当时的取值
-    private static final float LEGACY_WEIGHT_TO_LENGTH = 0.3f;
-    private static final String FIELD_EVALUATE_MODE = "evaluateMode";
     private static final String FIELD_NODES = "nodes";
     private static final String FIELD_POSITION = "position";
     private static final String FIELD_PATH_MODE = "pathMode";
@@ -111,6 +94,7 @@ public final class AnimationCodec {
     private static final String DEFAULT_PATH_NAME = "Path";
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    private static final Logger LOGGER = LogUtils.getLogger();
 
     private AnimationCodec() {
     }
@@ -170,10 +154,7 @@ public final class AnimationCodec {
         JsonArray variables = new JsonArray();
 
         for (Variable variable : animation.symbols().variables()) {
-            JsonObject object = new JsonObject();
-            object.addProperty(FIELD_NAME, variable.name());
-            object.add(FIELD_SOURCE, valueToJson(variable.source()));
-            variables.add(object);
+            variables.add(variable.write());
         }
 
         return variables;
@@ -214,55 +195,6 @@ public final class AnimationCodec {
         }
 
         return names;
-    }
-
-    /// 一个数值：固定值写成数字，公式与轨道读数写成对象
-    private static JsonElement valueToJson(ValueSource source) {
-        return switch (source) {
-            case ConstantValue constant -> new JsonPrimitive(constant.value());
-            case FormulaValue formula -> {
-                JsonObject object = new JsonObject();
-                object.addProperty(FIELD_EXPRESSION, formula.expression());
-                object.addProperty(FIELD_FALLBACK, formula.constant());
-                yield object;
-            }
-            case TrackValue track -> {
-                JsonObject object = new JsonObject();
-                object.addProperty(FIELD_TRACK, track.trackId());
-                yield object;
-            }
-        };
-    }
-
-    /// 读一个数值：数字是固定值，对象里认 expression（公式）与 track（轨道读数）；
-    /// 认不出来或字段缺失就用 fallback
-    private static ValueSource readValue(@Nullable JsonElement element, float fallback) {
-        if (element == null) {
-            return new ConstantValue(fallback);
-        }
-
-        if (element.isJsonPrimitive() && element.getAsJsonPrimitive().isNumber()) {
-            return new ConstantValue(element.getAsFloat());
-        }
-
-        if (!element.isJsonObject()) {
-            return new ConstantValue(fallback);
-        }
-
-        JsonObject object = element.getAsJsonObject();
-        String track = stringValue(object, FIELD_TRACK, "");
-
-        if (!track.isEmpty()) {
-            return new TrackValue(track);
-        }
-
-        String expression = stringValue(object, FIELD_EXPRESSION, "");
-
-        if (!expression.isBlank()) {
-            return new FormulaValue(expression, floatValue(object, FIELD_FALLBACK, fallback));
-        }
-
-        return new ConstantValue(floatValue(object, FIELD_FALLBACK, fallback));
     }
 
     /// 一条轨道：曲线轨道按曲线写，其余交给轨道自己；
@@ -319,6 +251,17 @@ public final class AnimationCodec {
         animation.restoreMotionMode(motionModeValue(stringValue(root, FIELD_MOTION_MODE, "")));
         // 距离口径只改标记：键值在写出时已经是该口径，再走 distanceMode 会被换算一遍
         animation.restoreDistanceMode(distanceModeValue(stringValue(root, FIELD_DISTANCE_MODE, "")));
+
+        // 求值图必须无环：带环的文件读进来之后求值会全程退回固定值，与其让用户面对一堆
+        // 说不清的数字，不如在这里就拒绝，并说清是哪几个名字闭成了环。
+        // 校验放在最后，等轨道、变量、函数都还原完再判
+        String cycle = animation.evaluationGraph().cycleText();
+
+        if (cycle != null) {
+            LOGGER.warn("Refusing to load animation '{}': its evaluation graph has a cycle: {}",
+                    animation.name(), cycle);
+            return null;
+        }
         return animation;
     }
 
@@ -369,15 +312,7 @@ public final class AnimationCodec {
     }
 
     private static JsonObject keyToJson(Keyframe key) {
-        JsonObject object = new JsonObject();
-        object.addProperty(FIELD_TIME, key.time());
-        object.add(FIELD_VALUE, valueToJson(key.valueSource()));
-        object.add(FIELD_IN_SLOPE, valueToJson(key.inSlopeSource()));
-        object.add(FIELD_OUT_SLOPE, valueToJson(key.outSlopeSource()));
-        object.add(FIELD_IN_LENGTH, valueToJson(key.inLengthSource()));
-        object.add(FIELD_OUT_LENGTH, valueToJson(key.outLengthSource()));
-        object.addProperty(FIELD_EVALUATE_MODE, enumName(key.evaluateMode()));
-        return object;
+        return key.write();
     }
 
     private static JsonObject pathToObject(@Nullable Pathc path) {
@@ -494,40 +429,9 @@ public final class AnimationCodec {
 
         for (JsonElement element : keys.getAsJsonArray()) {
             if (element.isJsonObject()) {
-                curve.key(readKey(element.getAsJsonObject()));
+                curve.key(Keyframe.read(element.getAsJsonObject()));
             }
         }
-    }
-
-    private static Keyframe readKey(JsonObject object) {
-        Keyframe key = Keyframe.create(floatValue(object, FIELD_TIME, 0), 0)
-                .evaluateMode(enumValue(EvaluateMode.class, object.get(FIELD_EVALUATE_MODE), EvaluateMode.LINEAR));
-        key.valueSource(readValue(object.get(FIELD_VALUE), 0));
-        // 斜率优先读新字段，缺失时回退旧格式的 inTangent / outTangent
-        key.inSlopeSource(readValue(firstOf(object, FIELD_IN_SLOPE, FIELD_IN_TANGENT), 0));
-        key.outSlopeSource(readValue(firstOf(object, FIELD_OUT_SLOPE, FIELD_OUT_TANGENT), 0));
-        key.inLengthSource(readValue(object.get(FIELD_IN_LENGTH), legacyLength(object, true)));
-        key.outLengthSource(readValue(object.get(FIELD_OUT_LENGTH), legacyLength(object, false)));
-        return key;
-    }
-
-    /// 同一个量的新旧两个字段名，优先取新名字；两个都没有时返回 null
-    private static @Nullable JsonElement firstOf(JsonObject object, String field, String legacy) {
-        return object.has(field) ? object.get(field) : object.get(legacy);
-    }
-
-    /// 旧文件的曲柄长度：那时是「权重 + 加权模式」，加权模式没覆盖该方向时长度就是基准值 1，
-    /// 覆盖到的按当时的线性系数换算成倍数
-    private static float legacyLength(JsonObject object, boolean incoming) {
-        String mode = stringValue(object, FIELD_LEGACY_WEIGHTED_MODE, "");
-        boolean weighted = "BOTH".equals(mode) || (incoming ? "IN" : "OUT").equals(mode);
-
-        if (!weighted) {
-            return Keyframe.DEFAULT_LENGTH;
-        }
-
-        return floatValue(object, incoming ? FIELD_LEGACY_IN_WEIGHT : FIELD_LEGACY_OUT_WEIGHT, Keyframe.DEFAULT_LENGTH)
-                * LEGACY_WEIGHT_TO_LENGTH;
     }
 
     /// 变量数组：名字重复或为空的条目跳过（变量的值靠名字引用，重名没有意义）
@@ -537,11 +441,11 @@ public final class AnimationCodec {
                 continue;
             }
 
-            JsonObject object = element.getAsJsonObject();
-            Variable variable = animation.symbols().addVariable(stringValue(object, FIELD_NAME, ""));
+            Variable read = Variable.read(element.getAsJsonObject());
+            Variable variable = animation.symbols().addVariable(read.name());
 
             if (variable != null) {
-                variable.source(readValue(object.get(FIELD_SOURCE), 0));
+                variable.source(read.source()).defaultValue(read.defaultValue());
             }
         }
     }

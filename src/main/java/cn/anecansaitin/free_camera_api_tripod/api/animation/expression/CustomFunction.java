@@ -62,14 +62,14 @@ public final class CustomFunction {
     /// 调用：把实参按参数名绑好，再求函数体。
     ///
     /// 函数体编译不出来（语法错）时返回 NaN；实参个数与参数个数不符由 [Expression] 在调用前挡下
-    public float invoke(List<Expression.Formula> arguments, Expression.Resolver outer) {
+    public float invoke(List<Expression.Formula> arguments, Resolver outer) {
         Expression.Formula formula = Expression.compile(body);
 
         if (formula == null) {
             return Float.NaN;
         }
 
-        return formula.evaluate(new Expression.Resolver() {
+        return formula.evaluate(new Resolver() {
             @Override
             public float resolve(String name) {
                 // 参数名优先，其余名字继续往外层找（变量、内置变量）
@@ -85,6 +85,11 @@ public final class CustomFunction {
             @Override
             public @Nullable CustomFunction function(String name) {
                 return outer.function(name);
+            }
+
+            @Override
+            public float track(String id) {
+                return outer.track(id);
             }
         });
     }

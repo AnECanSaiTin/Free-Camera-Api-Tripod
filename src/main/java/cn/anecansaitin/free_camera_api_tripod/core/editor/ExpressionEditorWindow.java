@@ -1,13 +1,15 @@
 package cn.anecansaitin.free_camera_api_tripod.core.editor;
 
 import cn.anecansaitin.free_camera_api_tripod.api.animation.CameraAnimation;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.ConstantValue;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.CustomFunction;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.EvaluationGraph;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.ExpressionScope;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.Scope;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Constant;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.CustomFunction;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Expression;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.FormulaValue;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.TrackValue;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Formula;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Resolver;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Scope;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.TrackRef;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Variable;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.CurveTrack;
 import cn.anecansaitin.free_camera_api_tripod.core.cmd_camera.playback.CameraPlayer;
@@ -42,10 +44,15 @@ import java.util.function.Consumer;
 ///
 /// 变量表里的 `+` / `−` 直接增删动画的变量（与变量面板操作同一份数据），点变量名把它插到光标处；
 /// 函数表同理，插入模板并把光标停进括号里。标题栏右侧实时给出当前公式的求值结果，
-/// 公式非法时转成警告色并说明原因——但**不会**阻止保存，求值失败时播放链会回退到固定数值。
+/// 公式非法时转成警告色并说明原因。
 ///
-/// 唯一拦住不让保存的是**自嵌套**：公式引用了绑定到本轨道的变量，那取到的是轨道上的数值模式取值，
-/// 与本键播放时的取值不是一回事，改了就说不清，所以标题栏标红并按住「确定」。
+/// **编译只在点「确定」时发生**：编辑过程中不校验、不打断（标题栏只显示当前文本按这一帧算出来的值），
+/// 点确定时一次把问题说清楚挂在标题栏上，内容一改报错就消失。
+///
+/// 被拦住不让保存的有三类：语法编译不过、**会闭合一个环**（见
+/// {@link cn.anecansaitin.free_camera_api_tripod.api.animation.eval.EvaluationGraph}）、
+/// 以及函数本身还不能用（参数写不进公式、函数体为空或编译不过）。
+/// 成环从"求值的时候静默退回固定值"改成了"根本写不进去"，这是本次改造的核心。
 public final class ExpressionEditorWindow {
     private static final int PADDING = 8;
     /// 窗口内第一行：窗口标题 + 实时求值结果
@@ -77,6 +84,22 @@ public final class ExpressionEditorWindow {
         List<String> get();
 
         void set(List<String> parameters);
+    }
+
+    /// 这条公式挂在谁身上——用来判"换成它会不会闭合一个环"。
+    ///
+    /// 两种挂法各对应依赖图里的一类节点：关键帧的槽位挂在某条轨道上，变量的来源挂在某个变量上。
+    /// **依赖怎么算不在这里**：交给 `EvaluationGraph`，它已经知道这类节点现在依赖谁。
+    ///
+    /// 编辑函数体时没有主体（函数体不属于任何节点），那时不判环
+    public sealed interface Subject {
+        /// 关键帧槽位的公式：[trackId] 是所在轨道
+        record Track(String trackId) implements Subject {
+        }
+
+        /// 变量自己的来源公式
+        record Variable(String variableName) implements Subject {
+        }
     }
 
     private static final int KEY_ESCAPE = 256;
@@ -132,14 +155,19 @@ public final class ExpressionEditorWindow {
     private final CameraPlayer player;
     /// 正在编辑的字段名（例如「取值」「位置 X」），显示在标题右侧，用来区分开的是哪个数值的公式
     private final Component fieldLabel;
-    /// 这条公式所属的轨道 id；不属于任何轨道（例如变量自己的公式）时为 null。自嵌套判定要用
-    private final @Nullable String trackId;
+    /// 这条公式挂在谁身上（关键帧槽位 / 变量来源 / 函数体时为 null）；判环要看它
+    private final @Nullable Subject subject;
     /// 编辑函数体时的参数栏；普通的公式编辑为 null，那时不显示参数输入框
     private final @Nullable Parameters parameters;
     /// 参数输入框；不编辑函数体时为 null
     private final @Nullable TextFieldWidget parameterField;
     /// 上一次参数提交被拒的原因（有参数名写不进公式）；没问题时为 null
     private @Nullable Component parameterProblem;
+    /// 上一次点「确定」被拒的原因（语法错、还可能成环、函数还不能用）
+    private @Nullable Component confirmProblem;
+    /// 被拒时的那份文本：内容一变就说明用户在改了，报错随即清掉。
+    /// 比在每个编辑动作里各清一次可靠——插入、退格、粘贴、剪切都改文本，但不必都记得这件事
+    private String confirmedProblemText = "";
     /// 编辑中的参数名：改动先落在窗口里，点「确定」才写回函数，取消就原样丢弃
     private final List<String> editingParameters;
     private final Consumer<String> onConfirm;
@@ -175,12 +203,12 @@ public final class ExpressionEditorWindow {
     private final ButtonWidget confirmButton;
 
     public ExpressionEditorWindow(CameraAnimation animation, CameraPlayer player, Component fieldLabel,
-                                  @Nullable String expression, @Nullable String trackId, @Nullable Parameters parameters,
+                                  @Nullable String expression, @Nullable Subject subject, @Nullable Parameters parameters,
                                   Consumer<String> onConfirm) {
         this.animation = animation;
         this.player = player;
         this.fieldLabel = fieldLabel;
-        this.trackId = trackId;
+        this.subject = subject;
         this.parameters = parameters;
         this.editingParameters = parameters == null ? new ArrayList<>() : new ArrayList<>(parameters.get());
         this.onConfirm = onConfirm;
@@ -269,8 +297,8 @@ public final class ExpressionEditorWindow {
     // region 渲染
 
     public void render(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
-        // 自嵌套、或函数本身还不能用时把「确定」按住：前者是取值口径有歧义，后者是存下去也用不了
-        confirmButton.enabled(!selfReferencing() && functionProblem() == null);
+        // 「确定」始终可按：公式不再边打边编译，所以按钮没有"被按住"这一说，
+        // 点下去之后由 confirm() 一次把语法与结构问题说清楚
         graphics.fill(0, 0, screenWidth, screenHeight, Draw.OVERLAY_DIM);
         Draw.canvas(graphics, rect, Draw.FLOATING_BG);
         Draw.border(graphics, rect, Draw.BORDER);
@@ -300,37 +328,37 @@ public final class ExpressionEditorWindow {
                 Math.max(20, parameterField.rect().x() - labelWidth - GAP - (rect.x() + PADDING)), Draw.TEXT_DIM);
     }
 
-    /// 标题行：左边窗口名，右边实时求值结果（自嵌套、成环与非法都转警告色并说明原因）
+    /// 标题行：左边窗口名，右边实时求值结果。
+    ///
+    /// **这里不做合法性校验**：公式只在点「确定」时才编译，所以编辑过程中不打断、不报错，
+    /// 有问题在确认和保存时说清楚。预览只是把当前文本按这一帧算一遍，算不出来就照实显示
     private void renderTitle(GuiGraphicsExtractor graphics) {
         Component title = EditorLang.t("expression.title");
         Draw.text(graphics, title, rect.x() + PADDING, rect.y() + PADDING, Draw.TEXT);
         String stripped = text.strip();
+        Component problem = confirmProblem;
+
+        if (problem != null && !confirmedProblemText.equals(text)) {
+            // 用户已经改过内容了，上次那条报错不再作数
+            confirmProblem = null;
+            problem = null;
+        }
+
         String status;
         int color;
 
-        if (stripped.isEmpty()) {
+        if (problem != null) {
+            // 上一次「确定」被拒的原因；改动文本就清掉，所以它不会一直挂着
+            status = problem.getString();
+            color = Draw.WARNING;
+        } else if (stripped.isEmpty()) {
             status = EditorLang.t("expression.preview.empty").getString();
             color = Draw.TEXT_DISABLED;
-        } else if (functionProblem() != null) {
-            // 函数还不能用时先报这个：比起求值结果，用户更该知道差在哪
-            status = functionProblem().getString();
-            color = Draw.WARNING;
-        } else if (selfReferencing()) {
-            status = EditorLang.t("variables.self_reference").getString();
-            color = Draw.WARNING;
         } else {
-            ExpressionScope scope = scope();
-            float evaluated = Expression.evaluate(stripped, previewResolver(scope));
-            List<String> cycle = scope.cycle();
-
-            if (cycle != null) {
-                status = EditorLang.t("variables.cycle", String.join(" → ", cycle)).getString();
-                color = Draw.WARNING;
-            } else {
-                boolean valid = !Float.isNaN(evaluated);
-                status = EditorLang.t("expression.preview.result", valid ? Draw.num(evaluated, 4) : EditorLang.t("expression.invalid").getString()).getString();
-                color = valid ? Draw.ACCENT : Draw.WARNING;
-            }
+            float evaluated = Expression.evaluate(stripped, previewResolver(scope()));
+            boolean valid = !Float.isNaN(evaluated);
+            status = EditorLang.t("expression.preview.result", valid ? Draw.num(evaluated, 4) : EditorLang.t("expression.invalid").getString()).getString();
+            color = valid ? Draw.ACCENT : Draw.WARNING;
         }
 
         int statusWidth = Draw.font().width(status);
@@ -505,9 +533,10 @@ public final class ExpressionEditorWindow {
     /// 变量取值来源的显示文本：固定值给出数值，轨道给出轨道名，公式给出原文
     private String sourceLabel(Variable variable) {
         return switch (variable.source()) {
-            case ConstantValue ignored -> EditorLang.t("expression.variable.fixed", Draw.num(variable.source().constant(), 3)).getString();
-            case FormulaValue formula -> formula.expression();
-            case TrackValue ignored -> {
+            case null -> EditorLang.t("expression.variable.fixed", Draw.num(variable.defaultValue(), 3)).getString();
+            case Constant constant -> EditorLang.t("expression.variable.fixed", Draw.num(constant.value(), 3)).getString();
+            case Formula formula -> formula.expression();
+            case TrackRef ignored -> {
                 CurveTrack track = track(variable.trackId());
                 yield track == null ? EditorLang.t("expression.variable.unbound").getString() : track.label().getString();
             }
@@ -648,16 +677,16 @@ public final class ExpressionEditorWindow {
 
     /// 预览用的作用域：函数参数**一律取 1**，方便把它们当单位量试算（`a + b` 预览就是 2）。
     /// 不这么处理的话，编辑函数体时合法的 `a + b` 会因为参数不是动画变量而被显示成算不出来
-    private Expression.Resolver previewResolver(Scope scope) {
+    private Resolver previewResolver(Scope scope) {
         List<String> names = editingParameters;
 
         if (names.isEmpty()) {
             return scope.resolver();
         }
 
-        Expression.Resolver outer = scope.resolver();
+        Resolver outer = scope.resolver();
 
-        return new Expression.Resolver() {
+        return new Resolver() {
             @Override
             public float resolve(String name) {
                 return names.contains(name) ? 1f : outer.resolve(name);
@@ -666,6 +695,11 @@ public final class ExpressionEditorWindow {
             @Override
             public @Nullable CustomFunction function(String name) {
                 return outer.function(name);
+            }
+
+            @Override
+            public float track(String id) {
+                return outer.track(id);
             }
         };
     }
@@ -714,17 +748,20 @@ public final class ExpressionEditorWindow {
         editingParameters.addAll(parsed);
     }
 
-    /// 公式是否引用了绑定到本轨道的变量——那就是自嵌套：那个变量在本轨道上取的是数值模式的固定数值，
-    /// 与本键播放时的取值不是一回事（与变量面板的判定是同一件事）
-    private boolean selfReferencing() {
-        if (trackId == null) {
+    /// 公式引用了**本轨道上绑定的变量**——那等于这条轨道依赖了自己，是一个环。
+    ///
+    /// 旧的判定只说"取值口径有歧义"（变量读轨道走静态曲线）；有了求值依赖图之后它是一个真正的环，
+    /// 而且 [#formulaProblem] 里的图判定本来就会拦下它。这里单独留一条是为了给更直白的提示：
+    /// "这个变量就绑在你正在编辑的这条轨道上"比"这些名字参与了循环引用"更好懂
+    private boolean selfReferencing(String expression) {
+        if (!(subject instanceof Subject.Track track)) {
             return false;
         }
 
-        for (String name : Expression.identifiers(text)) {
+        for (String name : Expression.identifiers(expression)) {
             Variable variable = animation.symbols().variable(name);
 
-            if (variable != null && trackId.equals(variable.trackId())) {
+            if (variable != null && track.trackId().equals(variable.trackId())) {
                 return true;
             }
         }
@@ -732,18 +769,65 @@ public final class ExpressionEditorWindow {
         return false;
     }
 
+    /// 这条公式最终能不能落盘；能则返回 null。
+    ///
+    /// **这是公式唯一的编译与校验点**：编辑过程中不编译、不报错，点「确定」时一次说清。
+    /// 查三件事，按"用户最该先知道哪一件"排序：
+    /// 1. 函数本身能不能用（参数写不进公式、函数体为空或编译不过）
+    /// 2. 语法——公式编译不过
+    /// 3. 结构——换上去会不会闭合一个环
+    private @Nullable Component formulaProblem(String stripped) {
+        if (parameters != null) {
+            Component problem = functionProblem();
+
+            if (problem != null) {
+                return problem;
+            }
+        }
+
+        if (stripped.isEmpty()) {
+            return null;
+        }
+
+        if (!Expression.valid(stripped)) {
+            return EditorLang.t("expression.invalid_hint");
+        }
+
+        if (selfReferencing(stripped)) {
+            return EditorLang.t("variables.self_reference");
+        }
+
+        EvaluationGraph graph = animation.evaluationGraph();
+        boolean allowed = switch (subject) {
+            case null -> true;
+            case Subject.Track track -> graph.allowsTrackFormula(track.trackId(), stripped);
+            case Subject.Variable variable -> graph.allowsVariableSource(variable.variableName(),
+                    new Formula(stripped, 0f));
+        };
+
+        return allowed ? null : EditorLang.t("variables.cycle_blocked", graph.cycleText());
+    }
+
     private void confirm() {
-        // 按钮已经被按住，这里再挡一次：回车等快捷路径也不能把自嵌套或还不能用的函数存进去
-        if (selfReferencing() || functionProblem() != null) {
+        // 按钮已经被按住，这里再挡一次：回车等快捷路径也不能把非法公式存进去。
+        // 校验挪到这一步之后，"公式什么时候编译"就只有一个答案——点确定的时候
+        String stripped = text.strip();
+        Component problem = formulaProblem(stripped);
+
+        if (problem != null) {
+            confirmProblem = problem;
+            confirmedProblemText = text;
             return;
         }
+
+        confirmProblem = null;
 
         if (parameters != null) {
             parameters.set(List.copyOf(editingParameters));
         }
 
         finished = true;
-        onConfirm.accept(text.strip());
+        onConfirm.accept(stripped);
     }
 
     private void insert(String addition) {

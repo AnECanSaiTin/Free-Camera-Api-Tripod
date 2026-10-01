@@ -8,7 +8,7 @@ import java.util.List;
 /// 符号表的只读视图：一段动画里定义的[变量][Variable]与[自定义函数][CustomFunction]，外加它们的静态检查结果。
 ///
 /// 变量与函数是**动画级**的定义，不属于任何一条曲线轨道：公式按名字引用它们，
-/// 求值层（见 `eval.Scope`）只读这里。把它们与轨道分开的依据是——轨道随动画增删、
+/// 求值层（见 `eval.ExpressionScope`）只读这里。把它们与轨道分开的依据是——轨道随动画增删、
 /// 变量引用轨道，反过来轨道不引用变量，所以这里是单向依赖的终点。
 ///
 /// 读写两类方法分在两级：增删改名在 [SymbolTable]，这里只有查询，
@@ -29,9 +29,4 @@ public interface SymbolTablec {
 
     /// 名字是否已被内置函数或别的自定义函数占用
     boolean functionNameTaken(String name);
-
-    /// 变量之间的第一条循环引用（变量名，首尾同名）；没有环返回 null。
-    ///
-    /// 成环时求值只会返回 NaN 并回退到固定值，光看数值很难排查，界面据此明确报错
-    @Nullable List<String> cycle();
 }

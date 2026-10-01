@@ -46,7 +46,7 @@ public class Curve implements Curvec {
         this.keys.sort(Keyframe.TIME_COMPARATOR);
     }
 
-    /// 求值：五个数值一律从 [values] 读。
+    /// 求值：五个数值一律从 [KeyValues] 读。
     ///
     /// 曲线只做插值，不认识公式——数值是固定值还是按公式算出来的，由 [KeyValues] 的实现决定。
     /// 求值与画曲线、插键取值走同一个入口，因此画面上看到的与播放出来的永远是同一条曲线
@@ -357,14 +357,13 @@ public class Curve implements Curvec {
                     }
                 }
             } else if (time < left.time()) {
-                if (lastIndex <= 0) {
+                if (lastIndex == 0) {
                     return lastIndex = 0;
                 }
 
-                right = left;
                 left = keys.get(lastIndex - 1);
 
-                if (time >= left.time() && time < right.time()) {
+                if (time >= left.time()) {
                     return --lastIndex;
                 }
             }

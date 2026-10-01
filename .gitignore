@@ -22,6 +22,9 @@ eclipse
 run
 runs
 run-data
+# JDK 自带的 System.Logger 默认会把日志落到工作目录的 logs/（表达式包不依赖任何 mod 类，
+# 所以它用的是 JDK 日志而不是 mod 的日志器）
+logs
 
 # 本地依赖 jar（前置 mod、界面框架）不入库
 libs

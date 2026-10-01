@@ -102,6 +102,7 @@
   "free_camera_api_tripod.editor.expression.preview.result": "= %s",
   "free_camera_api_tripod.editor.expression.preview.empty": "播放头所在时刻的取值会显示在这里",
   "free_camera_api_tripod.editor.expression.invalid": "无法求值",
+  "free_camera_api_tripod.editor.expression.invalid_hint": "这条公式编译不过，检查括号与函数名",
 
   "free_camera_api_tripod.editor.variables.add": "新建变量",
   "free_camera_api_tripod.editor.variables.remove": "删除选中",
@@ -110,6 +111,7 @@
   "free_camera_api_tripod.editor.variables.bind_track": "绑定轨道",
   "free_camera_api_tripod.editor.variables.track_missing": "轨道已不存在",
   "free_camera_api_tripod.editor.variables.cycle": "循环引用：%s",
+  "free_camera_api_tripod.editor.variables.cycle_blocked": "这样会形成循环引用：%s。请先解开其中一个，或把它的公式改成固定值",
   "free_camera_api_tripod.editor.variables.empty": "还没有变量",
   "free_camera_api_tripod.editor.variables.builtin_time": "当前时间",
   "free_camera_api_tripod.editor.variables.builtin_progress": "播放进度",

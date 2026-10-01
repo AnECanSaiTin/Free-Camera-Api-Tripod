@@ -5,7 +5,7 @@ import cn.anecansaitin.free_camera_api_tripod.api.animation.Keyframe;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.AnimationTrack;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Curve;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.CurveSampler;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.Scope;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Scope;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.CurveTrack;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.EditorContext;
 import cn.anecansaitin.free_camera_api_tripod.core.editor.EditorLang;
@@ -355,7 +355,7 @@ public class GraphPanel extends EditorPanel {
         int right = Math.min(curve.size() - 1, left + 1);
         Keyframe first = curve.key(left);
         Keyframe second = curve.key(right);
-        return (first != null && first.dynamic()) || (second != null && second.dynamic());
+        return (first != null && first.hasFormula()) || (second != null && second.hasFormula());
     }
 
     private void renderKeys(GuiGraphicsExtractor graphics, UiRect plot, CurveTrack track, float[] range, int mouseX, int mouseY) {
@@ -377,7 +377,7 @@ public class GraphPanel extends EditorPanel {
             boolean isSelected = i == selected;
             boolean isHovered = i == hovered;
             // 动态模式的关键帧用蓝点，与普通键的灰点分开
-            int color = isSelected ? Draw.SELECTED : (key.dynamic() ? DYNAMIC_KEY_COLOR : Draw.TEXT);
+            int color = isSelected ? Draw.SELECTED : (key.hasFormula() ? DYNAMIC_KEY_COLOR : Draw.TEXT);
             Draw.diamond(graphics, x, y, isSelected || isHovered ? KEY_RADIUS + 1 : KEY_RADIUS, color);
         }
 

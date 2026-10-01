@@ -3,7 +3,8 @@ package cn.anecansaitin.free_camera_api_tripod.core.editor;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.CameraAnimation;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.CurveSampler;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.ExpressionScope;
-import cn.anecansaitin.free_camera_api_tripod.api.animation.eval.Scope;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Expression;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Scope;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.path.Path;
 import cn.anecansaitin.free_camera_api_tripod.core.animation.io.AnimationCodec;
 import cn.anecansaitin.free_camera_api_tripod.core.animation.io.AnimationFiles;
@@ -233,12 +234,19 @@ public final class EditorContext {
     /// 打开表达式编辑窗口；窗口自己负责绘制与输入，屏幕只在最上层调用它。
     /// 同一时刻只留一个，后开的会直接顶掉已有的，不会叠出两层。
     ///
-    /// `trackId` 是这条公式所属的轨道（不属于任何轨道时给 null）：窗口靠它判断自嵌套；
+    /// **公式的编译与校验只在这里的「确定」上发生**：编辑过程中不编译、不打断，
+    /// 点确定时一次把语法与结构问题（会闭合一个环）说清楚。
+    ///
+    /// `subject` 说明这条公式挂在谁身上，窗口据此判环（`null` 表示不判：函数体不属于任何节点）：
+    /// - [ExpressionEditorWindow.TrackSubject]：关键帧槽位的公式，判"挂上去会不会成环"
+    /// - [ExpressionEditorWindow.VariableSubject]：变量自己的来源公式，判"换成这条会不会成环"
+    ///
     /// `parameters` 是编辑函数体时的参数栏（普通公式编辑给 null），窗口据此摆出参数输入框，
     /// 预览把参数一律当 1，并且参数写不进公式或函数体编译不过时不让保存
-    public void openExpressionEditor(Component label, @Nullable String expression, @Nullable String trackId,
+    public void openExpressionEditor(Component label, @Nullable String expression,
+                                     ExpressionEditorWindow.@Nullable Subject subject,
                                      ExpressionEditorWindow.@Nullable Parameters parameters, Consumer<String> onConfirm) {
-        this.expressionEditor = new ExpressionEditorWindow(animation, player, label, expression, trackId, parameters, onConfirm);
+        this.expressionEditor = new ExpressionEditorWindow(animation, player, label, expression, subject, parameters, onConfirm);
     }
 
     public @Nullable ExpressionEditorWindow expressionEditor() {
@@ -251,7 +259,7 @@ public final class EditorContext {
 
     /// 按播放头所在时刻求值一段公式；公式非法或引用到取不到值的变量时返回 NaN
     public float evaluateExpression(@Nullable String expression) {
-        return scope().evaluate(expression);
+        return Expression.evaluate(expression, scope().resolver());
     }
 
     // endregion
