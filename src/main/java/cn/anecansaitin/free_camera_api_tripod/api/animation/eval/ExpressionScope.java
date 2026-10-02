@@ -7,6 +7,8 @@ import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Resolver;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Scope;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.SymbolTablec;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Variable;
+import it.unimi.dsi.fastutil.objects.Object2FloatMap;
+import it.unimi.dsi.fastutil.objects.Object2FloatOpenHashMap;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
@@ -68,7 +70,7 @@ public final class ExpressionScope implements Scope, Resolver {
     /// 帧版本；每调一次 [frame] 就 +1，缓存靠它失效（见 [Scope#version]）
     private long version;
     /// 变量取值缓存；换帧时清空，Map 本身复用
-    private final Map<String, Float> cache = new HashMap<>();
+    private final Object2FloatMap<String> cache = new Object2FloatOpenHashMap<>();
     /// 每条曲线配一份读取器，避免同一次求值里反复新建；**带作用域**，所以轨道上的公式照常求值。
     /// 换帧时清空：作用域会被长期复用，不清的话读档换掉的旧曲线会一直被这张表拽着，
     /// 上一帧算出来的数也会被继续用。
