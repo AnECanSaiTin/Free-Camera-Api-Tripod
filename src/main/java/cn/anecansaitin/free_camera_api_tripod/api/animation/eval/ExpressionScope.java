@@ -91,6 +91,7 @@ public final class ExpressionScope implements Scope, Resolver {
     public ExpressionScope(SymbolTablec symbols, CurveLookup curves) {
         this.symbols = symbols;
         this.curves = curves;
+        cache.defaultReturnValue(Float.NaN);
     }
 
     /// 从动画构造：编辑器的预览作用域、播放器每帧切的那个作用域都走它，
@@ -162,21 +163,21 @@ public final class ExpressionScope implements Scope, Resolver {
 
     @Override
     public float resolve(String name) {
-        if (TIME_VARIABLE.equals(name)) {
-            return time;
+        switch (name) {
+            case TIME_VARIABLE -> {
+                return time;
+            }
+            case PROGRESS_VARIABLE -> {
+                return progress;
+            }
+            case WORLD_TIME_VARIABLE -> {
+                return worldTime;
+            }
         }
 
-        if (PROGRESS_VARIABLE.equals(name)) {
-            return progress;
-        }
+        float cached = cache.getFloat(name);
 
-        if (WORLD_TIME_VARIABLE.equals(name)) {
-            return worldTime;
-        }
-
-        Float cached = cache.get(name);
-
-        if (cached != null) {
+        if (!Float.isNaN(cached)) {
             return cached;
         }
 

@@ -1,6 +1,7 @@
 package cn.anecansaitin.free_camera_api_tripod.api.animation.expression;
 
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 /// 求值环境：**这一帧是什么时候 + 名字怎么解析 + 轨道读到多少**。
 ///
@@ -37,7 +38,7 @@ public interface Scope {
     /// 环现在由 `eval.EvaluationGraph` 在写入期直接拒绝，不需要在求值时挑挑拣拣。
     /// 留着它是给求值链一个**廉价的断言钩子**：想知道"这处公式是不是正在咬自己"，
     /// 问这一句就够了，不必自己维护一份求值栈（实现见 `eval.ExpressionScope`）
-    default String resolving() {
+    default @Nullable String resolving() {
         return null;
     }
 }

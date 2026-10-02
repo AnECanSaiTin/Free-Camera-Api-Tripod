@@ -28,6 +28,8 @@ import java.util.Arrays;
 ///
 /// `scope` 为 null 就是**静态求值**：公式一律算不出来，[NumberSource#evaluateOrFallback] 给出回退值。
 /// 静态取值因此不再是另一个类，而是同一个分支。
+///
+/// 人：这条曲线每个关键帧的五个属性在这个帧作用域下解析一次的结果缓存
 @NullMarked
 final class CurveSample implements KeyValues {
     /// 每个键占用的缓存槽位数：等于可动态槽位的个数
