@@ -172,7 +172,7 @@ public class FunctionPanel extends EditorPanel {
         widgets.add(preview);
         refreshers.add(() -> {
             preview.text(Component.literal(previewText(function)));
-            preview.color(Expression.compile(function.body()) == null ? Draw.WARNING : Draw.TEXT);
+            preview.color(Expression.valid(function.body()) ? Draw.TEXT : Draw.WARNING);
         });
 
         return y + ROW_HEIGHT;
@@ -186,9 +186,11 @@ public class FunctionPanel extends EditorPanel {
     // endregion
 
     /// 打开表达式编辑窗口改这个函数：参数与函数体都在窗口里改。
-    /// 参数交给窗口当预览用的局部量（一律取 1），窗口也据此判断这个函数还能不能用
+    /// 参数交给窗口当预览用的局部量（一律取 1），窗口也据此判断这个函数还能不能用，
+    /// 并把它们当形参表判环（形参名在函数体里不算引用）
     private void openBodyEditor(CustomFunction function) {
-        context.openExpressionEditor(EditorLang.t("functions.edit_title", function.name()), function.body(), null,
+        context.openExpressionEditor(EditorLang.t("functions.edit_title", function.name()), function.body(),
+                new ExpressionEditorWindow.Subject.Function(function.name()),
                 new ExpressionEditorWindow.Parameters() {
                     @Override
                     public List<String> get() {

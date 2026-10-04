@@ -263,9 +263,8 @@ public class VariablePanel extends EditorPanel {
             source.color(valueInvalid(variable) ? Draw.WARNING : Draw.TEXT);
         });
 
-        // 固定值模式下取值列直接给一个可编辑的数值框；公式与轨道读数都是只读预览。
-        // 没绑来源的变量按固定值处理：界面上改的就是它的默认值
-        if (variable.source() == null || variable.source() instanceof Constant) {
+        // 固定值模式下取值列直接给一个可编辑的数值框；公式与轨道读数都是只读预览
+        if (variable.source() instanceof Constant) {
             NumberFieldWidget fixed = new NumberFieldWidget(value, constantOf(variable),
                     v -> variable.source(new Constant(v)));
             fixed.decimals(VALUE_DECIMALS);
@@ -291,12 +290,12 @@ public class VariablePanel extends EditorPanel {
         return selectedName == null ? null : context.animation().symbols().variable(selectedName);
     }
 
-    /// 值源携带的固定数值；固定值与公式各有自己的那个数，轨道读数与"没绑来源"都退回默认值
+    /// 值源携带的固定数值；固定值与公式各有自己的那个数，轨道读数退回变量自己的默认值
     private static float constantOf(Variable variable) {
         float value = switch (variable.source()) {
             case Constant constant -> constant.value();
             case Formula formula -> formula.fallback();
-            case null, default -> variable.defaultValue();
+            case TrackRef ignored -> variable.defaultValue();
         };
 
         return Float.isFinite(value) ? value : 0f;
@@ -305,7 +304,6 @@ public class VariablePanel extends EditorPanel {
     /// 取值来源的显示文本：固定值、公式原文，或绑定的轨道名
     private String sourceLabel(Variable variable) {
         return switch (variable.source()) {
-            case null -> EditorLang.t("variables.fixed").getString();
             case Constant ignored -> EditorLang.t("variables.fixed").getString();
             case Formula formula -> formula.expression();
             case TrackRef ignored -> {
@@ -383,7 +381,8 @@ public class VariablePanel extends EditorPanel {
             return;
         }
 
-        // 内置变量在求值器里先被认出来，叫同一个名字的变量永远取不到，只能拦在改名这一步
+        // 内置变量在求值器里先被认出来，叫同一个名字的变量永远取不到，只能拦在改名这一步。
+        // 与某个函数形参重名则不必拦：形参只在那个函数体里优先，别处取到的仍是这个变量
         if (ExpressionScope.isBuiltin(name)) {
             context.notify(EditorLang.t("notify.variable_name_builtin", name));
             return;
@@ -404,7 +403,7 @@ public class VariablePanel extends EditorPanel {
         selectedName = variable.name();
         ContextMenu menu = new ContextMenu();
         // 固定值与公式都由编辑窗口在「确定」时校验；换成固定值只会减少依赖，不可能成环
-        menu.toggle("", EditorLang.t("variables.fixed"), () -> variable.source() instanceof Constant || variable.source() == null,
+        menu.toggle("", EditorLang.t("variables.fixed"), () -> variable.source() instanceof Constant,
                 () -> variable.source(new Constant(constantOf(variable))));
         menu.toggle(Icons.FORMULA, EditorLang.t("variables.formula"),
                 () -> variable.source() instanceof Formula, () -> openFormula(variable));

@@ -14,16 +14,15 @@ import org.jspecify.annotations.Nullable;
 /// - 作用域为 `null` 表示**静态求值**——只有固定数值可用，公式一律算不出来（返回 NaN）
 /// - 公式非法、变量取不到值、轨道不存在一律返回 [Float#NaN]；[#evaluateOrFallback] 是唯一的回退点
 ///
+/// **契约里没有"轨道 id"这一项**：只有 [TrackRef] 绑了轨道，所以那个问题由
+/// `source instanceof TrackRef track` 回答——本接口是 sealed，模式是完备的，对 null 也安全。
+/// 基类上留一个"非轨道来源返回 null"的方法等于让每个实现都回答一个只有一种实现答得出的问题
+///
 /// 三个实现都是不可变 record，所以 **`copy()` 就是 `this`**：来源可以作为快照直接共享。
 @NullMarked
 public sealed interface ValueSource permits NumberSource, TrackRef {
     /// 求值并回退固定数值——求值链上唯一的回退点
     float evaluateOrFallback(@Nullable Scope scope);
-
-    /// 轨道引用返回其 id，数值来源返回 null（原 `Variable#trackId` 的职责）
-    default @Nullable String trackId() {
-        return null;
-    }
 
     /// 来源不可变，拷贝返回自身
     ValueSource copy();

@@ -9,6 +9,7 @@ import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Expressio
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Formula;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Resolver;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Scope;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.SymbolTable;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.TrackRef;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Variable;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.CurveTrack;
@@ -88,10 +89,9 @@ public final class ExpressionEditorWindow {
 
     /// 这条公式挂在谁身上——用来判"换成它会不会闭合一个环"。
     ///
-    /// 两种挂法各对应依赖图里的一类节点：关键帧的槽位挂在某条轨道上，变量的来源挂在某个变量上。
-    /// **依赖怎么算不在这里**：交给 `EvaluationGraph`，它已经知道这类节点现在依赖谁。
-    ///
-    /// 编辑函数体时没有主体（函数体不属于任何节点），那时不判环
+    /// 三种挂法各对应依赖图里的一类节点：关键帧的槽位挂在某条轨道上，变量的来源挂在某个变量上，
+    /// 函数体挂在某个函数上。**依赖怎么算不在这里**：交给 `EvaluationGraph`，
+    /// 它已经知道这类节点现在依赖谁
     public sealed interface Subject {
         /// 关键帧槽位的公式：[trackId] 是所在轨道
         record Track(String trackId) implements Subject {
@@ -99,6 +99,10 @@ public final class ExpressionEditorWindow {
 
         /// 变量自己的来源公式
         record Variable(String variableName) implements Subject {
+        }
+
+        /// 自定义函数的函数体：形参由窗口的 [Parameters] 给出，不算引用
+        record Function(String functionName) implements Subject {
         }
     }
 
@@ -533,7 +537,6 @@ public final class ExpressionEditorWindow {
     /// 变量取值来源的显示文本：固定值给出数值，轨道给出轨道名，公式给出原文
     private String sourceLabel(Variable variable) {
         return switch (variable.source()) {
-            case null -> EditorLang.t("expression.variable.fixed", Draw.num(variable.defaultValue(), 3)).getString();
             case Constant constant -> EditorLang.t("expression.variable.fixed", Draw.num(constant.value(), 3)).getString();
             case Formula formula -> formula.expression();
             case TrackRef ignored -> {
@@ -716,15 +719,38 @@ public final class ExpressionEditorWindow {
             return parameterProblem;
         }
 
+        // 参数是提交时校验的，但这里再对一次：窗口开着时形参可能被别处改过（改名、读档替换）
+        SymbolTable.Shadowing conflict = parameterConflict();
+
+        if (conflict != null) {
+            return conflictText(conflict);
+        }
+
         if (text.isBlank()) {
             return EditorLang.t("expression.body_empty");
         }
 
-        return Expression.compile(text.strip()) == null ? EditorLang.t("expression.body_invalid") : null;
+        return Expression.valid(text.strip()) ? null : EditorLang.t("expression.body_invalid");
     }
 
-    /// 参数输入框提交：按逗号拆成参数名，有一个写不进公式就整条拒绝，留着原来的并给出提示。
-    /// 结果只落在窗口里，点「确定」时才写回函数——取消窗口不该顺手改掉参数
+    /// 当前这组形参有没有撞上内置量、或自己重名
+    private SymbolTable.@Nullable Shadowing parameterConflict() {
+        String function = subject instanceof Subject.Function subjectFunction ? subjectFunction.functionName() : "";
+        return SymbolTable.parameterConflict(function, editingParameters);
+    }
+
+    /// 冲突的说法：撞了内置量，还是同一个函数里重名
+    private Component conflictText(SymbolTable.Shadowing conflict) {
+        return switch (conflict.kind()) {
+            case PARAMETER_BUILTIN, VARIABLE_BUILTIN -> EditorLang.t("expression.parameter_builtin", conflict.name());
+            case PARAMETER_DUPLICATE -> EditorLang.t("expression.parameter_duplicate", conflict.name());
+        };
+    }
+
+    /// 参数输入框提交：按逗号拆成参数名，有一个写不进公式、或是内置量、或重名就整条拒绝，
+    /// 留着原来的并给出提示。结果只落在窗口里，点「确定」时才写回函数——取消窗口不该顺手改掉参数。
+    ///
+    /// **与用户变量重名是允许的**：那是函数体里最自然的一层局部名字，运行期形参优先
     private void applyParameters(String value) {
         List<String> parsed = new ArrayList<>();
 
@@ -746,19 +772,27 @@ public final class ExpressionEditorWindow {
         parameterProblem = null;
         editingParameters.clear();
         editingParameters.addAll(parsed);
+
+        SymbolTable.Shadowing conflict = parameterConflict();
+
+        if (conflict != null) {
+            parameterProblem = conflictText(conflict);
+        }
     }
 
     /// 公式引用了**本轨道上绑定的变量**——那等于这条轨道依赖了自己，是一个环。
     ///
     /// 旧的判定只说"取值口径有歧义"（变量读轨道走静态曲线）；有了求值依赖图之后它是一个真正的环，
     /// 而且 [#formulaProblem] 里的图判定本来就会拦下它。这里单独留一条是为了给更直白的提示：
-    /// "这个变量就绑在你正在编辑的这条轨道上"比"这些名字参与了循环引用"更好懂
+    /// "这个变量就绑在你正在编辑的这条轨道上"比"这些名字参与了循环引用"更好懂。
+    ///
+    /// 引用取自 [Expression#names]（语法树）而不是扫文本：文本扫会把形参名、函数名也算进来
     private boolean selfReferencing(String expression) {
         if (!(subject instanceof Subject.Track track)) {
             return false;
         }
 
-        for (String name : Expression.identifiers(expression)) {
+        for (String name : Expression.names(expression).variables()) {
             Variable variable = animation.symbols().variable(name);
 
             if (variable != null && track.trackId().equals(variable.trackId())) {
@@ -803,6 +837,8 @@ public final class ExpressionEditorWindow {
             case Subject.Track track -> graph.allowsTrackFormula(track.trackId(), stripped);
             case Subject.Variable variable -> graph.allowsVariableSource(variable.variableName(),
                     new Formula(stripped, 0f));
+            case Subject.Function function -> graph.allowsFunctionBody(function.functionName(), stripped,
+                    editingParameters);
         };
 
         return allowed ? null : EditorLang.t("variables.cycle_blocked", graph.cycleText());

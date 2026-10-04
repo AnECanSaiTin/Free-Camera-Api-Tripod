@@ -14,6 +14,11 @@ import org.jspecify.annotations.Nullable;
 /// "变量绑的轨道上又引用了这个变量"那种自嵌套现在是一个**环**，由 `eval.EvaluationGraph`
 /// 在写入期拦下（挂公式、绑轨道、读档三处），不必在这里做递归保护。
 ///
+/// **"这个来源绑了哪条轨道"只由本类型回答**：`trackId()` 是 record 组件访问器，
+/// [ValueSource] 上不再有那个"非轨道来源返回 null"的默认方法。调用方拿
+/// `source instanceof TrackRef track` 取 id——[ValueSource] 是 sealed，这个模式是完备的，
+/// 而且对 `source` 为 null（新变量还没绑来源）天然安全
+///
 /// 没有固定数值：静态求值（scope 为 null）与轨道缺失一样取不到值，按 0 处理。
 @NullMarked
 public record TrackRef(String trackId) implements ValueSource {
@@ -21,11 +26,6 @@ public record TrackRef(String trackId) implements ValueSource {
     public float evaluateOrFallback(@Nullable Scope scope) {
         float value = scope == null ? Float.NaN : scope.resolver().track(trackId);
         return Float.isNaN(value) ? 0f : value;
-    }
-
-    @Override
-    public String trackId() {
-        return trackId;
     }
 
     @Override

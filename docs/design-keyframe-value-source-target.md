@@ -29,7 +29,11 @@ api/animation/
 ├── CameraAnimation(.c)  Evaluator  EvaluateMode       顶层模型与插值模式
 │
 ├── expression/               ⇢ slf4j（只为一处日志，见下）
-│   ├── Expression.java          公式解析与求值（Formula / Resolver / 内置函数清单）
+│   ├── Expression.java          公式门面：compile（包内）/ evaluate / valid / 名字分析
+│   ├── Compiler.java  Node.java  编译：文本 → 不可变节点树 + 编译缓存 + 两条静态上限
+│   ├── Builtins.java             内置函数表：名字 / 参数个数 / 算子
+│   ├── Evaluator.java            解释 Node 树（唯一的语法树读取者）
+│   ├── Evaluation.java  EvalDepth.java   一次求值的会话（参数帧）与求值深度栈
 │   ├── Scope.java               求值环境：这一帧的时间 + 名字解析 + 轨道读数
 │   ├── TrackLookup.java         按 id 取轨道读数（函数式接口）
 │   ├── NumberSource.java        两态来源：Constant | Formula
@@ -46,7 +50,7 @@ api/animation/
 ├── eval/                     ⇢ animation, expression, curve
 │   ├── CurveSampler.java         **求值唯一入口**（对外 API 不变）
 │   ├── CurveSample.java          按 Scope 把键解析成 KeyValues（包内实现，缓存）
-│   ├── EvaluationGraph.java      变量 + 轨道的依赖图与判环（第 6.4 节）
+│   ├── EvaluationGraph.java      变量 + 轨道 + 函数的依赖图与判环（第 6.4 节）
 │   └── ExpressionScope.java      从动画构造的 Scope 实现
 │
 ├── path/                     ⇢ 无依赖（纯几何，不参与求值）
@@ -129,7 +133,9 @@ public interface TrackLookup {
 > 两个原本是 `Expression` 嵌套接口的类型外移成顶层：`Resolver`（原 `Expression.Resolver`）与新增的
 > `TrackLookup`。理由有二：`Scope.resolver()` 的返回类型写在 `expression` 包里比
 > `Expression.Resolver` 少一层拐弯；且"只要轨道读数"的读取方（例如只想画一条曲线的人）
-> 因此不必认识整个解析器。`Expression.evaluate(Formula, Resolver)` 的位置不变。
+> 因此不必认识整个解析器。`Expression.evaluate(String, Resolver)` 是公开的求值入口；
+> 编译产物 `Node` 与 `compile` 都收在包内（外部要"能不能用"问 `Expression.valid`），
+> 于是"求值入口唯一"是类型上的事实，而不是约定。
 
 ### 3.1 数值来源：两态 + 三态
 
@@ -166,7 +172,7 @@ public record Formula(String expression, float fallback) implements NumberSource
     @Override public float evaluate(@Nullable Scope scope) { ... }   // 失败 / scope 为 null → NaN
     @Override public float constant() { return fallback; }
     @Override public boolean isFormula() { return true; }
-    public boolean broken() { return Expression.compile(expression) == null; }
+    public boolean broken() { return !Expression.valid(expression); }
 }
 ```
 
@@ -177,15 +183,13 @@ public sealed interface ValueSource permits NumberSource, TrackRef {
     /// 与 NumberSource 同名同义；NumberSource 的实现直接继承过来
     float evaluateOrFallback(@Nullable Scope scope);
 
-    /// 轨道引用返回其 id，数值来源返回 null（原 Variable#trackId 的职责）
-    default @Nullable String trackId() { return null; }
-
     ValueSource copy();     // 三个实现都是不可变 record，copy 可以返回 this
 }
 
 /// 轨道读数：只作变量的取值来源，**不实现 NumberSource**，因此进不了关键帧字段
 public record TrackRef(String trackId) implements ValueSource {
-    @Override @Nullable public String trackId() { return trackId; }
+    // "绑了哪条轨道"只由本类型回答：调用方写 source instanceof TrackRef track
+    // （接口是 sealed，模式完备），基类上不再有"非轨道来源返回 null"的默认方法
     @Override public float evaluateOrFallback(@Nullable Scope scope) {
         float value = scope == null ? Float.NaN : scope.resolver().track(trackId);
         return Float.isNaN(value) ? 0f : value;
@@ -194,30 +198,38 @@ public record TrackRef(String trackId) implements ValueSource {
 }
 ```
 
+> 落地时改了一处：`trackId()` 没有留在 `ValueSource` 上，而是只作 `TrackRef` 的 record 组件。
+> 基类上留一个"只有一种实现答得出"的方法等于让每个实现都回答同一个问题，而 `instanceof TrackRef`
+> 在 sealed 接口上是完备模式；`Variable.trackId()` 仍保留，内部就是那个模式。
+
 ### 3.2 变量与符号表
 
 ```java
 public final class Variable {
     private String name;
-    private @Nullable ValueSource source;   // null = 没有来源，取默认值
-    private float defaultValue;             // 默认 0
+    private ValueSource source;             // 恒非空：新建就是 Constant(0)
+    private float defaultValue;             // 默认 0；来源恒非空之后只剩"给界面一个初始数"的用途
 
     public String name();
     public Variable name(String name);
-    public @Nullable ValueSource source();
-    public Variable source(@Nullable ValueSource source);
+    public ValueSource source();
+    public Variable source(ValueSource source);
     public float defaultValue();
     public Variable defaultValue(float value);
 
-    /// 这一帧的取值：没绑来源就是默认值
+    /// 这一帧的取值：按来源求值并回退固定数值
     public float evaluate(@Nullable Scope scope) {
-        return source == null ? defaultValue : source.evaluateOrFallback(scope);
+        return source.evaluateOrFallback(scope);
     }
+    public @Nullable String trackId();          // source instanceof TrackRef ? id : null
     public Variable copy();
     public JsonObject write();                  // {"name":…, "source": {…} | 数字}
     public static Variable read(JsonObject object);
 }
 ```
+
+> 落地时把来源收成了**非空**：原设计里 `null` 表示"没绑来源、取默认值"，但那条状态过不了存读档
+> （写成默认值数字，读回来是 `Constant`），界面也一直把它当固定值显示，于是干脆让它不存在。
 
 `SymbolTable` 的其余成员（`variables` / `variable` / `addVariable` / `removeVariable` / `renameVariable` /
 `functions` / `function` / `add*` / `remove*` / `rename*` / `rebindTrack` / `unbindTrack` / `replaceFrom`）不变，
@@ -532,16 +544,21 @@ final class CurveSample implements KeyValues {
 **本条原来提的修法**（把降级从"整条轨道"收窄成"一个槽位"）**没有采用**。它绕了远路：
 真正的前提不是"求值时挑挑拣拣"，而是**环根本就不该存在**。所以实际落地的是另一条路：
 
-1. `eval.EvaluationGraph` 把变量与轨道画进同一张图，把"变量绑轨道、轨道上的公式又引用该变量"
-   这条跨轨道的闭合路径也展开，用 Kahn 拓扑判环；
-2. 环在**写入期**被拒绝——挂公式（编辑窗口点确定）、绑轨道（变量面板）、读档三处；
+1. `eval.EvaluationGraph` 把**变量、轨道、自定义函数**画进同一张图，把"变量绑轨道、轨道上的公式又引用该变量"
+   这条跨轨道的闭合路径也连上边（函数调用同理，函数名本身就是节点），用 Kahn 拓扑判环；
+2. 环在**写入期**被拒绝——挂公式（编辑窗口点确定）、绑轨道（变量面板）、**存函数体**、读档四处
+   （函数体那一路是后补的：在此之前函数体对图完全隐形，`f(x) = f(x)` 只能等求值时才被深度栈截成 NaN）；
 3. 于是 `ExpressionScope.track` 可以放心地按**当前作用域**求值：变量读到的就是这一帧的真值，
    与"该轨道作为属性播放"走同一段求值，得到同一个数。歧义消失。
+4. 引用取自编译好的语法树（`Expression.names`）而非扫文本：文本扫分不清函数体的形参与同名变量，
+   多算的边在"写入期拒绝"这条口径下会变成误拒合法公式。
 
 **6.4 里那条"留好接口"的建议仍然照办了**：`Scope.resolving()` 留着，但用途从"给单槽位降级
 预留"变成**廉价的断言钩子**（实现见 `ExpressionScope`，返回正在求值的变量名）。它同时也是
-兜底手段之一：万一有编辑路径绕过校验形成了环，`ExpressionScope` 的 `visiting` 栈与
-`MAX_TRACK_DEPTH` 会让求值退成 NaN，而不是栈溢出。
+兜底手段之一：万一有编辑路径绕过校验形成了环，`ExpressionScope` 的 `visiting` 栈按名字精确
+判重、记下环并让求值退成 NaN。（更粗的**深度兜底**后来落在了 `expression` 包的求值深度栈
+`EvalDepth` 上——它挂在"求值一段公式"这个唯一入口上，因此连函数递归一并管住；
+`ExpressionScope` 自己那套按 `visitingSet.size()` 数的深度上限已删除。）
 
 **代价**（与原估计不同）：不是"引用分析进热路径"，而是
 （a）`expression` 层多了一条对 slf4j 的依赖（见第 2 节末尾），
@@ -578,7 +595,7 @@ private record KeyframeAccessor(Keyframe key, KeyField field) implements Express
 ### 7.2 公式缓存：从字段上挪回解析层
 
 `Formula` 是 record（不可变、可 `equals`），编译结果不能放进去。做法：
-`Expression` 内部按公式文本驻留编译结果（它本来就有 512 条上限的缓存），`Formula.evaluate` 每次查一次
+`Compiler` 内部按公式文本驻留编译结果（它本来就有 512 条上限的缓存），`Formula.evaluate` 每次查一次
 （`ConcurrentHashMap` 命中，量级可忽略）。好处是**序列化与拷贝不再带着编译产物走**，
 "同一个公式文本只解析一次"这条语义也从"每个字段各存一份"变成"全局一份"。
 

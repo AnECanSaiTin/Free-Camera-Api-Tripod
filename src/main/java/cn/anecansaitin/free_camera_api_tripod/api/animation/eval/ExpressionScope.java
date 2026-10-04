@@ -15,7 +15,6 @@ import org.jspecify.annotations.Nullable;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -39,22 +38,19 @@ import java.util.Set;
 ///   由 `EvaluationGraph` 在写入期保证无环
 /// - **成环是写入期就挡掉的事**：环在挂公式、绑轨道、读档三处判定并拒绝，正常数据里到不了这里。
 ///   [#cycle] 与 `visiting` 栈因此退化成一道**兜底**——万一有哪条编辑路径绕过了校验，
-///   它保证求值返回 NaN 而不是递归到栈溢出
+///   它保证求值返回 NaN 而不是递归到栈溢出。真正的深度兜底在 `expression` 包的求值深度栈上
+///   （`EvalDepth`），那里是"求值一段公式"的唯一入口，因此连函数递归也一并管住
 @NullMarked
 public final class ExpressionScope implements Scope, Resolver {
-    /// 内置变量：当前求值时间
-    public static final String TIME_VARIABLE = "t";
-    /// 内置变量：播放进度（0~1）
-    public static final String PROGRESS_VARIABLE = "p";
-    /// 内置变量：世界时间（0~1）
-    public static final String WORLD_TIME_VARIABLE = "wt";
+    /// 内置量：当前求值时间。名字的权威定义在 [Resolver] 上——那是"实现必须先认掉它们"这条契约的所在地
+    public static final String TIME_VARIABLE = Resolver.TIME_VARIABLE;
+    /// 内置量：播放进度（0~1）
+    public static final String PROGRESS_VARIABLE = Resolver.PROGRESS_VARIABLE;
+    /// 内置量：世界时间（0~1）
+    public static final String WORLD_TIME_VARIABLE = Resolver.WORLD_TIME_VARIABLE;
 
     /// 内置变量的名字；这些名字被求值环境自己占用，不能拿来当用户变量
-    public static final List<String> BUILTIN_VARIABLES = List.of(TIME_VARIABLE, PROGRESS_VARIABLE, WORLD_TIME_VARIABLE);
-
-    /// 变量求值栈的深度上限：只是环没被写入期拦下时的兜底，正常链路远到不了。
-    /// 取一个明显大于任何真实依赖链、又远小于栈容量的数
-    private static final int MAX_TRACK_DEPTH = 64;
+    public static final List<String> BUILTIN_VARIABLES = Resolver.BUILTIN_NAMES;
 
     /// 按 id 查曲线；没有返回 null
     @FunctionalInterface
@@ -126,7 +122,7 @@ public final class ExpressionScope implements Scope, Resolver {
 
     /// 名字是否被内置变量占用
     public static boolean isBuiltin(String name) {
-        return BUILTIN_VARIABLES.contains(name);
+        return Resolver.isBuiltinName(name);
     }
 
     @Override
@@ -215,18 +211,15 @@ public final class ExpressionScope implements Scope, Resolver {
     /// 取值口径歧义就此消失。
     ///
     /// 递归一定终止：环在写入期就被 `EvaluationGraph` 拦掉了（挂公式、绑轨道、读档三处），
-    /// 所以这里不需要每次求值再判一次环。万一有哪条路径绕过了校验，[#visiting] 的深度上限
-    /// 兜住它——记一条环并把这一处退成 NaN，而不是栈溢出
+    /// 所以这里不需要每次求值再判一次环。万一有哪条路径绕过了校验，[#visiting] 的判重会记一条环
+    /// 并把这一处退成 NaN——它按名字精确判重，比"数深度"更早也更准；真正的深度兜底在
+    /// `expression` 包的求值深度栈上（`EvalDepth`），那里连函数递归一起管
     @Override
     public float track(String id) {
         // 查曲线本身已经是一次按名取表，这里不再额外缓存一份
         Curve curve = curves.curve(id);
 
         if (curve == null) {
-            return Float.NaN;
-        }
-
-        if (visitingSet.size() >= MAX_TRACK_DEPTH) {
             return Float.NaN;
         }
 

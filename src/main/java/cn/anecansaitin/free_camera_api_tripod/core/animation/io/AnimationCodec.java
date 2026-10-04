@@ -6,6 +6,7 @@ import cn.anecansaitin.free_camera_api_tripod.api.animation.Keyframe;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.Curve;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.curve.WrapMode;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.CustomFunction;
+import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.SymbolTable;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.expression.Variable;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.path.Path;
 import cn.anecansaitin.free_camera_api_tripod.api.animation.path.PathMode;
@@ -251,6 +252,17 @@ public final class AnimationCodec {
         animation.restoreMotionMode(motionModeValue(stringValue(root, FIELD_MOTION_MODE, "")));
         // 距离口径只改标记：键值在写出时已经是该口径，再走 distanceMode 会被换算一遍
         animation.restoreDistanceMode(distanceModeValue(stringValue(root, FIELD_DISTANCE_MODE, "")));
+
+        // 名字冲突也拒绝：形参撞上内置量会让 `t` / `p` / `wt` 在那个函数体里失效，同一函数里
+        // 形参重名则有一个永远取不到。读档是整批塞进来的，逐条拦会变成"函数先读还是变量先读"
+        // 的顺序依赖，所以塞完统一扫一次。**形参与用户变量重名是允许的**，不在其中
+        SymbolTable.Shadowing shadowing = animation.symbols().shadowing();
+
+        if (shadowing != null) {
+            LOGGER.warn("Refusing to load animation '{}': name conflict ({}, function '{}', name '{}')",
+                    animation.name(), shadowing.kind(), shadowing.function(), shadowing.name());
+            return null;
+        }
 
         // 求值图必须无环：带环的文件读进来之后求值会全程退回固定值，与其让用户面对一堆
         // 说不清的数字，不如在这里就拒绝，并说清是哪几个名字闭成了环。

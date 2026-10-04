@@ -90,6 +90,8 @@
   "free_camera_api_tripod.editor.expression.parameters": "Parameters:",
   "free_camera_api_tripod.editor.expression.parameters.tip": "Inside this editor every function parameter is treated as 1",
   "free_camera_api_tripod.editor.expression.parameter_invalid": "Parameter %s cannot be used in a formula: it must start with a letter, underscore or non-ASCII character",
+  "free_camera_api_tripod.editor.expression.parameter_builtin": "Parameter %s is a built-in variable (t / p / wt), please pick another parameter name",
+  "free_camera_api_tripod.editor.expression.parameter_duplicate": "Parameter %s is repeated, please rename or remove one",
   "free_camera_api_tripod.editor.expression.body_empty": "The function body is empty, write a formula",
   "free_camera_api_tripod.editor.expression.body_invalid": "The function body is not a valid formula, check brackets and function names",
   "free_camera_api_tripod.editor.expression.placeholder": "e.g. t * 2 + sin(t)",

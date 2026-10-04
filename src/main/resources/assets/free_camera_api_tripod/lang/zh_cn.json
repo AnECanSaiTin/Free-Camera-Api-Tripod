@@ -89,6 +89,8 @@
   "free_camera_api_tripod.editor.expression.parameters": "参数：",
   "free_camera_api_tripod.editor.expression.parameters.tip": "编辑界面内，函数参数值视为 1",
   "free_camera_api_tripod.editor.expression.parameter_invalid": "参数名 %s 不能写进公式，需以字母、下划线或中文开头",
+  "free_camera_api_tripod.editor.expression.parameter_builtin": "参数 %s 是内置变量（t / p / wt），请换一个形参名",
+  "free_camera_api_tripod.editor.expression.parameter_duplicate": "参数 %s 重复了，请改名或删掉一个",
   "free_camera_api_tripod.editor.expression.body_empty": "函数体为空，请写一段公式",
   "free_camera_api_tripod.editor.expression.body_invalid": "函数体不是合法的公式，检查括号与函数名",
   "free_camera_api_tripod.editor.expression.placeholder": "例如 t * 2 + sin(t)",
