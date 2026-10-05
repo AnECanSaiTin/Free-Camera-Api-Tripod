@@ -158,10 +158,10 @@ public final class EvaluationGraph {
             }
 
             // 绑了轨道的变量：连一条变量 → 轨道的边
-            if (source instanceof TrackRef track) {
-                graph.note(trackKey(track.trackId()), track.trackId());
-                graph.variableBindings.put(variableKey(variable.name()), trackKey(track.trackId()));
-                graph.trackFormulas.putIfAbsent(trackKey(track.trackId()), Refs.NONE);
+            if (source instanceof TrackRef(String trackId)) {
+                graph.note(trackKey(trackId), trackId);
+                graph.variableBindings.put(variableKey(variable.name()), trackKey(trackId));
+                graph.trackFormulas.putIfAbsent(trackKey(trackId), Refs.NONE);
             }
         }
 
@@ -171,7 +171,7 @@ public final class EvaluationGraph {
                     graph.refs(function.body(), Set.copyOf(function.parameters())));
         }
 
-        graph.cycle.addAll(markResolved(graph.resolved(graph.variableFormulas, graph.variableBindings,
+        graph.cycle.addAll(graph.markResolved(resolved(graph.variableFormulas, graph.variableBindings,
                 graph.trackFormulas, graph.functionBodies)));
         return graph;
     }
@@ -196,7 +196,7 @@ public final class EvaluationGraph {
                 || cycle.contains(trackKey(name));
     }
 
-    /// 这段公式挂到 [trackId] 上会不会成环。
+    /// 这段公式挂到 trackId 上会不会成环。
     ///
     /// **只试算，不改动任何数据**：换掉该轨道的引用零件再判一次——绑在这条轨道上的变量
     /// 会跟着这条边一起被判到，不必单独传播
@@ -371,14 +371,14 @@ public final class EvaluationGraph {
 
     // region 拓扑
 
-    private static boolean isAcyclic(Map<String, Set<String>> dependencies) {
+    private boolean isAcyclic(Map<String, Set<String>> dependencies) {
         return markResolved(dependencies).isEmpty();
     }
 
     /// Kahn 拓扑：返回**没能定值的节点**，空集表示无环。
     ///
     /// 一个节点能定值，当且仅当它依赖的节点全都已经定值
-    private static Set<String> markResolved(Map<String, Set<String>> dependencies) {
+    private Set<String> markResolved(Map<String, Set<String>> dependencies) {
         // 每个节点的剩余依赖，以及反向索引（谁依赖我）
         Map<String, Set<String>> remaining = new HashMap<>();
         Map<String, Set<String>> dependents = new HashMap<>();
@@ -424,6 +424,8 @@ public final class EvaluationGraph {
             }
         }
 
+        cycle.clear();
+        cycle.addAll(unresolved);
         return unresolved;
     }
 
