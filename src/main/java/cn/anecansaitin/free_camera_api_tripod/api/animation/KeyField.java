@@ -4,6 +4,7 @@ import org.jspecify.annotations.NullMarked;
 
 import java.util.Collections;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Set;
 
 /// 关键帧上可以挂公式的五个数值槽位。
@@ -30,6 +31,7 @@ public enum KeyField {
     private final String labelKey;
     private final int decimals;
     private final Set<EvaluateMode> modes;
+    public static final KeyField[] values = values();
 
     KeyField(String labelKey, int decimals, Set<EvaluateMode> modes) {
         this.labelKey = labelKey;

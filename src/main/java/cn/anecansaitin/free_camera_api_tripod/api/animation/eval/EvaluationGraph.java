@@ -88,7 +88,7 @@ public final class EvaluationGraph {
     private final Map<String, Refs> trackFormulas = new LinkedHashMap<>();
     /// 函数中的引用
     private final Map<String, Refs> functionBodies = new LinkedHashMap<>();
-    /// 每个变量绑的轨道：变量 key → 轨道 key；没绑轨道的不入表
+    /// 每个变量绑的轨道：变量key → 轨道key；没绑轨道的不入表
     private final Map<String, String> variableBindings = new LinkedHashMap<>();
     /// 图上真实存在的**裸名字**：用来判断"公式里这个名字算不算引用"
     private final Set<String> variableNames = new LinkedHashSet<>();
@@ -171,7 +171,7 @@ public final class EvaluationGraph {
                     graph.refs(function.body(), Set.copyOf(function.parameters())));
         }
 
-        graph.cycle.addAll(graph.markResolved(resolved(graph.variableFormulas, graph.variableBindings,
+        graph.cycle.addAll(graph.markResolved(graph.resolved(graph.variableFormulas, graph.variableBindings,
                 graph.trackFormulas, graph.functionBodies)));
         return graph;
     }
@@ -210,11 +210,11 @@ public final class EvaluationGraph {
         return isAcyclic(resolved(variableFormulas, variableBindings, tracks, functionBodies));
     }
 
-    /// 变量 [name] 的来源换成 [source] 之后会不会成环。
+    /// 变量 name 的来源换成 source 之后会不会成环。
     ///
     /// **只试算，不改动任何数据**：换掉这一个节点的零件再判一次，其余节点沿用建图时的引用。
     ///
-    /// 注意试算的粒度：[name] 若**还不存在于变量表**里，别的节点对它的引用在建图时就被当成
+    /// 注意试算的粒度：name 若**还不存在于变量表**里，别的节点对它的引用在建图时就被当成
     /// "未定义的名字"滤掉了，这次试算看不到它们。编辑器里变量总是先建好再绑来源，所以不受影响
     public boolean allowsVariableSource(String name, @Nullable ValueSource source) {
         String key = variableKey(name);
@@ -232,9 +232,9 @@ public final class EvaluationGraph {
             formulas.put(key, refs(formula.expression(), Set.of(), knownVariables, functionNames));
         }
 
-        if (source instanceof TrackRef track) {
-            bindings.put(key, trackKey(track.trackId()));
-            tracks.putIfAbsent(trackKey(track.trackId()), Refs.NONE);
+        if (source instanceof TrackRef(String trackId)) {
+            bindings.put(key, trackKey(trackId));
+            tracks.putIfAbsent(trackKey(trackId), Refs.NONE);
         }
 
         return isAcyclic(resolved(formulas, bindings, tracks, functionBodies));
@@ -338,7 +338,7 @@ public final class EvaluationGraph {
     }
 
     /// 把三类节点展开成一张普通的依赖表：节点 key → 它直接依赖的节点 key
-    private static Map<String, Set<String>> resolved(Map<String, Refs> formulas,
+    private Map<String, Set<String>> resolved(Map<String, Refs> formulas,
                                                      Map<String, String> bindings,
                                                      Map<String, Refs> tracks,
                                                      Map<String, Refs> functions) {
