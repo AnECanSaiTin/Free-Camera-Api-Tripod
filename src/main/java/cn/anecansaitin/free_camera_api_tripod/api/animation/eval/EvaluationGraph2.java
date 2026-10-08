@@ -7,6 +7,7 @@ import cn.anecansaitin.free_camera_api_tripod.api.animation.track.AnimationTrack
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.CurveTrack;
 import com.google.common.graph.GraphBuilder;
 import com.google.common.graph.MutableGraph;
+import com.google.common.graph.Traverser;
 import org.jspecify.annotations.NullMarked;
 
 import java.util.*;
@@ -14,7 +15,7 @@ import java.util.*;
 @NullMarked
 public class EvaluationGraph2 {
     private final MutableGraph<Node> graph;
-    private final List<List<Node>> cycleInfo = new ArrayList<>();
+    private final List<List<String>> cycleInfo = new ArrayList<>();
 
     private record Node(Type type, String name) {
         private enum Type {
@@ -68,6 +69,20 @@ public class EvaluationGraph2 {
             putAllEdge(nodeU, dest);
         }
         // endregion
+        // 检测循环引用
+        dsfResolve();
+    }
+
+    public List<List<String>> cycleInfo() {
+        return cycleInfo;
+    }
+
+    public boolean hasCycle() {
+        return !cycleInfo.isEmpty();
+    }
+
+    public boolean checkTrackFormula(String trackId, String variable) {
+        return false;
     }
 
     private void putAllEdge(Node nodeU, Set<Node> nodeVs) {
@@ -145,7 +160,7 @@ public class EvaluationGraph2 {
         }
     }
 
-    private void resolve() {
+    private void dsfResolve() {
         // 已被访问过的节点
         Set<Node> visited = new HashSet<>();
         // 当前访问路径上的节点
@@ -171,12 +186,12 @@ public class EvaluationGraph2 {
         for (Node next : graph.successors(node)) {
             // 栈内存在相同节点，说明成环
             if (stack.contains(next)) {
-                ArrayList<Node> cycle = new ArrayList<>();
+                ArrayList<String> cycle = new ArrayList<>();
                 cycleInfo.add(cycle);
-                cycle.add(next);
+                cycle.add(next.name());
 
                 for (Node pathNode : path) {
-                    cycle.add(pathNode);
+                    cycle.add(pathNode.name());
 
                     if (next.equals(pathNode)) {
                         break;
@@ -196,4 +211,6 @@ public class EvaluationGraph2 {
         path.pop();
         stack.remove(node);
     }
+
+
 }
