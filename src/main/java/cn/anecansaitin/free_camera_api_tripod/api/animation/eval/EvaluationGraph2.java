@@ -7,15 +7,14 @@ import cn.anecansaitin.free_camera_api_tripod.api.animation.track.AnimationTrack
 import cn.anecansaitin.free_camera_api_tripod.api.animation.track.CurveTrack;
 import com.google.common.graph.GraphBuilder;
 import com.google.common.graph.MutableGraph;
+import org.jspecify.annotations.NullMarked;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
+@NullMarked
 public class EvaluationGraph2 {
     private final MutableGraph<Node> graph;
-    private final List<Node> cycleInfo = new ArrayList<>();
+    private final List<List<Node>> cycleInfo = new ArrayList<>();
 
     private record Node(Type type, String name) {
         private enum Type {
@@ -144,5 +143,57 @@ public class EvaluationGraph2 {
 
             dest.add(node);
         }
+    }
+
+    private void resolve() {
+        // 已被访问过的节点
+        Set<Node> visited = new HashSet<>();
+        // 当前访问路径上的节点
+        Set<Node> stack = new HashSet<>();
+        // 按照访问顺序记录访问路径，用于打印循环引用
+        Deque<Node> path = new ArrayDeque<>();
+        cycleInfo.clear();
+
+        for (Node node : graph.nodes()) {
+            if (visited.contains(node)) {
+                continue;
+            }
+
+            dfs(node, visited, stack, path);
+        }
+    }
+
+    private void dfs(Node node, Set<Node> visited, Set<Node> stack, Deque<Node> path) {
+        visited.add(node);
+        stack.add(node);
+        path.push(node);
+
+        for (Node next : graph.successors(node)) {
+            // 栈内存在相同节点，说明成环
+            if (stack.contains(next)) {
+                ArrayList<Node> cycle = new ArrayList<>();
+                cycleInfo.add(cycle);
+                cycle.add(next);
+
+                for (Node pathNode : path) {
+                    cycle.add(pathNode);
+
+                    if (next.equals(pathNode)) {
+                        break;
+                    }
+                }
+
+                // deque遍历顺序从队尾到队头，因此需要反转顺序
+                Collections.reverse(cycle);
+                continue;
+            }
+
+            if (!visited.contains(next)) {
+                dfs(next, visited, stack, path);
+            }
+        }
+
+        path.pop();
+        stack.remove(node);
     }
 }
