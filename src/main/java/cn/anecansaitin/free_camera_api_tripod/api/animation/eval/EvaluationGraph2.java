@@ -91,24 +91,29 @@ public class EvaluationGraph2 {
         return !cycleInfo.isEmpty();
     }
 
-    /// 这条公式挂到 trackId 上会不会成环；**返回这次改动闭合的环**（空表 = 放行）。
+    /// 预检查轨道表达式是否成环。
     ///
-    /// **只读探针**：不把候选边真的加上去试，也不改动图。判据是"候选节点在不在这个节点的祖先里"——
-    /// 基础态无环（构造时 [#dsfResolve] 已确认过），所以新环一定经过这个节点，必然由
-    /// "一条候选边 `node → v`"加上"一条 `v ⇒ node` 的路径"拼成。真加上去试就会多出两件麻烦：
-    /// 自环加不进去（Guava 的图默认不允许自环，`putEdge` 会抛），以及试算的环会留在 [#cycleInfo] 里
+    /// 无副作用。
+    ///
+    /// @param trackId 轨道 ID
+    /// @param expression 表达式
+    /// @return 所有闭合的环
     public List<List<Node>> checkTrackFormula(String trackId, String expression) {
-        if (expression == null || expression.isBlank()) {
+        if (expression.isBlank()) {
             return Collections.emptyList();
         }
 
         Node node = Node.track(trackId);
-        return checkSource(node, replaceableEdges(node), refs(expression, Set.of(), definedWith(node)));
+        return checkSource(node, refs(expression, Set.of(), definedWith(node)));
     }
 
-    /// 变量 varName 的来源换成 source 之后会不会成环；返回闭合的环（空表 = 放行）。
+    /// 预检查变量表达式是否成环。
     ///
-    /// 候选 = 公式引用的变量与函数，或（绑轨道时）那条轨道。`Constant` 没有任何依赖，一定放行
+    /// 无副作用。
+    ///
+    /// @param varName 变量名
+    /// @param source 值来源
+    /// @return 所有闭合的环
     public List<List<Node>> checkVarFormula(String varName, ValueSource source) {
         Node node = Node.var(varName);
         Set<Node> defined = definedWith(node);
@@ -127,16 +132,20 @@ public class EvaluationGraph2 {
             }
         }
 
-        return checkSource(node, replaceableEdges(node), candidates);
+        return checkSource(node, candidates);
     }
 
-    /// 函数 funcName 的函数体换成 expression 之后会不会成环；返回闭合的环（空表 = 放行）。
+    /// 预检查函数表达式是否成环。
     ///
-    /// [parameters] 是这次编辑的形参表：形参名在函数体里不算引用，所以它是参数的一部分，不能省。
-    /// 函数自己也算"图上存在的节点"（见 [#definedWith]），否则 `f(x) = f(x)` 这种自递归看不见
+    /// 无副作用。
+    ///
+    /// @param funcName 函数名
+    /// @param parameters 函数形参
+    /// @param expression 方法体
+    /// @return 所有闭合的环
     public List<List<Node>> checkFuncFormula(String funcName, Set<String> parameters, String expression) {
         Node node = Node.func(funcName);
-        return checkSource(node, replaceableEdges(node), refs(expression, parameters, definedWith(node)));
+        return checkSource(node, refs(expression, parameters, definedWith(node)));
     }
 
     /// 判"把 [node] 的出边换成 [candidates] 会不会成环"，返回闭合的环（空表 = 放行）。
@@ -144,13 +153,15 @@ public class EvaluationGraph2 {
     /// [replaced] 是 [node] 原来那些出边，必须是**已经摘掉**的状态传进来（见 [#replaceableEdges]）：
     /// 它们正是这次改动要换掉的东西，留着就会把"本来就要消失的环"算成新环，误拒一次合法改动。
     /// 收完祖先马上放回去，所以整个过程对外仍然只读；判完把 [#cycleInfo] 刷新回真实图的状态
-    private List<List<Node>> checkSource(Node node, Set<Node> replaced, Set<Node> candidates) {
+    /// @param node 节点
+    /// @param candidates 新出边
+    private List<List<Node>> checkSource(Node node, Set<Node> candidates) {
         Set<Node> ancestors;
 
         try {
             ancestors = ancestors(node);
         } finally {
-            putAllEdges(node, replaced);
+            putAllEdges(node, replaceableEdges(node));
         }
 
         for (Node candidate : candidates) {
@@ -198,10 +209,9 @@ public class EvaluationGraph2 {
         }
     }
 
-    /// [node] 的所有祖先：能沿依赖边走回 [node] 的节点（一步或多步），**不含 [node] 自己**。
-    ///
-    /// 就是"上游闭包"，沿 predecessors 反向走一遍。判环的判据全在这里：候选节点落在其中，
-    /// 说明它已经依赖 [node]，再连一条 `node → 候选` 就闭合了
+    /// 仅在图无环可用时调用。
+    /// @param node 节点
+    /// @return 所有上游节点（不含本身）
     private Set<Node> ancestors(Node node) {
         Set<Node> ancestors = new HashSet<>();
         Deque<Node> pending = new ArrayDeque<>(graph.predecessors(node));
@@ -209,7 +219,7 @@ public class EvaluationGraph2 {
         while (!pending.isEmpty()) {
             Node current = pending.poll();
 
-            if (!current.equals(node) && ancestors.add(current)) {
+            if (ancestors.add(current)) {
                 pending.addAll(graph.predecessors(current));
             }
         }
