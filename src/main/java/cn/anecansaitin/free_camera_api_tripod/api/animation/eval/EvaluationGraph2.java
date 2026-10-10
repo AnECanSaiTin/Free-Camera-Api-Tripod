@@ -11,6 +11,9 @@ import org.jspecify.annotations.NullMarked;
 
 import java.util.*;
 
+/// 配套编辑器要求：
+/// 1.删除任意节点时先检查是否被引用。如有，则无法直接删除。可考虑加个"断开引用"的操作，将对应引用改为固定值0。或者沿着引用链全部删除。
+/// 2.
 @NullMarked
 public class EvaluationGraph2 {
     private final MutableGraph<Node> graph;
@@ -37,6 +40,7 @@ public class EvaluationGraph2 {
         // region 创建图
         graph = GraphBuilder
                 .directed()
+                .allowsSelfLoops(true)// 允许自环，由dfs来检测
                 .expectedNodeCount(variables.size() + functions.size() + tracks.size())
                 .build();
         // endregion
@@ -145,7 +149,51 @@ public class EvaluationGraph2 {
     /// @return 所有闭合的环
     public List<List<Node>> checkFuncFormula(String funcName, Set<String> parameters, String expression) {
         Node node = Node.func(funcName);
-        return checkSource(node, refs(expression, parameters, definedWith(node)));
+        Set<Node> defined = new HashSet<>(graph.nodes());
+        HashSet<Node> dest = new HashSet<>();
+        defined.add(node);
+        refs(expression, parameters, defined, dest);
+
+        // 无后继，不会成环
+        if (dest.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        ArrayList<List<Node>> result = new ArrayList<>();
+        HashSet<Node> visited = new HashSet<>();
+        ArrayDeque<Node> pathStack = new ArrayDeque<>();
+        Deque<Frame> frames = new ArrayDeque<>();
+        visited.add(node);
+        pathStack.push(node);
+        frames.push(new Frame(node, graph.predecessors(node).iterator()));
+
+        while(!frames.isEmpty()) {
+            Frame frame = frames.peek();
+
+            if (!frame.successors.hasNext()) {
+                frames.pop();
+                pathStack.pop();
+                continue;
+            }
+
+            Node next = frame.successors.next();
+
+            if (dest.contains(next)) {
+                ArrayList<Node> cycle = new ArrayList<>();
+                cycle.add(next);
+                cycle.addAll(pathStack);
+                cycle.add(next);
+                result.add(cycle);
+                continue;
+            }
+
+            if (visited.add(next)) {
+                pathStack.push(next);
+                frames.push(new Frame(next, graph.predecessors(next).iterator()));
+            }
+        }
+
+        return result;
     }
 
     /// 判"把 [node] 的出边换成 [candidates] 会不会成环"，返回闭合的环（空表 = 放行）。
@@ -354,11 +402,6 @@ public class EvaluationGraph2 {
         }
     }
 
-    /// 深度优先走一遍图，把发现的环都写进 [dest]。
-    ///
-    /// **迭代实现**：原来靠递归下探，环很深（或依赖链很长）时会递归到栈溢出；现在把"当前节点还有哪些
-    /// 后继没走"装进显式栈 [frames]，深度只受堆限制。判定口径与原来逐字一致——[pathStack] 就是递归版里
-    /// 那个"当前访问路径上的节点"集合，[path] 就是递归版的调用路径（栈顶 = 当前节点）
     private void dsfResolve(List<List<Node>> dest) {
         // 已被访问过的节点
         Set<Node> visited = new HashSet<>();
@@ -383,7 +426,7 @@ public class EvaluationGraph2 {
                 Frame frame = frames.peekLast();
 
                 if (!frame.successors.hasNext()) {
-                    // 这一支走完了，与递归版出栈时同步维护 pathStack / path 一样
+                    // 这一支走完了
                     frames.removeLast();
                     pathStack.remove(frame.node);
                     path.pollLast();
@@ -421,7 +464,7 @@ public class EvaluationGraph2 {
         }
     }
 
-    /// 迭代 DFS 的一帧：正在下探的节点，以及它那些还没走完的后继
+    /// 栈帧
     private record Frame(Node node, Iterator<Node> successors) {
     }
 }
