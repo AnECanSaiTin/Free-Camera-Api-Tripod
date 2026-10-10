@@ -108,7 +108,10 @@ public class EvaluationGraph2 {
         }
 
         Node node = Node.track(trackId);
-        return checkSource(node, refs(expression, Set.of(), definedWith(node)));
+        Set<Node> defined = definedWith(node);
+        HashSet<Node> dest = new HashSet<>();
+        refs(expression, Set.of(), defined, dest);
+        return walker(node, dest);
     }
 
     /// 预检查变量表达式是否成环。
@@ -121,22 +124,22 @@ public class EvaluationGraph2 {
     public List<List<Node>> checkVarFormula(String varName, ValueSource source) {
         Node node = Node.var(varName);
         Set<Node> defined = definedWith(node);
-        Set<Node> candidates = new HashSet<>();
+        HashSet<Node> dest = new HashSet<>();
 
         switch (source) {
             case TrackRef trackRef -> {
                 Node track = Node.track(trackRef.trackId());
 
                 if (defined.contains(track)) {
-                    candidates.add(track);
+                    dest.add(track);
                 }
             }
-            case Formula formula -> candidates.addAll(refs(formula.expression(), Set.of(), defined));
+            case Formula formula -> refs(formula.expression(), Set.of(), defined, dest);
             default -> {
             }
         }
 
-        return checkSource(node, candidates);
+        return walker(node, dest);
     }
 
     /// 预检查函数表达式是否成环。
@@ -148,36 +151,64 @@ public class EvaluationGraph2 {
     /// @param expression 方法体
     /// @return 所有闭合的环
     public List<List<Node>> checkFuncFormula(String funcName, Set<String> parameters, String expression) {
-        Node node = Node.func(funcName);
-        Set<Node> defined = new HashSet<>(graph.nodes());
-        HashSet<Node> dest = new HashSet<>();
-        defined.add(node);
-        refs(expression, parameters, defined, dest);
+        if (expression.isBlank()) {
+            return Collections.emptyList();
+        }
 
+        Node node = Node.func(funcName);
+        Set<Node> defined = definedWith(node);
+        HashSet<Node> dest = new HashSet<>();
+        refs(expression, parameters, defined, dest);
+        return walker(node, dest);
+    }
+
+    /// 反向遍历找环：从 [node] 沿 predecessors（"谁会引用我"）往上走，**撞上 [dest] 里的节点就是闭合的环**。
+    ///
+    /// [dest] 是"这次改动之后 [node] 将引用到的节点"，也就是它未来的出边另一头。判据是：
+    /// 一条经过 [node] 的环，必然有一条边是**走进** [node] 的（`候选 → … → node`），
+    /// 所以从 [node] 反向走一定碰得到那个候选；碰到时栈里存的就是 `候选 → … → node` 那一段。
+    /// 因此**不需要把 [dest] 真的加进图**：加不加都不影响"谁能走到 node"，
+    /// 而 [node] 自己的出边也永远不会出现在一条以 [node] 结尾的路径上——这也让它天然是只读的
+    ///
+    /// 一条环报一条，**报全**：[visited] 只增不减，每个能走回 [node] 的节点只入栈一次，
+    /// 所以同一个环不会从不同路径重复报出来；[dest] 里每个能走回 [node] 的节点各报一条
+    ///
+    /// 无出边就一定无环；命中 [dest] 后不再往下走，免得同一个环被报成"更长的绕法"
+    ///
+    /// 报出来的格式与 [#dsfResolve] 一致：有序的闭合路径，第一个节点与最后一个节点相同
+    ///
+    /// @param node 被改动的节点（轨道 / 变量 / 函数）
+    /// @param dest 这次改动之后它引用到的节点
+    /// @return 所有闭合的环；空表 = 放行
+    private List<List<Node>> walker(Node node, Set<Node> dest) {
         // 无后继，不会成环
         if (dest.isEmpty()) {
             return Collections.emptyList();
         }
 
         ArrayList<List<Node>> result = new ArrayList<>();
+        // 已被访问过的节点
         HashSet<Node> visited = new HashSet<>();
+        // 当前访问路径上的节点，栈顶 = 当前节点
         ArrayDeque<Node> pathStack = new ArrayDeque<>();
+        // 栈帧
         Deque<Frame> frames = new ArrayDeque<>();
         visited.add(node);
         pathStack.push(node);
         frames.push(new Frame(node, graph.predecessors(node).iterator()));
 
-        while(!frames.isEmpty()) {
+        while (!frames.isEmpty()) {
             Frame frame = frames.peek();
 
-            if (!frame.successors.hasNext()) {
+            if (!frame.remaining.hasNext()) {
                 frames.pop();
                 pathStack.pop();
                 continue;
             }
 
-            Node next = frame.successors.next();
+            Node next = frame.remaining.next();
 
+            // 能走回 node：next → … → node 这一圈闭合
             if (dest.contains(next)) {
                 ArrayList<Node> cycle = new ArrayList<>();
                 cycle.add(next);
@@ -196,36 +227,6 @@ public class EvaluationGraph2 {
         return result;
     }
 
-    /// 判"把 [node] 的出边换成 [candidates] 会不会成环"，返回闭合的环（空表 = 放行）。
-    ///
-    /// [replaced] 是 [node] 原来那些出边，必须是**已经摘掉**的状态传进来（见 [#replaceableEdges]）：
-    /// 它们正是这次改动要换掉的东西，留着就会把"本来就要消失的环"算成新环，误拒一次合法改动。
-    /// 收完祖先马上放回去，所以整个过程对外仍然只读；判完把 [#cycleInfo] 刷新回真实图的状态
-    /// @param node 节点
-    /// @param candidates 新出边
-    private List<List<Node>> checkSource(Node node, Set<Node> candidates) {
-        Set<Node> ancestors;
-
-        try {
-            ancestors = ancestors(node);
-        } finally {
-            putAllEdges(node, replaceableEdges(node));
-        }
-
-        for (Node candidate : candidates) {
-            if (candidate.equals(node) || ancestors.contains(candidate)) {
-                // 真实图没变，环还是原来的；这里只负责把"这次会闭合的那一圈"报出来
-                List<List<Node>> cycle = new ArrayList<>();
-                cycle.add(cyclePath(node, candidate));
-                return cycle;
-            }
-        }
-
-        // 放行：候选边不会被真的加上去，图还是原来那张，把 [#cycleInfo] 刷回它的真实状态
-        dsfResolve(cycleInfo);
-        return Collections.emptyList();
-    }
-
     /// 图上的节点，外加 [node] 自己。
     ///
     /// 带上自己是为了让"变量 / 函数还不存在于表里"时也判得出自引用（`V = V + 1`、`f(x) = f(x)`）。
@@ -236,104 +237,13 @@ public class EvaluationGraph2 {
         return defined;
     }
 
-    /// 解析一段公式（或函数体）引用到的节点；图上不存在的名字不成为边的另一头
-    private Set<Node> refs(String source, Set<String> parameters, Set<Node> defined) {
-        HashSet<Node> dest = new HashSet<>();
-        refs(source, parameters, defined, dest);
-        return dest;
-    }
-
-    /// [node] 这次要被换掉的那些出边：摘下来、拿到快照、立刻放回去。
-    ///
-    /// 调用方拿到返回值时图已经复原，摘掉的那一瞬只服务于"[#ancestors] 必须在没有这些边的图上收"
-    private Set<Node> replaceableEdges(Node node) {
-        Set<Node> successors = new HashSet<>(graph.successors(node));
-
-        try {
-            removeAllEdges(node, successors);
-            return successors;
-        } finally {
-            putAllEdges(node, successors);
-        }
-    }
-
-    /// 仅在图无环可用时调用。
-    /// @param node 节点
-    /// @return 所有上游节点（不含本身）
-    private Set<Node> ancestors(Node node) {
-        Set<Node> ancestors = new HashSet<>();
-        Deque<Node> pending = new ArrayDeque<>(graph.predecessors(node));
-
-        while (!pending.isEmpty()) {
-            Node current = pending.poll();
-
-            if (ancestors.add(current)) {
-                pending.addAll(graph.predecessors(current));
-            }
-        }
-
-        return ancestors;
-    }
-
-    /// 从 [node] 到 [candidate] 的依赖链（含两端），拼成 `node → … → candidate → node` 那一圈。
-    ///
-    /// 先沿 predecessors 从 candidate 一路退回 node（收集到的是反向链），再反转过来
-    private List<Node> cyclePath(Node node, Node candidate) {
-        List<Node> path = new ArrayList<>();
-        path.add(node);
-
-        if (!candidate.equals(node)) {
-            Map<Node, Node> steps = stepsTo(node, candidate);
-
-            for (Node step = candidate; step != null; step = steps.get(step)) {
-                path.add(step);
-            }
-        }
-
-        path.add(node);
-        return List.copyOf(path);
-    }
-
-    /// 从 [from] 沿 predecessors 走回 [to]，返回"每个节点上一步是谁"（`from` 不在表里，它是起点）；
-    /// 走不到返回空表。只在基础态上走，所以路径上的边都真实存在
-    private Map<Node, Node> stepsTo(Node from, Node to) {
-        Map<Node, Node> steps = new HashMap<>();
-        Set<Node> seen = new HashSet<>();
-        Deque<Node> pending = new ArrayDeque<>();
-        seen.add(from);
-        pending.add(from);
-
-        while (!pending.isEmpty()) {
-            Node current = pending.poll();
-
-            if (current.equals(to)) {
-                return steps;
-            }
-
-            for (Node predecessor : graph.predecessors(current)) {
-                if (seen.add(predecessor)) {
-                    steps.put(predecessor, current);
-                    pending.add(predecessor);
-                }
-            }
-        }
-
-        return Map.of();
-    }
-
     private void putAllEdges(Node nodeU, Set<Node> nodeVs) {
         for (Node nodeV : nodeVs) {
             graph.putEdge(nodeU, nodeV);
         }
     }
 
-    private void removeAllEdges(Node nodeU, Set<Node> nodeVs) {
-        for (Node nodeV : nodeVs) {
-            graph.removeEdge(nodeU, nodeV);
-        }
-    }
-
-    private void trackEdges(AnimationTrack track, Set<Node> whiteList, Set<Node> dest) {
+    private void trackEdges(AnimationTrack track, Set<Node> defined, Set<Node> dest) {
         if (!(track instanceof CurveTrack curveTrack)) {
             return;
         }
@@ -347,44 +257,44 @@ public class EvaluationGraph2 {
 
             for (KeyField field : KeyField.values) {
                 if (key.source(field) instanceof Formula formula) {
-                    formulaRefs(formula.expression(), whiteList, dest);
+                    formulaRefs(formula.expression(), defined, dest);
                 }
             }
         }
     }
 
-    private void formulaRefs(Variable variable, Set<Node> whiteList, Set<Node> dest) {
+    private void formulaRefs(Variable variable, Set<Node> defined, Set<Node> dest) {
         switch (variable.source()) {
             case TrackRef trackRef -> {
                 Node node = new Node(Node.Type.TRACK, trackRef.trackId());
 
-                if (!whiteList.contains(node)) {
+                if (!defined.contains(node)) {
                     return;
                 }
 
                 dest.add(node);
             }
-            case Formula formula -> formulaRefs(formula.expression(), whiteList, dest);
+            case Formula formula -> formulaRefs(formula.expression(), defined, dest);
             default -> {}
         }
     }
 
-    private void formulaRefs(String source, Set<Node> whiteList, Set<Node> dest) {
-        refs(source, Set.of(), whiteList, dest);
+    private void formulaRefs(String source, Set<Node> defined, Set<Node> dest) {
+        refs(source, Set.of(), defined, dest);
     }
 
-    private void funcEdges(CustomFunction function, Set<Node> whiteList, Set<Node> dest) {
+    private void funcEdges(CustomFunction function, Set<Node> defined, Set<Node> dest) {
         String body = function.body();
-        refs(body, new HashSet<>(function.parameters()), whiteList, dest);
+        refs(body, new HashSet<>(function.parameters()), defined, dest);
     }
 
-    private void refs(String source, Set<String> parameters, Set<Node> whiteList, Set<Node> dest) {
+    private void refs(String source, Set<String> parameters, Set<Node> defined, Set<Node> dest) {
         Expression.Names names = Expression.names(source, parameters);
 
         for (String variable : names.variables()) {
             Node node = new Node(Node.Type.VAR, variable);
 
-            if (!whiteList.contains(node)) {
+            if (!defined.contains(node)) {
                 continue;
             }
 
@@ -394,7 +304,7 @@ public class EvaluationGraph2 {
         for (String function : names.functions()) {
             Node node = new Node(Node.Type.FUNC, function);
 
-            if (!whiteList.contains(node)) {
+            if (!defined.contains(node)) {
                 continue;
             }
 
@@ -402,6 +312,9 @@ public class EvaluationGraph2 {
         }
     }
 
+    /// 深度优先走一遍图，把发现的环都写进 [dest]。
+    ///
+    /// 报出来的格式与 [#walker] 一致：有序的闭合路径，第一个节点与最后一个节点相同
     private void dsfResolve(List<List<Node>> dest) {
         // 已被访问过的节点
         Set<Node> visited = new HashSet<>();
@@ -425,7 +338,7 @@ public class EvaluationGraph2 {
             while (!frames.isEmpty()) {
                 Frame frame = frames.peekLast();
 
-                if (!frame.successors.hasNext()) {
+                if (!frame.remaining.hasNext()) {
                     // 这一支走完了
                     frames.removeLast();
                     pathStack.remove(frame.node);
@@ -433,10 +346,13 @@ public class EvaluationGraph2 {
                     continue;
                 }
 
-                Node next = frame.successors.next();
+                Node next = frame.remaining.next();
 
                 // 栈内存在相同节点，说明成环
                 if (pathStack.contains(next)) {
+                    // 与 walker 同一套格式：有序的闭合路径，首尾是同一个节点（`next → … → next`）。
+                    // path 从队头（当前节点）排到队尾（这棵 DFS 树的根），顺着读就是环的方向，
+                    // 只取到 next 为止，省掉反转变量的绕法
                     ArrayList<Node> cycle = new ArrayList<>();
                     dest.add(cycle);
                     cycle.add(next);
@@ -449,8 +365,7 @@ public class EvaluationGraph2 {
                         }
                     }
 
-                    // deque遍历顺序从队尾到队头，因此需要反转顺序
-                    Collections.reverse(cycle);
+                    cycle.add(next);
                     continue;
                 }
 
@@ -465,6 +380,10 @@ public class EvaluationGraph2 {
     }
 
     /// 栈帧
-    private record Frame(Node node, Iterator<Node> successors) {
+    /// 栈帧：正在下探的节点，以及它**还没走完的那些邻居**。
+    ///
+    /// 不叫 successors：本结构被两处复用，[#walker] 沿 predecessors（反向）走、
+    /// [#dsfResolve] 沿 successors（正向）走，名字必须与方向无关
+    private record Frame(Node node, Iterator<Node> remaining) {
     }
 }
