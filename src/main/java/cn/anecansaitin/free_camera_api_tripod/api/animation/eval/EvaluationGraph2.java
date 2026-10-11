@@ -12,7 +12,7 @@ import org.jspecify.annotations.NullMarked;
 import java.util.*;
 
 /// 配套编辑器要求：
-/// 1.删除任意节点时先检查是否被引用。如有，则无法直接删除。可考虑加个"断开引用"的操作，将对应引用改为固定值0。或者沿着引用链全部删除。
+/// 1.删除任意节点时先检查是否被引用。如有，则无法直接删除。可考虑加个"断开引用"的操作，将对应引用改为固定值0。或者沿着引用链全部删除。该条确保了在加入新节点时，不需要去判断是否成环。
 /// 2.
 @NullMarked
 public class EvaluationGraph2 {
@@ -20,7 +20,7 @@ public class EvaluationGraph2 {
     private final List<List<Node>> cycleInfo = new ArrayList<>();
 
     public record Node(Type type, String name) {
-        private enum Type {
+        public enum Type {
             VAR, FUNC, TRACK
         }
 
@@ -31,8 +31,23 @@ public class EvaluationGraph2 {
         private static Node func(String name) {
             return new Node(Type.FUNC, name);
         }
+
         private static Node track(String name) {
             return new Node(Type.TRACK, name);
+        }
+    }
+
+    public record CheckResult(Type type, List<List<Node>> cycles) {
+        public enum Type {
+            SUCCESS, CYCLE, ERROR
+        }
+
+        public static final CheckResult SUCCESS = new CheckResult(Type.SUCCESS, Collections.emptyList());
+
+        public static final CheckResult ERROR = new CheckResult(Type.ERROR, Collections.emptyList());
+
+        public static CheckResult cycle(List<List<Node>> cycles) {
+            return new CheckResult(Type.CYCLE, cycles);
         }
     }
 
@@ -95,23 +110,28 @@ public class EvaluationGraph2 {
         return !cycleInfo.isEmpty();
     }
 
+    /// 删除节点以及所有引用者
+    public void removeNode(Node node) {
+
+    }
+
     /// 预检查轨道表达式是否成环。
     ///
     /// 无副作用。
     ///
-    /// @param trackId 轨道 ID
+    /// @param trackId    轨道 ID
     /// @param expression 表达式
     /// @return 所有闭合的环
-    public List<List<Node>> checkTrackFormula(String trackId, String expression) {
+    public CheckResult checkTrackFormula(String trackId, String expression) {
         if (expression.isBlank()) {
-            return Collections.emptyList();
+            return CheckResult.SUCCESS;
         }
 
         Node node = Node.track(trackId);
         Set<Node> defined = definedWith(node);
-        HashSet<Node> dest = new HashSet<>();
-        refs(expression, Set.of(), defined, dest);
-        return walker(node, dest);
+        Set<Node> dest = refs(expression, Set.of(), defined, new HashSet<>());
+        List<List<Node>> result = walker(node, dest);
+        return result.isEmpty() ? CheckResult.SUCCESS : CheckResult.cycle(result);
     }
 
     /// 预检查变量表达式是否成环。
@@ -119,9 +139,9 @@ public class EvaluationGraph2 {
     /// 无副作用。
     ///
     /// @param varName 变量名
-    /// @param source 值来源
+    /// @param source  值来源
     /// @return 所有闭合的环
-    public List<List<Node>> checkVarFormula(String varName, ValueSource source) {
+    public CheckResult checkVarFormula(String varName, ValueSource source) {
         Node node = Node.var(varName);
         Set<Node> defined = definedWith(node);
         HashSet<Node> dest = new HashSet<>();
@@ -139,27 +159,28 @@ public class EvaluationGraph2 {
             }
         }
 
-        return walker(node, dest);
+        List<List<Node>> result = walker(node, dest);
+        return result.isEmpty() ? CheckResult.SUCCESS : CheckResult.cycle(result);
     }
 
     /// 预检查函数表达式是否成环。
     ///
     /// 无副作用。
     ///
-    /// @param funcName 函数名
+    /// @param funcName   函数名
     /// @param parameters 函数形参
     /// @param expression 方法体
     /// @return 所有闭合的环
-    public List<List<Node>> checkFuncFormula(String funcName, Set<String> parameters, String expression) {
+    public CheckResult checkFuncFormula(String funcName, Set<String> parameters, String expression) {
         if (expression.isBlank()) {
-            return Collections.emptyList();
+            return CheckResult.SUCCESS;
         }
 
         Node node = Node.func(funcName);
         Set<Node> defined = definedWith(node);
-        HashSet<Node> dest = new HashSet<>();
-        refs(expression, parameters, defined, dest);
-        return walker(node, dest);
+        Set<Node> dest = refs(expression, parameters, defined, new HashSet<>());
+        List<List<Node>> result = walker(node, dest);
+        return result.isEmpty() ? CheckResult.SUCCESS : CheckResult.cycle(result);
     }
 
     /// 反向遍历找环：从 [node] 沿 predecessors（"谁会引用我"）往上走，**撞上 [dest] 里的节点就是闭合的环**。
@@ -275,7 +296,8 @@ public class EvaluationGraph2 {
                 dest.add(node);
             }
             case Formula formula -> formulaRefs(formula.expression(), defined, dest);
-            default -> {}
+            default -> {
+            }
         }
     }
 
@@ -288,7 +310,7 @@ public class EvaluationGraph2 {
         refs(body, new HashSet<>(function.parameters()), defined, dest);
     }
 
-    private void refs(String source, Set<String> parameters, Set<Node> defined, Set<Node> dest) {
+    private Set<Node> refs(String source, Set<String> parameters, Set<Node> defined, Set<Node> dest) {
         Expression.Names names = Expression.names(source, parameters);
 
         for (String variable : names.variables()) {
@@ -310,6 +332,8 @@ public class EvaluationGraph2 {
 
             dest.add(node);
         }
+
+        return dest;
     }
 
     /// 深度优先走一遍图，把发现的环都写进 [dest]。
