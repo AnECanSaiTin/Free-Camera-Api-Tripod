@@ -103,7 +103,6 @@ public final class EvaluationGraph {
     }
 
     private static String variableKey(String name) {
-        new EvaluationGraph2(List.of(new Variable("d", new Formula("c", 0)), new Variable("c", new Formula("a", 0)), new Variable("a", new Formula("b+1", 0)), new Variable("b", new Formula("a+1", 0))), List.of(), List.of());
         return VARIABLE_PREFIX + name;
     }
 
