@@ -183,6 +183,14 @@ public class EvaluationGraph2 {
         return result.isEmpty() ? CheckResult.SUCCESS : CheckResult.cycle(result);
     }
 
+    private boolean hasNoPredecessors(Node node) {
+        if (!graph.nodes().contains(node)) {
+            return true;
+        }
+
+        return graph.predecessors(node).isEmpty();
+    }
+
     /// 反向遍历找环：从 [node] 沿 predecessors（"谁会引用我"）往上走，**撞上 [dest] 里的节点就是闭合的环**。
     ///
     /// [dest] 是"这次改动之后 [node] 将引用到的节点"，也就是它未来的出边另一头。判据是：
@@ -204,6 +212,16 @@ public class EvaluationGraph2 {
     private List<List<Node>> walker(Node node, Set<Node> dest) {
         // 无后继，不会成环
         if (dest.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // 后继存在自己，自引用
+        if (dest.contains(node)) {
+            return List.of(List.of(node, node));
+        }
+
+        // 节点没有前驱，不会成环
+        if (hasNoPredecessors(node)) {
             return Collections.emptyList();
         }
 
@@ -343,9 +361,9 @@ public class EvaluationGraph2 {
         // 已被访问过的节点
         Set<Node> visited = new HashSet<>();
         // 当前访问路径上的节点
-        Set<Node> pathStack = new HashSet<>();
+        Set<Node> path = new HashSet<>();
         // 按照访问顺序记录访问路径，用于打印循环引用
-        Deque<Node> path = new ArrayDeque<>();
+        Deque<Node> pathStack = new ArrayDeque<>();
         // 显式栈：每帧 = 一个正在下探的节点 + 它还没走完的后继
         Deque<Frame> frames = new ArrayDeque<>();
 
@@ -355,9 +373,9 @@ public class EvaluationGraph2 {
             }
 
             visited.add(root);
-            pathStack.add(root);
-            path.addLast(root);
-            frames.addLast(new Frame(root, graph.successors(root).iterator()));
+            path.add(root);
+            pathStack.push(root);
+            frames.push(new Frame(root, graph.successors(root).iterator()));
 
             while (!frames.isEmpty()) {
                 Frame frame = frames.peekLast();
@@ -365,39 +383,37 @@ public class EvaluationGraph2 {
                 if (!frame.remaining.hasNext()) {
                     // 这一支走完了
                     frames.removeLast();
-                    pathStack.remove(frame.node);
-                    path.pollLast();
+                    path.remove(frame.node);
+                    pathStack.pop();
                     continue;
                 }
 
                 Node next = frame.remaining.next();
 
                 // 栈内存在相同节点，说明成环
-                if (pathStack.contains(next)) {
-                    // 与 walker 同一套格式：有序的闭合路径，首尾是同一个节点（`next → … → next`）。
-                    // path 从队头（当前节点）排到队尾（这棵 DFS 树的根），顺着读就是环的方向，
-                    // 只取到 next 为止，省掉反转变量的绕法
+                if (path.contains(next)) {
                     ArrayList<Node> cycle = new ArrayList<>();
                     dest.add(cycle);
-                    cycle.add(next);
+                    int i = 0;
 
-                    for (Node pathNode : path) {
-                        cycle.add(pathNode);
-
-                        if (next.equals(pathNode)) {
+                    for (Node node : pathStack) {
+                        if (next.equals(node)) {
                             break;
                         }
+
+                        i++;
                     }
 
+                    cycle.addAll(i, pathStack);
                     cycle.add(next);
                     continue;
                 }
 
                 if (!visited.contains(next)) {
                     visited.add(next);
-                    pathStack.add(next);
-                    path.addLast(next);
-                    frames.addLast(new Frame(next, graph.successors(next).iterator()));
+                    path.add(next);
+                    pathStack.push(next);
+                    frames.push(new Frame(next, graph.successors(next).iterator()));
                 }
             }
         }
