@@ -15,7 +15,7 @@
 | # | 决策 | 来源 |
 | --- | --- | --- |
 | D1 | **单 Gradle 模块 + 三个顶层包 `api` / `core` / `editor`**，依赖方向由包可见性与 CI 判据守住 | 本轮确认 |
-| D2 | **数据模型走"不可变文档 + 句柄"**（编辑产出新版本，校验通过才发布）；撤销 = 版本栈 | **本轮倾向，待确认**：§3.0 展开解释它到底是什么意思，附录 D 给出改选"可变文档"时的差异清单 |
+| D2 | **数据模型走"不可变文档 + 句柄"**（编辑产出新版本，校验通过才发布）；撤销 = 版本栈 | **已定稿**（第二轮 D10）：§3.0 是展开解释，附录 D 保留"若改选可变文档"的差异清单备查 |
 | D3 | **锚点归动画资产可带默认值，播放请求可覆盖，编辑器另有预览锚点** | 本轮确认 |
 | D4 | **锚点参考系 = 平移 + 可选的三轴旋转**（逐轴启用，不做缩放） | 本轮确认 |
 | D5 | **校验策略 = 硬拒绝 + 结构化原因；输入过程中的中间态留在 UI 草稿里** | 本轮确认 |
@@ -24,11 +24,33 @@
 | D8 | 沿用"**不允许绕过**"：改数据只有一条受控入口 | 沿用约束文档 §7.5 |
 | D9 | 沿用"**图的归属挂在动画上**"，但形态改为"候选文档上的纯函数"（见 §5.6） | 沿用 + 本文件改写 |
 
+第二轮补充确认：
+
+| # | 决策 | 落在哪一节 |
+| --- | --- | --- |
+| D10 | **不可变文档定稿**（D2 不再是"倾向"） | §3、§5 |
+| D11 | **锚点解析失败 = 结束播放 + 提示**（不做"退回默认锚点 / 当世界坐标用"的降级） | §4.4 |
+| D12 | **锚点随播放请求一起走"类型 + 参数"**（网络包带完整锚点，不只带实体 UUID） | §7.5 |
+| D13 | **不写旧文件转换器**：旧格式读不出来就是读不出来 | §6.3 |
+| D14 | **删除 `MODERN_UI_COMPAT`**：改为在配置里指定 backend id；存在多个实现时由玩家选 | §8.2 |
+| D15 | **暂时不拆 `editor` 为独立 source set / 子模块**，但包边界先立好 | §2、附录 D |
+| D16 | **`ValueSource` 暂不开放给第三方**：保持 `sealed`，数据级扩展只开轨道类型与锚点类型 | §6.2、§8.3 |
+| D17 | **同一轨道内键时间唯一**作为硬规则 | §10.3 |
+
+两条要求展开解释的、与一个新提案：
+
+| 项 | 位置 |
+| --- | --- |
+| 撤销栈上限与内存策略的影响 | §10.1 |
+| 表达式层的重构建议（"如有更好方案"） | §10.2 |
+| 单帧唯一时间的影响 | §10.3 |
+| **能否去掉取值流程里的 fallback** | **§11**（含改动面清单与推荐口径，待拍板） |
+
 与既有四份文档的关系：
 
 | 文档 | 本文件怎么处理 |
 | --- | --- |
-| `design-keyframe-value-source-target.md` | **沿用**：`NumberSource`（两态）/`ValueSource`（三态）、`KeyField` 是字段唯一真理来源、回退只有一个点、`TrackRef` 在类型上进不了关键帧字段。这些结论已落地，本文件只在"不可变"下重新确认它们的写法 |
+| `design-keyframe-value-source-target.md` | **沿用**：`NumberSource`（两态）/`ValueSource`（三态）、`KeyField` 是字段唯一真理来源、`TrackRef` 在类型上进不了关键帧字段。这些结论已落地，本文件只在"不可变"下重新确认它们的写法。**唯一被本文件挑战的一条是"回退只有一个点"**：§11 建议把回退整个去掉（公式的 `fallback` 字段降级为"切回数值模式时的初始值"，不再参与求值） |
 | `design-review-keyframe-value-source.md` | 历史问题定位，已被上一份文档的目标形态覆盖，本文件不再引用 |
 | `design-evaluation-graph2-editor-constraints.md` | **部分取代**：§4（自定义 `RefGraph`）与 §7（门面 `AnimationEdits`）的方向保留；§5（sealed 结果）、§6（`reconcile` 对账）、§8（收窄写方法）、§9（批量替换重建）在不可变文档下**大多不再需要**，理由见 §5.6 与附录 A |
 | `design-api-default-editor.md` | **沿用结论**：默认实现留在实现包里注册进契约、不把 13k 行 UI 搬进 `api`；本文件把它落成 `editor` 包（D1） |
@@ -42,7 +64,7 @@
 | # | 目标 | 判据（可检查） |
 | --- | --- | --- |
 | G1 | 职责分离 | 三个顶层包的依赖方向单向；`api` 无 `net.minecraft.client` 引用；数据层不认识渲染、渲染层不认识存储 |
-| G2 | 可扩展 | 新的轨道类型 / 值源类型 / 锚点类型不需要改数据层与编辑器；新的界面可整体接管，也可只加一个面板 |
+| G2 | 可扩展 | 新的轨道类型 / 锚点类型不需要改数据层与编辑器（值源本轮不开放，D16）；新的界面可整体接管、可按 id 指定，也可只加一个面板 |
 | G3 | 内置编辑器是 api 的默认实现 | 打开编辑器只有一条路：建会话 → 询问后端；内置界面是**注册进来的最低优先级后端**，不再是 `if` 之后的兜底分支 |
 | G4 | 非法数据不入数据系统 | 提交、解码、收包三个入口都过校验；失败即拒绝，且给出结构化原因 |
 | G5 | 序列化归各对象自身 | 每个数据类型自带 `Codec`；`core` 与 `editor` 里不再出现任何磁盘字段名 |
@@ -61,6 +83,7 @@
 | I6 | **求值只有一个入口**：界面预览、曲线图、播放都走同一个采样器 | 沿用现状（`CurveSampler` 是唯一入口） |
 | I7 | **锚点只影响姿态合成，不影响文档**：同一份文档在不同锚点下播出的局部轨迹逐位相同 | 锚点解析与姿态合成在求值之后、应用之前（§4.5） |
 | I8 | **`api` 纯度**：`api` 不引 `net.minecraft.client`；客户端专属契约放 `editor` 包的公开面 | 依赖检查（§2.4） |
+| I9 | **没有静默降级**：运行期算不出来的东西必须可见（标红 / 断线 / 提示），不允许"悄悄换成一个数" | §5.3 的 L4 试算校验器 + §11 的口径；`fallback` 摘掉之后由类型保证 |
 
 ---
 
@@ -129,6 +152,11 @@ graph TD
 | `core.mod` | 模组入口、注册表登记、配置、安装 `CameraProbes`、注册 `@Plugin` | `api.*`、`core.*`（**不含 `editor`**） | 是 |
 | `editor` | 内置界面：屏幕、面板、控件、布局、主题、默认后端 | `api.*`、`editor.spi` | 是 |
 | `editor.spi` | 面板注册、组件复用、后端转发的公开契约 | `api.*` | 是 |
+
+**D15：本轮不把 `editor` 拆成独立 source set / 子模块。** 理由是这个包与 `core` 同属一个 jar、
+共享同一份资源与 mixin 配置，拆出去要额外处理加载器注解与发布结构，收益（编译期隔离）
+已经被"`core` 与 `editor` 之间没有边 + CI 判据"拿到了。包边界先立好的意义在于：
+真到了要拆的那天，它是**搬目录**而不是**重构**（附录 D 记了这一条）。
 
 ### 2.3 与现状的映射（大件）
 
@@ -328,7 +356,7 @@ public final class AnimationHandle {
     public CameraAnimation current();   // 已发布版本，必然合法（I1）
     public long version();
 
-    /// 发布新版本。**不是公开 API**：只由 EditSession 与 PlaybackService 调用，
+    /// 发布新版本。**不是公开 API**：只由 EditorSession 与 PlaybackService 调用，
     /// 两者都必须先在候选文档上跑完整校验（§5.4）。包内可见即达此目的。
     void publish(CameraAnimation next);
 }
@@ -440,12 +468,34 @@ public record AnchorFrame(Vec3 position, Vec3 rotation, RotationMask mask) {
 | 播放 | `PlaybackRequest.anchorOverride` | 这一次播放实际用的原点 | 否（进指令 / API 调用） |
 | 编辑 | `EditorSession.previewAnchor()` | 编辑器里预览用的原点 | 否（会话状态，可记住在配置里） |
 
-解析顺序：`播放请求覆盖` → `文档默认锚点` → **失败降级**（见下）。
+解析顺序：`播放请求覆盖` → `文档默认锚点` → 解析失败则**结束播放**（D11，见下）。
 
-**降级策略**（建议，列为待定项 §10-2）：锚点无法解析时（实体不在客户端追踪范围内、UUID 已失效）
-按这个顺序退：① 该锚点最近一次解析成功的位置（会话内缓存）→ ② 文档的默认锚点 →
-③ 世界空间（把局部坐标当世界坐标用）+ 在动作栏提示一条"锚点不可用，已按世界坐标播放"。
-**绝不静默播错**：提示是这套降级的一部分，不是可选项。
+### 4.4.1 解析失败：结束播放 + 提示（D11）
+
+链路上任何一环解析不出来，都算失败：
+
+| 失败情形 | 何时发现 |
+| --- | --- |
+| 锚点类型未注册（存档 / 包里的类型在当前环境没有对应实现） | 收包那一刻 |
+| 文档声明的默认锚点为空，而播放请求也没给覆盖 | 播放开始前 |
+| 引用的实体不存在 / 不在客户端追踪范围内 / 已卸载 | 播放开始前，或播放中每一帧复查 |
+| 引用的玩家不在场 | 同上 |
+
+处理口径只有一条：**立刻停播**——`PlaybackService.stop()`、交还相机控制
+（`modifier.disable()`）、放行分发的副作用（不再触发 Tick 轨道）、
+在动作栏给一条明确的提示（"锚点实体不可用，播放已结束"），并**保留播放头位置**便于排查。
+
+三条配套说明，避免这条规则被用歪：
+
+1. **不做"退回默认锚点 / 把局部坐标当世界坐标用"的降级。** 那样播出来的是一段位置完全错误的运镜，
+   比不播更糟：作者会以为动画坏了，观众会以为这是成品。
+   "结束 + 提示"是所有选项里唯一不会产出错误成品的那个。
+2. **播放中每帧复查，不是只在开始查一次。** 实体被卸载、被传送出追踪范围都发生在播放途中；
+   复查的成本是一次 UUID 查表，可以忽略。
+3. **编辑器预览是例外，但不是降级**：编辑时锚点实体常常本来就不在追踪范围（在别的维度、还没加载），
+   如果预览也一律停，编辑器就没法用了。预览的口径是：**参考系缺失 → 该帧不合成位置、不接管相机，
+   并在视口与状态栏显示"锚点不可用"**；参考系指示器同时变红。文档照常可编辑、可保存，
+   保存出来的东西也不含任何"猜测的坐标"。（这条是编辑器体验与 D11 的接口，列在 §10 待定项里等你确认。）
 
 ### 4.5 姿态合成：local pose → world pose
 
@@ -568,7 +618,7 @@ public record Fix(Component label, EditOp replacement) { }
 | L1 语法 / 格式 | 文本与数值本身能不能成立 | 公式编译、枚举名、数字非有限 | `Compiler`、`Codec` | 拒绝 |
 | L2 结构 | 文档内部的引用与唯一性 | 轨道 id 唯一、变量名唯一、变量绑定的轨道存在、键时间递增 | 结构校验器 | 拒绝 |
 | L3 语义 | 跨对象的含义 | 依赖成环、`TrackRef` 出现在关键帧槽位、`MotionMode` 与通道集合一致 | 语义校验器 | 拒绝 |
-| L4 领域 | 数值是否合理 | 时间 ≥ 0、曲柄长度 ≤ 1.5 倍基准、FOV 区间、单帧键数上限 | 领域校验器 | 拒绝（默认）+ 给 `Fix` |
+| L4 领域 | 数值是否合理 + **全时间轴试算** | 时间 ≥ 0、曲柄长度 ≤ 1.5 倍基准、FOV 区间、单帧键数上限、**试算中出现非有限值**（§11.5 R2） | 领域校验器 | 拒绝（默认）+ 给 `Fix` |
 
 ```java
 /// 校验器：在候选文档上跑，纯函数，不修改任何东西
@@ -577,17 +627,21 @@ public interface DocumentValidator {
 }
 ```
 
-- 内置校验器登记在 `api` 的校验注册表里，第三方可注册（数据级扩展的一部分）。
+- 内置校验器登记在 `api` 的校验注册表里。**注意 D16**：值源不开放，
+  所以第三方能注册的是"针对新轨道类型 / 新锚点类型"的校验器，而不是新值源。
 - **L4 的越界也不自动夹取**（D5）：越界就拒绝，同时给一个 `Fix`（"夹取到 1.5 并继续"），
   用户点一下才生效。这样"数据被悄悄改过"这件事不存在。
 - 校验器的执行顺序固定：L1 → L2 → L3 → L4；前一层有错就短路（不在一个已经结构损坏的文档上跑语义检查）。
+- **L4 的试算校验器**是"把运行期的静默失败提前到落地前"的主力：它按 §11.2 的采样口径
+  把时间轴走一遍，凡是算出非有限值的时刻都报出来（最多报 N 条，避免一个大文档刷屏）。
+  含 `random()` 的公式标记为"不可试算"并单独列一条提示（§10.2 E4 会给它一个可复现的替代）。
 
 ### 5.4 提交管线
 
 ```mermaid
 sequenceDiagram
     participant UI as 面板 / 外部界面
-    participant S as EditSession
+    participant S as EditorSession
     participant Op as EditOp
     participant V as 校验器链
     participant H as AnimationHandle
@@ -617,7 +671,10 @@ sequenceDiagram
 - **粒度**：一个提交一个撤销项（不再按 250ms 时间窗切）。拖拽类动作在开始拖拽时开一次"合并窗口"，
   松手时提交一次；窗口内的中间值只画预览。
 - **内容**：版本栈保存 `(version, label, CameraAnimation)`；因为文档不可变，栈里存的是引用，不会被后续编辑改坏。
-- **上限**：默认 64 个版本（沿用现状量级）；超出丢最老的。
+- **上限**：**按"估算字节 + 条数"双限**（例如 `min(64 条, 32 MB)`），而不是照抄现状的 64 条——
+  不可变文档下栈里存的是对象图，不是 JSON 字符串，量级差 2~5 倍。算法与理由见 §10.1。
+- **整份替换不进栈**（读档 / 切换动画 / 指令换片）：它们清空撤销栈并提示一句，
+  而不是变成"一次可撤销的读档"；这同时把栈里最大的一份内存排除掉（§10.1 第 3 条）。
 - **不减配的纪律**：撤销 / 重做本身就是一次 `publish`，同样走校验（版本本来就合法，这里是免费的自检）。
 - **不放进撤销栈的**：播放 / 停止 / 定位播放头 / 切换预览锚点 —— 它们是会话状态，不是文档内容。
 
@@ -659,7 +716,7 @@ public final class DependencyGraph {
 
 不可变之后，"绕过写入口直接改数据"这句话没有对应的代码可以写：
 `CameraAnimation` 没有 setter，`Curve` 没有 `key(...)` 写方法，`Variable` 没有 `source(...)`。
-唯一的"改"是 `handle.publish(next)`，而它是包内可见、只被 `EditSession` 与 `PlaybackService` 调用。
+唯一的"改"是 `handle.publish(next)`，而它是包内可见、只被 `EditorSession` 与 `PlaybackService` 调用。
 因此 §2.4 里那条 grep 判据只是**最后一道保险**，不再是主要手段。
 
 ---
@@ -674,7 +731,7 @@ public final class DependencyGraph {
 | 容器只做组装 | `CameraAnimation.CODEC` 组合各成员的 codec，不认识任何具体字段名 |
 | 空值有明确语义 | `optionalFieldOf` + 默认值；不写"缺字段就静默降级"的模糊逻辑 |
 | 解码即校验 | `Codec` 失败 = 拒绝加载，错误信息带路径（DFU 自带） |
-| 多态用分派 | 轨道 / 值源 / 锚点三类用 `dispatch` + 注册表 |
+| 多态用分派 | 轨道与锚点两类用 `dispatch` + 注册表；值源**不开放**，保持 `sealed`（D16） |
 
 ### 6.2 组合与分派
 
@@ -695,54 +752,37 @@ graph LR
     M --> N["Constant：数字"]
     M --> O["Formula：expression + fallback"]
     D --> P["Variable.CODEC"]
-    P --> Q["ValueSource.CODEC（多认 track）"]
+    P --> Q["ValueSource.CODEC（多认 track；sealed，不分派）"]
     B --> R["AnchorTypeRegistry.dispatch(anchorType)"]
 ```
 
-**怎么读**：分派只发生在**允许第三方扩展**的三处（轨道类型、值源类型、锚点类型）；
+**怎么读**：分派只发生在**允许第三方扩展**的两处（轨道类型、锚点类型，D16）；
+值源是封闭的 `sealed`，走"数字 / 对象"两态的直接 codec；
 封闭的枚举（`MotionMode`、`WrapMode`、`EvaluateMode`、`KeyField`）用普通 codec。
 
-两个值得写清楚的形状：
+值源的形状（保持现状的封闭性，`switch` 天然穷尽）：
 
 ```java
-/// 值源类型：登记 id + codec + 求值器 + 能力声明。
-/// 内置三项（Constant / Formula / TrackRef）就是最先登记的那三个。
-public record ValueSourceType<T extends ValueSource>(
-        Identifier id,
-        MapCodec<T> codec,
-        Capability capability,              // NUMBER（可作关键帧字段）| VARIABLE_ONLY
-        SourceEvaluator<T> evaluator) { }
+/// 关键帧字段：两态。TrackRef 不实现它，所以"轨道读数挂到关键帧字段"仍是编译错误
+public sealed interface NumberSource permits Constant, Formula { }
 
-public interface ValueSource {
-    ValueSourceType<?> type();
-    /// 求值；算不出来返回 NaN。回退仍然只有一个点（evaluateOrFallback）
-    float evaluate(@Nullable Scope scope);
-    /// 固定值 / 公式的回退值；没有回退语义的来源（如轨道读数）返回 NaN
-    float fallback();
-}
+/// 变量来源：三态，比上面多一个轨道读数
+public sealed interface ValueSource permits Constant, Formula, TrackRef { }
 
-/// 关键帧字段的类型：只接受 capability = NUMBER 的来源。
-/// 内置的 TrackRef **不实现** 这个接口，所以"轨道读数挂到关键帧字段"在自带类型里仍是编译错误；
-/// 第三方类型由注册时的 capability + 提交期校验兜住（见下面的取舍说明）
-public interface NumberSource extends ValueSource { }
-```
-
-```java
-/// 值源的磁盘写法保持"数字即固定值、对象即公式"的可读性
+/// 磁盘写法保持"数字即固定值、对象即公式"的可读性
 public final class ValueSourceCodecs {
-    public static final Codec<NumberSource> NUMBER = ValueSourceTypeRegistry.dispatchNumber();
-    public static final Codec<ValueSource> VALUE  = ValueSourceTypeRegistry.dispatchValue();
+    /// Codec.either(Codec.FLOAT, Formula.CODEC)：一个数就是固定值，一个对象就是公式
+    public static final Codec<NumberSource> NUMBER = ...;
+    public static final Codec<ValueSource> VALUE  = ...;   // 多认 {"track": "..."}
 }
 ```
 
-**一处需要认下来的取舍**：现状的 `NumberSource` / `ValueSource` 是 `sealed`，
-好处是求值层的 `switch` 天然穷尽、`TrackRef` 进不了关键帧字段是**编译期**事实。
-要开放"第三方值源类型"，就得把封闭性从 `sealed` 换成"注册表 + 能力声明"，
-编译期的穷尽性随之让位给注册期声明与提交期校验。
-建议的折中：**保留 `sealed` 作为默认形态，注册表只对"声明了 capability 的第三方类型"开口**
-（即 `ValueSource` 由 sealed 改为普通接口，但求值入口仍是注册表分派）。
-若不想动已经落地的表达式层，也可以本轮**只开轨道类型与锚点类型**这两个扩展点——
-这一条列为待定项 §10-9，需要拍板。
+**取舍说明（D16）**：把值源开放给第三方，就要用"注册表 + 能力声明"换掉 `sealed`，
+`TrackRef` 进不了关键帧字段这件事从**编译期**事实降级为注册期声明 + 提交期校验。
+本轮不开放，理由是：数据级扩展的真实需求集中在**轨道类型**（事件、特效、指令）
+与**锚点类型**上，值源多态的收益远小于失去穷尽性 `switch` 的代价。
+真需要时再开：那时只需把 `ValueSource` 由 `sealed` 改成普通接口，
+并在注册表里给每个类型一个 `capability`（能否作关键帧字段）——**接口留了口，本轮不做**。
 
 关键帧那一层则是另一种写法：**槽位由枚举驱动，加字段只改枚举**。
 
@@ -780,19 +820,21 @@ public record Keyframe(float time, EvaluateMode evaluateMode, Map<KeyField, Numb
 
 1. **不再要求与旧格式逐字节一致**（前提里已定不背向前兼容）。借这次机会统一：
    所有分派都用 `type` 一个字段、所有枚举用名字、所有"可选对象"缺省即默认值。
-2. `run/camera_animations` 下现有两个测试文件会在新格式下读不出来——可写一个**一次性转换器**
-   （旧 `AnimationCodec` 读进来 → 新 `Codec` 写出去），也可以直接不用。列为待定项 §10-4。
+2. **不写旧文件转换器（D13）。** `run/camera_animations` 下现存的测试文件在新格式下读不出来，
+   就这样——一个只用一次的转换器会长期留在仓库里，还要跟着数据模型走。
+   要保留那两个文件的话，用旧版本打开、照着重录一遍比写转换器快。
+   配套的体验要求：读不出来的文件在文件浏览器里要有明确反馈（"格式不支持"），
+   而不是让玩家对着一个点不开的条目猜。
 3. **读档从"宽松"改成"严格"**，这是一处刻意的行为变化：现状是缺字段 / 类型错 / 枚举名非法一律降级
    （`AnimationCodec` 类文档写明"反序列化一律宽松"）。新口径是**拒绝加载并指出路径**，
    因为"非法数据不入数据系统"在解码这条路上同样成立。给一个"以诊断模式打开"的只读入口，
-   把宽松解析的结果显示出来，方便用户定位是哪个文件坏了。
+   把解析失败的位置显示出来，方便用户定位是哪个文件、哪一行坏了。
 
 ### 6.4 版本与迁移
 
 - 顶层放 `dataVersion`；解码时版本高于当前则拒绝（避免把新版文件读成缺字段的合法文档）。
-- 迁移（DataFixer 或手写 `DocumentUpgrade`）只在"需要读旧世界存档"时才做；
-  本轮不做，只留字段与接口位置。
-- 网络包用 `StreamCodec`（`CameraPlaybackPayload` 已有先例），内容为"名字 + 文档 + 锚点请求"。
+- **不提供历史迁移**（D13）：本轮的 `dataVersion` 从 1 开始，只用于"将来"的新旧区分。
+- 网络包用 `StreamCodec`，内容为"**锚点（类型 + 参数）+ 数据来源**"（§7.5）。
 
 ### 6.5 载体
 
@@ -800,7 +842,7 @@ public record Keyframe(float time, EvaluateMode evaluateMode, Map<KeyField, Numb
 | --- | --- | --- |
 | `JsonOps` | 本地文件 `*.animation.json` / `*.path.json` | 保持人可读、可手工编辑、可 diff |
 | `NbtOps` | 存档 `SavedData` | 沿用 `CompoundTag` 存档；**存的仍是文档本身**，不再是"JSON 字符串塞进字符串" |
-| `StreamCodec` | 播放包 | 只传"要播什么"，不传"怎么播"（速度 / 循环由客户端策略决定） |
+| `StreamCodec` | 播放包 | 传"播什么 + 用哪个锚点 + 播放参数（速度 / 循环）"；文档本体按来源走本地文件或随包携带（§7.5） |
 
 `core.storage` 只做三件事：找路径、读写字节、报告 IO 错误；**它不认识任何字段名**（G5 判据）。
 
@@ -882,16 +924,42 @@ sequenceDiagram
 编辑器的播放头驱动 `AnimationPlayer.evaluate`，视口用的就是它的结果；
 因此"预览看到的"与"世界里播出来的"必然一致（I6 的直接收益）。
 
-### 7.5 指令与网络
+### 7.5 指令与网络（D12：锚点走"类型 + 参数"）
 
 ```text
-cmd_camera play <targets> local <name>   [anchor <pos>|entity <selector>] [loop] [speed <v>]
+cmd_camera play <targets> local <name>   [anchor <x> <y> <z> | anchor entity <selector> | anchor player <selector>] [loop] [speed <v>]
 cmd_camera play <targets> storage <name> [anchor ...] [loop] [speed <v>]
 cmd_camera stop <targets>
 ```
 
-指令只做三件事：解析参数、读文档（存档侧）、发一条 `CameraPlaybackPayload`。
-锚点参数是**意图**（"跟随这个实体"），解析发生在客户端（只有它知道实体在哪）。
+指令只做三件事：把参数解析成一个**具体的锚点值**、读文档（存档侧）、发一条 `CameraPlaybackPayload`。
+
+**网络包带的是解析完的类型化锚点，不是"意图字符串"**：
+
+```java
+public record CameraPlaybackPayload(Kind kind,
+                                    @Nullable Anchor anchor,     // 类型 id + 参数，走 dispatch StreamCodec
+                                    @Nullable RotationMask followMask,
+                                    String name, @Nullable CompoundTag document) { }
+```
+
+为什么这样切（而不是"只发实体 UUID"或"把选择器原样发过去"）：
+
+| 方案 | 问题 |
+| --- | --- |
+| 只发实体 UUID | 第三方锚点类型（跟随方块实体、跟随队伍中心…）在包格式里无法表达；一加类型就要改包结构 |
+| 把 `<selector>` 原样发到客户端 | 客户端不能执行选择器；多人时同一选择器对不同玩家解析出的实体也可能不同 |
+| **发"类型 + 参数"（选定）** | 服务端在自己的世界里执行选择器、拿到具体实体，再把 `Anchor.Entity(uuid)` 发出去；第三方类型只要"服务端登记同一个类型 id + 客户端登记解析器"就能过网 |
+
+配套的三条要求：
+
+1. **锚点类型注册表在双端可用**：类型 id、`MapCodec`、`StreamCodec` 登记在 *common* 侧
+   （`api.spatial.AnchorTypeRegistry`），**解析器只在客户端**（`AnchorResolver`，需要世界与实体）。
+   服务端只需要"能构造参数、能写包"，不需要能解析。
+2. **解析失败按 D11 停播并提示**（§4.4.1）——包括"类型在当前环境没注册"这一条，
+   它正是为什么包要带类型 id：客户端认不出来就能说清楚是"缺少某个附属 mod"。
+3. **玩家选择器在服务端逐目标解析**：多目标指令里每个玩家收到的是各自的 `Player(uuid)`，
+   而不是同一个选择器字符串。
 
 ### 7.6 编辑器与播放层的接触面（`core` 与 `editor` 互不认识的实现方式）
 
@@ -993,13 +1061,15 @@ public interface EditorSession {
 3. 新增 `draft()`：草稿必须住在会话里，否则换界面（内置 ↔ 第三方）会丢掉编辑中的内容。
 4. 新增 `undo/redo`：撤销是会话状态，不是某个界面的私有栈。
 
-### 8.2 内置编辑器 = 默认后端
+### 8.2 内置编辑器 = 默认后端（D14：`MODERN_UI_COMPAT` 删除，改为指定 id）
 
 ```java
 /// editor 包：默认后端。优先级最低，谁都能盖住它。
 public final class BuiltinEditorBackend implements EditorUiBackend {
+    public static final Identifier ID = Identifier.fromNamespaceAndPath(MODID, "builtin");
     public static final int PRIORITY = Integer.MIN_VALUE;
 
+    @Override public Identifier id() { return ID; }
     @Override public int priority() { return PRIORITY; }
 
     @Override public boolean openEditor(EditorSession session) {
@@ -1013,26 +1083,50 @@ public final class BuiltinEditorBackend implements EditorUiBackend {
 /// api.editor：后端的注册与询问
 public final class EditorUiHost {
     public static void register(EditorUiBackend backend);
-    public static boolean open(EditorSession session);        // 依次询问，第一个接管的胜出
-    public static boolean openDefault(EditorSession session);  // 直接交给默认实现（供"包一层"转发）
-    public static boolean hasBackend();
+
+    /// 按 EditorConfig.EDITOR_BACKEND 的选择打开：
+    ///   "auto"  → 按 priority 从高到低依次询问，第一个接管的胜出
+    ///   "<ns:path>" → 只问这一个后端
+    public static boolean open(EditorSession session);
+
+    /// 直接交给默认实现（供"包一层"的第三方后端转发）
+    public static boolean openDefault(EditorSession session);
+
+    @Nullable public static EditorUiBackend byId(Identifier id);
+    public static List<EditorUiBackend> all();
 }
 ```
+
+配置项与它的三种结果（**D14：删掉 `MODERN_UI_COMPAT`**）：
+
+```toml
+# 客户端配置：用哪个界面打开编辑器
+#   auto            自动：按优先级询问所有已注册的界面后端（第三方优先，内置兜底）
+#   命名空间:路径    指定：只使用这一个界面后端
+editor.backend = "auto"
+```
+
+| 情形 | 结果 |
+| --- | --- |
+| `auto` | 按 priority 询问；第三方都不接管时落到内置界面（与今天"装了附属 mod 就用它"等价，但不再需要开关） |
+| 指定 id 且已注册、愿意接管 | 用它 |
+| 指定 id 且已注册、但**拒绝**接管（`openEditor` 返回 false） | **不静默回退**：提示"该界面未接管编辑器"，让玩家去改配置。玩家显式指定了，猜测他的意图只会更难查 |
+| 指定 id 但**没有注册**（mod 被卸了 / id 写错） | 记一条警告 + 用内置界面打开。否则玩家删掉一个附属 mod 之后就再也打不开编辑器了 |
 
 | 变化 | 现状 | 目标 |
 | --- | --- | --- |
 | 打开路径 | `EditorConfig.MODERN_UI_COMPAT` 为真才问后端，否则硬编码回退（`CameraEditorScreen.java:1231-1245`） | 只有一条：建会话 → `EditorUiHost.open(session)`；内置界面也在注册表里 |
 | 内置界面拿到的 | `EditorContext`（宽，直连数据） | `EditorSession`（窄，与第三方同一份契约）——**默认实现遵守自己发放的契约** |
 | 第三方"包一层" | 做不到（只能整体接管） | `EditorUiHost.openDefault(session)` 转发给默认实现 |
-| `MODERN_UI_COMPAT` | 决定"要不要问后端" | 语义收敛为"允许 / 不允许第三方接管"（或直接删除，列为待定项 §10-5） |
+| `MODERN_UI_COMPAT` | 决定"要不要问后端" | **删除**；由 `editor.backend` 的指定 / `auto` 取代（多个实现时玩家自己选） |
 | 注册时机 | 客户端入口里 `EditorConfig.MODERN_UI_COMPAT.get() && EditorUiHost.open(...)`（`CameraEditorScreen.java:1231-1245`） | `editor` 包自己的客户端订阅者注册默认后端；`core` 不参与 |
 
 ### 8.3 四个扩展点
 
 | 级别 | 接口 / 注册表 | 第三方要做什么 | 用在哪 |
 | --- | --- | --- | --- |
-| 后端级 | `EditorUiBackend` + `EditorUiHost` | 实现 `openEditor`，可转发给默认实现 | 换整套界面（Modern UI 等） |
-| 数据级 | `TrackTypeRegistry` / `ValueSourceTypeRegistry` / `AnchorTypeRegistry` | 登记 id + `MapCodec` + 工厂 / 解析器 | 新轨道（事件、特效）、新值源、新锚点 |
+| 后端级 | `EditorUiBackend` + `EditorUiHost`（含 `id()`） | 实现 `openEditor`，可转发给默认实现 | 换整套界面（Modern UI 等） |
+| 数据级 | `TrackTypeRegistry` / `AnchorTypeRegistry`（**值源不开放，D16**） | 登记 id + `MapCodec` + 工厂 / 解析器 | 新轨道（事件、特效）、新锚点（跟随方块实体、队伍中心…） |
 | 面板级 | `editor.spi.PanelRegistry` | 登记 `PanelDescriptor(id, title, factory, placement)` | 往内置编辑器里加一个面板（不用重写整个界面） |
 | 组件级 | `editor.spi` 的组件契约（表达式编辑器、变量表、时间轴…） | 把组件摆进自己的 `Screen` | 只想要"那个表达式编辑器" |
 
@@ -1073,7 +1167,7 @@ sequenceDiagram
     participant Ext as 第三方后端（可选）
     participant Host as EditorUiHost
     participant Key as F6 按键绑定
-    participant S as EditSession
+    participant S as EditorSession
     participant Def as BuiltinEditorBackend
 
     Ed->>Host: register(BuiltinEditorBackend)   ← 优先级最低，自己注册
@@ -1124,9 +1218,9 @@ sequenceDiagram
 | **P0 冻结与骨架** | 建三个顶层包；把现有 `core.editor` 原样搬进 `editor`（只改包名），`api`/`core`/`editor` 的依赖方向立起来（`core ↔ editor` 的三条边按 §7.6 翻成 `api` 侧服务：屏幕接管、相机探针、按键归属） | `.\gradlew compileJava` 通过；§2.4 的五条依赖判据全部通过；游戏内行为与今天一致 |
 | **P1 数据模型不可变化** | `CameraAnimation` 与子对象改不可变；`AnimationHandle` 上线；调用点改 `handle.current()` | 数据类无写方法（判据：`api.animation` 里搜不到返回 `void` 的 setter）；现有单测与手写冒烟通过 |
 | **P2 Codec 内聚** | 每个类型自带 `Codec`；`AnimationCodec` 拆解；`core.storage` 只读写字节；读档改严格 | §2.4 的"序列化职责"判据通过（`core` / `editor` 里搜不到磁盘字段名）；损坏文件被拒绝并给出路径（新增用例） |
-| **P3 校验与提交** | `EditOp` / `EditResult` / 校验注册表 / `EditSession`；面板改走 `submit` | 编辑脚本冒烟：每步要么 `Applied` 且版本 +1，要么 `Rejected` 且文档逐位不变；环 / 重名 / 未定义引用三类用例各有断言 |
-| **P4 播放拆分与 local** | `AnimationPlayer` 提到 `api`；`core.playback.CameraDriver`；`Space` / `Anchor` / 参考系 | 内核可在 `src/test` 里跑（无 MC）；local 模式下换锚点，局部轨迹逐位相同（I7 用例） |
-| **P5 编辑器收口与扩展点** | 内置后端注册；`openDefault`；会话补齐写动作与撤销；面板注册表；组件抽取 | 写一个"只包一层"的示例后端能把内置界面调起来；不装第三方后端时行为与今天一致 |
+| **P3 校验与提交** | `EditOp` / `EditOutcome` / `EditResult` / 校验注册表（L1–L4）/ `EditorSession`；面板改走 `submit`。**若采纳 §11：R1（回退可见）+ R2（L4 全时间轴试算）+ R3（可搬到提交期的失败原因全部搬完）并入本阶段** | 编辑脚本冒烟：每步要么 `Applied` 且版本 +1，要么 `Rejected` 且文档逐位不变；环 / 重名 / 未定义引用 / 试算出非有限值四类用例各有断言 |
+| **P4 播放拆分与 local** | `AnimationPlayer` 提到 `api`；`core.playback.CameraDriver`；`Space` / `Anchor` / 参考系与 `AnchorResolver`；`PlaybackService`；播放包改带类型化锚点（D12）；解析失败即停播（D11）。**若采纳 §11：R4（摘掉运行期 fallback）并入本阶段** | 内核可在 `src/test` 里跑（无 MC）；local 模式下换锚点，局部轨迹逐位相同（I7 用例）；锚点不可用时播放真的停住且有提示 |
+| **P5 编辑器收口与扩展点** | 内置后端注册（带 id）；`openDefault`；`editor.backend` 配置取代 `MODERN_UI_COMPAT`（D14）；会话补齐写动作与撤销；面板注册表；组件抽取。**若采纳 §11：面板的"无值"渲染并入本阶段** | 写一个"只包一层"的示例后端能把内置界面调起来；配置指定 id / 不存在 / 拒绝接管三种情形各有用例；不装第三方后端时行为与今天一致 |
 | **P6 收尾** | 删除 `EvaluationGraph2` 与对账相关的未接入代码；文档同步到 `animation-editor-guide.md` | 全仓搜不到 `EvaluationGraph2`；指南与新模型一致 |
 
 **风险与对策**
@@ -1135,33 +1229,205 @@ sequenceDiagram
 | --- | --- | --- |
 | 不可变化触碰 13k 行界面代码，改动面大 | 工期 | P1 与 P5 之间界面只做"取数方式"的机械替换；校验与提交（P3）先上，面板逐个迁移 |
 | 每次提交拷贝文档 | 拖拽卡顿 | 拖拽期间只画预览、松手提交一次；必要时引入结构共享 |
-| 读档改严格会拒绝手写文件 | 用户抱怨 | 提供诊断模式只读打开 + 明确错误路径；一次性转换器（可选） |
+| 读档改严格会拒绝手写文件 | 用户抱怨 | 提供诊断模式只读打开 + 明确错误路径（不做转换器，D13）；文件浏览器里把不支持的文件标出来 |
 | 第三方界面依赖 `editor.spi` 后与内置实现耦合 | 长期维护 | `editor.spi` 明确定为公开面并单独写文档；`editor.internal` 里的一切随时可改 |
-| 锚点在多人环境下解析失败 | 播错位置 | §4.4 的三级降级 + 必提示（列为待定项） |
+| 锚点在多人环境下解析失败 | 播错位置 | 按 D11 结束播放 + 明确提示（§4.4.1）；包带类型 id，缺附属 mod 时能说清楚原因 |
+| 版本栈按"整份文档"存 | 内存（§10.1） | 上限按内存估算而非固定条数；必要时结构共享；整份替换不进栈 |
 
 ---
 
-## 10. 决策记录与待定项
+## 10. 决策记录与展开解释
 
-**已定**：见 §0 的 D1–D9。
+### 10.0 决策记录
 
-**待定**（按需要拍板的先后排）：
+**已定**：D1–D17，见 §0（D1–D9 第一轮，D10–D17 第二轮）。
+其中三条要求展开解释的，分别是 §10.1 / §10.2 / §10.3；
+一个需要单独拍板的新提案（去 fallback）在 §11。
 
-1. **不可变文档是否最终拍板**（D2）。本文件以它为主线；若改选"值对象不可变 + 容器可变"，
-   差异清单见附录 D——主要影响 §5（校验、撤销、绕过）与 §3，其余章节不变。
-2. **锚点解析失败的降级策略**（§4.4 给了建议：最近已知位置 → 文档默认锚点 → 世界坐标 + 提示）。
-3. **多人游戏下锚点的同步粒度**：只发"实体 UUID"（客户端自己解析）还是连"锚点类型 + 参数"一起发？
-   前者简单，后者可扩展（第三方锚点类型在服务端也要能表达）。
-4. **旧文件转换器**是否要做（`run/camera_animations` 下现有两个测试文件）。
-5. **`MODERN_UI_COMPAT` 的去留**：保留为"允许第三方接管"的开关，还是删除（永远询问后端）。
-6. **表达式层（`expression`）是否与本轮同批重构**：本文件假设它保持现状（已落地的形态很好），
-   只把它接到不可变文档上。
-7. **撤销栈上限与内存策略**：默认 64 个版本；是否需要结构共享。
-8. **`editor` 是否将来拆独立 source set / 子模块**：本轮不拆，但包边界先立好，拆的时候不返工。
-9. **值源类型是否开放给第三方**（§6.2 的取舍）：开放就把 `sealed` 换成"注册表 + 能力声明"，
-   代价是求值层 `switch` 的编译期穷尽性；不开放则本轮只开轨道类型与锚点类型两个数据级扩展点。
-10. **键的"单帧唯一时间"是否作为硬规则**：现状允许同时间键（插入即覆盖），新框架建议在 L2 结构层
-    明确成"同一轨道内时间唯一"，需要确认是否与作者习惯冲突。
+**仍然待定**（数量比上一版少了很多，剩下的都是实现期才需要定的）：
+
+| # | 待定 | 什么时候需要定 |
+| --- | --- | --- |
+| 1 | **编辑器预览遇到"锚点不可用"的口径**（§4.4.1 第 3 条给的是"不接管 + 标红"，而不是停播） | 做 P4 的 local 预览时 |
+| 2 | **是否采纳 §11 的"去掉 fallback"** | 动 P1（数据模型）之前 |
+| 3 | **§10.2 里表达式层的建议采纳哪几条**（建议逐条看，"闭包式日志"与"arity 提交期校验"性价比最高） | 做 P1/P3 时 |
+| 4 | **撤销栈的内存口径**：按条数（64）还是按估算字节（§10.1 建议后者），以及是否上结构共享 | 做 P3 的撤销栈时 |
+| 5 | **Tick 轨道的副作用在编辑器暂停时是否照常执行**（现状是编辑器里播放头推进才触发） | 做 P4 时 |
+
+### 10.1 撤销栈上限与内存策略：影响是什么
+
+结论先给：**在"不可变文档"下，撤销栈的成本不再是"几个字符串"，而是"若干份文档对象图"，
+所以"上限 64"这个数字必须重新算，不能照抄现状。**
+
+现状与目标差在哪：
+
+| | 现状 | 不可变文档 |
+| --- | --- | --- |
+| 存什么 | 整份动画的 JSON 字符串 | `CameraAnimation` 对象图的引用 |
+| 一份多大 | JSON 文本，几十到几百 KB | 对象图：`EnumMap` 与一条条 record 的开销比 JSON 文本**大 2~5 倍** |
+| 上限 | 64 条 | 需要按内存算（见下） |
+| 捕获 | 每帧 + 250ms 节流（会漏） | 每个用户动作一次（不会漏） |
+
+一个可用的估算口径（动手时用真实数字替换，这里给方法）：
+
+```text
+单份文档 ≈ Σ 轨道(键数 × 单键开销) + 变量/函数 + 路径
+单键开销 ≈ Keyframe 对象头 + EnumMap（5 项）+ 5 个来源 record ≈ 150~300 字节
+一次提交新增的内存 ≈ 单份文档大小（无结构共享时）
+上限（条数） ≈ 预算（例如 32 MB） / 单份文档大小
+```
+
+代入一个中等规模的动画（10 条轨道 × 100 键 = 1000 键，约 0.2 MB/份）：
+64 条 ≈ 13 MB，可以接受；**但一条 5000 键的大动画（约 1 MB/份）就是 64 MB**，这就不能接受了。
+所以建议三条一起做：
+
+1. **上限按"估算字节 + 条数"双限**（例如 `min(64 条, 32 MB)`），而不是只按条数；
+   超出时从最老的开始丢（与本轮"整份替换不进栈"配合，见第 3 条）。
+2. **暂不做结构共享，但把接口留成"能换实现"**：撤销栈对外只暴露
+   `canUndo/canRedo/undo/redo/labels`，内部存什么（整份引用 / 持久化集合 / 逆向操作）是实现细节。
+   真到了内存吃紧的那天，换实现不动调用方。
+3. **整份替换（读档、切换动画、指令换片）不作为一次撤销项**：它进栈的话，
+   一份新文档 + 一份旧文档同时进栈，而且"撤销一次读档"这个语义用户也未必想要。
+   口径定为：读档/换片 = 清空撤销栈 + 提示一句"已切换到 X，撤销历史已清空"。
+   （这也顺带把"最大的一份内存"从栈里排除掉了。）
+
+顺带一个必须说的联动：**撤销栈里的文档引用会让旧版本无法被 GC**，
+所以"撤销栈上限"实际上就是"最少能回收多少内存"。这也是为什么第 1 条要从条数改成字节。
+
+### 10.2 表达式层：可选的更好方案（逐条建议）
+
+现状的表达式层已经比上一版好很多（编译与解释分离、`Expression.names` 走语法树、写期判环）。
+下面 6 条是**独立的**改进项，可以逐条采纳，不采纳也不影响本框架其余部分。
+
+| # | 建议 | 理由 | 代价 |
+| --- | --- | --- | --- |
+| E1 | **把 `Compiler` 的编译缓存从"满了整表清空"改成 LRU**（`LinkedHashMap` + `removeEldestEntry`，或分段 LRU） | 现在到 512 条就全清，"清空那一刻全场卡一下"且把热公式也丢了；LRU 让热点自然留存 | 约 30 行，无接口变化 |
+| E2 | **`expression` 层去掉 slf4j 依赖**：非法写法不再"降级 + 记日志"，而是**返回结构化错误交给上层** | §11 一旦采纳，`SourceJson` 里那条"关键帧字段写了 `track`"的日志路径整个消失；这一层因此回到"纯 JDK 类型"，可脱离游戏单测（这也是原设计想要的状态） | 需要上层（解码/提交）接住错误——§5 的错误模型正好有位置 |
+| E3 | **自定义函数的实参个数在提交期校验** | 现在自定义函数 arity 是运行期检查、错了返回 NaN；而函数体与调用点都在文档里，提交期扫一遍就能拦住（L3 校验器）。这条把"运行期静默 NaN"又消灭了一类 | 一个校验器 + 一次全文档扫描 |
+| E4 | **`random()` 标注为非确定性，并给一个可复现的替代**：文档级 `seed` + `noise(seed, t)`，或 `random(seedExpr)` | 相机动画多半是要出片的：同一段动画两次播放结果不同是硬伤，也让 §11 的"全时间轴试算"无法覆盖含 `random()` 的公式 | 一个新内置函数 + 文档加一个 `seed` 字段；保留 `random()` 但标红提示"不可复现" |
+| E5 | **求值上限（嵌套 64 / 节点 1024 / 深度 64）变成"可诊断"而非静默**：触发时记一条计数并让编辑器能显示"这条公式触顶了" | 现在触顶一律 NaN，用户看到的是"这个键坏了"却不知道为什么 | 一个计数器 + 面板一行提示 |
+| E6 | **公开面收窄**：`Scope` / `Resolver` / `ValueSource` / `Variable` / `SymbolTable` 留在 `api.animation.expression`；`Compiler` / `Node` / `Evaluator` / `Builtins` / `EvalDepth` 移到 `api.animation.expression.impl`（包内可见或单独子包） | 现在这些实现类与接口混在一个包里，外部能引到"半成品 API"；分开放之后，"哪些是给别人用的"一眼可见（与 D1 的判据同源） | 一次机械搬包（`Node` 已经包内可见，主要是 `Compiler` / `Builtins` / `Evaluation`） |
+
+优先级建议：**E2 与 E3 最高**（它们直接服务于"非法数据不入数据系统"），E1/E4 次之，
+E5/E6 属于体验与卫生。E4 需要你判断：如果这个 mod 的用户里"要出片"的比例高，它的价值会很大。
+
+### 10.3 "同一轨道内键时间唯一"作为硬规则：影响是什么
+
+先说事实：**现状其实已经接近唯一**——`Curve.key(time, value)` 是"插入或覆盖"（二分找到同位置就覆盖），
+所以正常写路径下不可能出现两个同时间的键。真正会造出重复时间的是三条缝：
+
+1. **读档**：宽松反序列化不看时间是否重复，文件里写两个同时间键就会都装进来；
+2. **移动键**：`moveKey(index, time)` 把键挪到另一个键的时间上，是否覆盖取决于实现（现状是覆盖）；
+3. **粘贴**：一次粘贴可能落在一批已有键上（现状按时间覆盖）。
+
+把"时间唯一"写成 L2 硬规则之后，三条缝都变成"提交期可判定"：
+
+| 影响面 | 具体变化 |
+| --- | --- |
+| 数据不变量 | `Curve.keys` 恒为**严格递增**序列（不再只是"非递减"），`Curve` 的内部二分与插值因此少一类退化分支（相邻键同时间、段长 0） |
+| 解码 | 文件里出现重复时间 → **拒绝加载**并指出位置（与 §6.3 的严格口径一致） |
+| 移动键 | `MoveKey` 落在已占用的时间上 → **拒绝**，并附一个 `Fix`："与目标键合并（保留哪一个由用户点）"。默认不静默覆盖 |
+| 粘贴 | `AddKey`/`PasteKey` 撞上已有时间 → 同一套 `Fix`：覆盖 / 跳过 / 全部应用 |
+| 拖拽体验 | 这是**最需要注意的一条**：吸附（snap）让"撞到邻居"变得非常频繁。所以拖拽期间要在曲线上把冲突目标**高亮**，并在状态栏说明"此处已有键"；否则用户会觉得"这个键拖不过去"却不知道为什么 |
+| 浮点口径 | 唯一性按**精确浮点相等**判定，并且建议在 L2 层把时间**量化到 1e-4 秒**：否则 `1.0` 与 `1.0000001` 这种"几乎相撞"的键既不算重复、又会在 UI 上看起来重叠。量化同时让序列化输出稳定（不会因为浮点尾数产生无意义 diff） |
+
+一句话：**这条规则本身几乎不改变"能做出什么动画"，它改变的是"撞键时发生什么"**——
+从"静默覆盖"变成"明确告知 + 一键选择"。代价是 UI 要多做一点反馈，收益是数据里不再有
+"两个键抢同一个时刻"这种没法用曲线图解释的状态。
+
+---
+
+## 11. 能否去掉取值流程里的 fallback（提案，待拍板）
+
+### 11.1 现状：fallback 在哪、它治的是什么
+
+`Formula(expression, fallback)` 与 `NumberSource.evaluateOrFallback(scope)` 是既有设计里**唯一的回退点**：
+公式算不出来（返回 NaN）就用 `fallback`，`fallback` 也是 NaN 就用 0。
+它会兜住的失败原因有一整张表：
+
+| 触发回退的原因 | 现在什么时候能发现 |
+| --- | --- |
+| 公式编译不过（语法错、实参个数不对、超出嵌套/节点上限） | 写期（表达式窗口「确定」）能发现，但**读档不拦**，运行时静默 fallback |
+| 引用了不存在的名字（拼错、删了变量） | **只在运行期**（图看不见未定义的名字，§6.5 已记录这个盲区） |
+| 循环引用 | 写期与读档都拦（已有） |
+| `0/0`、`sqrt(-1)`、`log(0)`、`tan(π/2)` 这类**数学域错误** | **只在运行期**，且只在个别时刻 |
+| 轨道读数指向不存在的轨道 | 运行期（写期只有变量绑定时查） |
+| 求值深度触顶（嵌套 64） | 运行期 |
+| 自定义函数实参个数不符 | 运行期（arity 是运行期检查） |
+
+现状的后果，约束文档自己写得很清楚：**"这些毛病都不会让动画播不出来，只会让它在某几帧悄悄用旧数值"**。
+一句话：fallback 换来的是"永远播得出来"，代价是"永远可能悄悄播错"。
+
+### 11.2 为什么它可以去掉
+
+三条论据，从强到弱：
+
+1. **上表里绝大多数原因都能搬到提交期**：编译不过（L1）、未定义名字（L2）、成环（L3）、
+   轨道不存在（L2）、函数 arity（§10.2 E3）、深度触顶（有环才触顶，已被 L3 拦）。
+   搬完之后，只剩"数学域错误"这一类是真正只在运行期才知道的。
+2. **数学域错误可以在提交期"全时间轴试算"扫出来**：把时间轴按步长（每个键的时间点 +
+   相邻中点 + 固定步长如 1/60 秒）采一遍，任何非有限结果就是一条 L4 错误，
+   一次把"这段动画会在第 3.25 秒算出 NaN"告诉作者。成本是 `轨道数 × 键数 × 采样倍数` 次求值，
+   而提交是用户动作边界（不是每帧），几十万次求值完全可接受。
+3. **剩下的残渣不值得用"悄悄给个旧数"来兜**：相机动画是拿去出片的，
+   一个静默的假数就是一次废片；而"不接管该轴 + 明确可见"既不会毁掉整段播放，也不会骗人。
+
+唯一扫不到的是**非确定性**：`random()` 在公式里，试算结果不代表播放结果。
+这正好是 §10.2 E4 建议给 `random` 一个可复现替代（文档级种子）的理由——
+**如果采纳 E4，"提交期试算"就能覆盖全部内置函数**。
+
+### 11.3 去掉之后的口径（推荐方案）
+
+| 项 | 现状 | 去掉 fallback 之后 |
+| --- | --- | --- |
+| `evaluate(scope)` 返回 NaN 的含义 | "算不出来，请用回退值" | **"这一帧没有值"** |
+| `evaluateOrFallback` | 求值链唯一的回退点 | **删除**（"回退只有一个点"这条不变量换成"没有回退"） |
+| `Formula` 的第二个字段 | `fallback`，参与求值 | 改名 `literal`，**不参与求值**：它只是"切回数值模式时的初始值"（UI 与序列化仍需要它） |
+| 通道级表现 | 回退成数字，照常接管该轴 | 该帧该通道 `valid = false` → **不接管该轴**（沿用现有 valid 机制，语义从"没有关键帧"扩展到"没有值"） |
+| 整段没有值 | 回退成 0 / 旧值 | 等价于"这条通道没写"；FOV 全无值就沿用玩家 FOV（现状已是这个行为） |
+| 可见性 | 完全静默 | 曲线图把"没有值"画成**断线**（而不是一条水平线）、变量取值列显示 `—`、状态栏给一次汇总提示 |
+| 播放是否中断 | 不中断 | **也不中断**（与 D11 的锚点失败不同：锚点失败会播错位置，通道无值只是少一个自由度） |
+
+一句话概括这套口径：**NaN 从"内部状态"变成"可见状态"，从"被回退掩盖"变成"被显式表达"**。
+
+### 11.4 改动面清单
+
+| 层 | 改什么 | 风险 / 注意 |
+| --- | --- | --- |
+| `expression.NumberSource` | 删 `evaluateOrFallback`；`evaluate` 的 NaN 语义写进类文档 | 影响面小，但**所有调用点都要看一遍**：现在谁在依赖"永远有值" |
+| `expression.Formula` | 字段 `fallback` → `literal`，语义改为"不参与求值" | 磁盘字段名随之改变（不背向前兼容，无迁移负担） |
+| `expression.SourceJson` / Codec | 读写 `literal`；顺带删掉"关键帧字段写了 track 就降级 + 记日志"这条路径 | 与 §10.2 E2 联动：**这一层可以彻底摆脱 slf4j** |
+| `eval.CurveSample` | **最关键的一处**：惰性缓存用 NaN 当"这个槽位还没解析"的哨兵（`CurveSample.java:42` 的注释写明"未解析的槽位放 NaN（**解析出来的值不会是 NaN，见 `NumberSource#evaluateOrFallback`**）"，`:78` 用 `Arrays.fill(cache, NaN)` 初始化）。也就是说**这个哨兵的存在本身就依赖 fallback** | 去掉回退后"算不出来"也会是 NaN，两者必须分开：改成 `boolean[] resolved` 或位掩码。漏改的后果是"没有值的槽位被反复重算"或"未解析被当成无值"，两种都很难查 |
+| `eval.CurveSampler` | `sample` 的返回语义写清（NaN = 无值）；`sampleStatic` 的"只要固定值"分支简化 | 现在 `sampleStatic` 是"没有求值环境时"的入口，语义变清晰 |
+| `curve.Curve.evaluate` | 端点出现 NaN 时的插值口径定死（建议：**只要参与插值的端点有 NaN 就返回 NaN**，不要"跳过"） | 现在靠 `KeyValues` 给数，NaN 会自然传播，行为其实已经接近这条；要写成规则并测 |
+| `curve.KeyValues` | 仍是 float 接口，但文档写明"NaN = 无值" | 不变 |
+| `core.playback` / `api.playback` | `finiteOr(value, fallback)` 这类"用旧值兜"的写法全部删掉，改成 valid 位驱动 | `CameraPlayer.java:161-168` 一类代码要重写；**别再引入"兜一个数"的新写法** |
+| `Variable` / `SymbolTable` | 变量取值失败不再返回 `defaultValue`，而是"无值" | `defaultValue` 的语义收窄成"UI 初始值"（它本来就是）；变量面板显示 `—` |
+| 面板 / 曲线图 / 表达式窗口 | 数值 ↔ 公式切换用 `literal`；动态键的"无值"渲染；`broken()` 之外的"可编译但会算出 NaN"标记 | 这一块是**工作量最大**的部分（散在 13k 行界面里） |
+| 校验器 | 新增 L4"全时间轴试算"校验器：采样步长、上限（最多报 N 条）、错误聚合 | 要定采样策略与成本上限；`random()` 出现的公式要单独标记为"不可试算" |
+| 扩展轨道 | 若其键也走值源，同一套口径 | 由轨道类型自己的 codec/求值决定，框架只给口径 |
+
+### 11.5 不采纳时的替代路线（渐进方案）
+
+如果担心一次性摘掉 fallback 风险太大，可以按这个顺序，每一步都能单独落地：
+
+| 步 | 做什么 | 效果 |
+| --- | --- | --- |
+| R1 | **保留 fallback，但让它可见**：触发回退时在面板标红 + 状态栏提示一次 | 把"完全静默"变成"看得见"，零语义风险 |
+| R2 | **加 L4 试算校验器**：提交时把"会在第 X 秒触发回退"的位置报出来 | 把"运行期才知道"提前到"落地前拦"，**这一步与摘不摘 fallback 无关，本身就是净收益** |
+| R3 | 把上表里能搬到提交期的失败原因全部搬完（未定义名字、arity、轨道存在性） | 此时 fallback 在合法文档里**几乎不可能被触发** |
+| R4 | 摘掉运行期 fallback，按 §11.3 的口径收尾 | 收尾动作，风险已经被前三步吃掉 |
+
+### 11.6 推荐
+
+**建议采纳 §11.3 的口径，但按 §11.5 的 R1→R4 顺序走。**
+
+理由：R2 与 R3 本身就是"非法数据在落地前挡住"的直接实现（与 D5 同源），
+无论最后摘不摘 fallback 都该做；做完之后 R4 就只是把一层已经用不到的兜底删掉。
+反过来说，如果一直不做 R2/R3，那么"回退"就一直是那个"静默播错"的出口——
+与本次重构的目标正好相反。
+
+需要你拍板的只有一件：**R4 做不做、什么时候做**（R1–R3 建议无条件做）。
 
 ---
 
@@ -1173,7 +1439,7 @@ sequenceDiagram
 | sealed `Removal`（删节点被引用） | 转化为 `EditError` + `Fix` | 编辑器要的"结构化原因 + 可点修复"已经由错误模型承担 |
 | `Edit`（`Applied` / `Rejected`） | `EditResult` | 同上，且语义扩到全部编辑动作 |
 | `reconcile` 对账 + `Drift` + 七条破坏用例 | 不采纳 | 没有增量记账，就没有"账坏了"这一类 |
-| 唯一写入口 `AnimationEdits` | `EditSession.submit(EditOp)` | 形状保留，落点从"转发给数据类方法"变成"产出候选文档" |
+| 唯一写入口 `AnimationEdits` | `EditorSession.submit(EditOp)` | 形状保留，落点从"转发给数据类方法"变成"产出候选文档" |
 | 收窄数据类写方法 | 不适用 | 不可变值对象没有写方法 |
 | 图挂在 `CameraAnimation` 上 | 保留 | 判据不变：所有整份替换路径都在它的作用域内 |
 | 批量替换自动重建 | 成为唯一形态 | 每次提交都是"整份新版本" |
@@ -1190,7 +1456,13 @@ sequenceDiagram
 | `api.animation.path.Path` / `PathNode` | 同上 | |
 | `CameraAnimationc` / `Pathc` / `Curvec`（只读视图三件套） | 删除 | 数据不可变之后，"只读视图"这一层没有存在意义；渲染与信息面板直接读文档 |
 | `api.animation.expression.SymbolTable` | `Symbols`（不可变） | 名字规则与 `shadowing` 判定原样保留 |
-| `api.animation.expression.Variable` | 不可变 `Variable` | |
+| `api.animation.expression.Variable` | 不可变 `Variable` | `defaultValue` 语义收窄为"UI 初始值"（§11） |
+| `NumberSource.evaluateOrFallback` | **删除**（若采纳 §11） | 连带取消"回退只有一个点"这条不变量；NaN 改为"这一帧没有值" |
+| `Formula.fallback` | 改名 `literal`，**不参与求值**（若采纳 §11） | 只作"切回数值模式时的初始值" |
+| `eval.CurveSample` 的 NaN 哨兵 | 换成 `boolean[] resolved` / 位掩码（若采纳 §11） | 否则"无值"与"未解析"无法区分 |
+| `core.cmd_camera.CmdCameraKeyMapping`（F6/F7/F8/F9） | 拆开：F6/F9 → `editor`；F7/F8 → `core.playback` | 按键跟着动作走 |
+| `core.editor.CameraScreens` | 删除 | 由 `CameraControlClaims` 取代（§7.6） |
+| `registry.CameraPlaybackPayload` | 带类型化锚点 + 播放参数（D12） | 锚点走 `dispatch` StreamCodec |
 | `api.animation.eval.EvaluationGraph` / `EvaluationGraph2` | `DependencyGraph`（纯函数） | v2 未接入，直接删 |
 | `api.animation.eval.CurveSampler` / `ExpressionScope` | 保留，缓存键改为文档版本 | I6 |
 | `core.cmd_camera.playback.CameraPlayer` | 拆分：`api.animation.playback.AnimationPlayer` + `core.playback.CameraDriver` | |
@@ -1242,7 +1514,7 @@ public interface TickDispatcher {
 }
 
 // ── api.editor ─────────────────────────────────────────────────
-public interface EditSession {
+public interface EditorSession {
     CameraAnimation animation();
     long version();
     EditResult submit(EditOp op);
@@ -1264,6 +1536,9 @@ public interface EditSession {
 | §7 | 播放器可能读到写入中间态，需要在提交前后加版本判断 |
 | 其余（§2、§4、§6、§8、§9） | 不变 |
 
+> D10 已把"不可变文档"定稿，本附录因此只作为**备查**保留：万一将来发现不可变的代价（拷贝量）
+> 超出预期，退回可变文档要改的就是上面这几节，其余设计（分层、空间与锚点、Codec、编辑器契约、扩展点）都不动。
+
 ## 附录 E：术语表
 
 | 术语 | 含义 |
@@ -1273,8 +1548,9 @@ public interface EditSession {
 | 草稿 `EditDraft` | UI 里编辑中的中间态，不是数据 |
 | 编辑意图 `EditOp` | 一次提交的纯函数描述；不序列化 |
 | 校验器 | 在候选文档上跑的纯函数，返回结构化错误 |
+| 试算（dry-run） | L4 校验器：把整条时间轴采一遍，把"会在第 X 秒算出非有限值"提前报出来（§11.5 R2） |
 | 锚点 `Anchor` | "以什么为原点"：固定坐标 / 实体 / 玩家，可扩展 |
 | 参考系 `AnchorFrame` | 锚点解析出的位置 + 旋转（逐轴启用） |
 | 空间 `Space` | 文档自述的坐标系：世界 / 局部 |
 | 局部姿态 `LocalPose` | 求值结果，仍在文档空间；合成后才变成世界姿态 |
-| 后端 `EditorUiBackend` | 界面实现；内置编辑器就是优先级最低的那个 |
+| 后端 `EditorUiBackend` | 界面实现；内置编辑器就是优先级最低的那个（也可由配置按 id 指定） |
