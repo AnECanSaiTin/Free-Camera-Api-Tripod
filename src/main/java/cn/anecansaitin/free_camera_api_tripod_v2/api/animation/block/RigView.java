@@ -2,7 +2,7 @@ package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block;
 
 import org.jspecify.annotations.NullMarked;
 
-/// 机位画面的合成设置：矩形、层级、质量请求与启用开关（主设计 §3.1、§7.6）。
+/// 机位画面的合成设置：启用状态、活动轨道、矩形、层级与质量请求（主设计 §3.1、§7.6）。
 ///
 /// ## 这是创作数据，不是工作区状态
 ///
@@ -13,29 +13,36 @@ import org.jspecify.annotations.NullMarked;
 /// 坐标相对**合成输出画面**，不相对某个停靠面板；视口缩放与留白通过画布变换映射，
 /// **不能改写作者矩形**。
 ///
-/// ## 字段分组与理由
+/// ## 三个“启用”不能混为一谈
 ///
-/// 矩形、层级、质量与开关放在**同一个值**里，对应主设计 §3.1 的
-/// `view: enabled / rect / zOrder / resolutionScale / updateEveryFrames`：
-/// 它们一起决定“这一路画面怎么合成”，一起进文档、一起撤销，
-/// 拆成两个字段会让“只改质量却忘了同步矩形”这类错误在构造期无法发现。
+/// - [enabled]：静态作者总开关，属于文档编辑；
+/// - [active]：本时刻活动状态，是有类型 STEP 轨道（`KeyframeTrack<Boolean>`，默认 `true`）；
+/// - 宿主性能停路 / 降级：运行状态，可见但**不改写文档**（D23、§7.6）。
 ///
-/// ## 质量是作者请求，不是执行状态
-///
-/// `resolutionScale` 与 `updateEveryFrames` 是**作者请求**。宿主可以可见地降级
-/// （降分辨率、隔帧复用、暂时停用），但**不改写文档**，也不修改作者的 `enabled`
-/// （主设计 D23、§7.6）。运行降级状态只在宿主侧，见 `RigRenderStatus`。
-///
-/// 隔帧复用意味着该路画面的**采样时刻可能与其他路不同**，因此必须显示旧帧的时间标识，
-/// 不能宣称所有路始终是同一瞬间（主设计 §7.6）。
+/// 运行活动状态为 `enabled && active.at(t)`。不活动机位不主动准备姿态或渲染；
+/// 指向它的 `TrackRef` 仍按实际依赖求值（主设计 §7.2）。
 ///
 /// ## 隐藏用 enabled，不用零尺寸
 ///
 /// [Rect] 的正尺寸是**校验约束**（主设计 §4.2 L4「布局正尺寸」）。
-/// 用零尺寸表示隐藏会让“隐藏”与“数据非法”无法区分，因此隐藏只能用 [enabled]。
+/// 用零尺寸表示隐藏会让“隐藏”与“数据非法”无法区分，因此隐藏只能用 [enabled]；
+/// 随时间隐藏则用 [active] 的键，而不是把尺寸缩到 0。
 ///
-/// @param enabled          是否参与合成。作者启用状态属于**文档编辑**；
-///                         宿主因性能停用属于运行状态，不改本字段
+/// ## 矩形的暂时形态
+///
+/// 主设计 §3.1.2 要求矩形的位置与尺寸可随时间变化（`AnimatedNumber` x/y/width/height
+/// 复用数值曲线）。本批契约的 [rect] 仍是**静态几何**：布局曲线涉及求值、UI 与校验，
+/// 差异已记录在 P1 契约计划 §1.4，随布局 / 编辑批次补齐。当前不要把它当作最终形态。
+///
+/// ## 质量是作者请求，不是执行状态
+///
+/// `resolutionScale` 与 `updateEveryFrames` 是**作者请求**。宿主可以可见地降级
+/// （降分辨率、隔帧复用、暂时停用），但**不改写文档**，也不修改作者的 [enabled]
+/// （主设计 D23、§7.6）。隔帧复用意味着该路画面的采样时刻可能与其他路不同，
+/// 必须显示旧帧的时间标识，不能宣称所有路始终是同一瞬间。
+///
+/// @param enabled          静态作者总开关；是否参与合成。停用不改矩形与轨道
+/// @param active           本时刻活动状态轨道；默认 `true`
 /// @param rect             画面矩形，相对合成输出画面
 /// @param zOrder           层级；**相同层级按机位文档顺序合成**（主设计 §3.1），
 ///                         所以顺序本身是数据，不靠 ID 或字典序
@@ -46,13 +53,19 @@ import org.jspecify.annotations.NullMarked;
 @NullMarked
 public record RigView(
         boolean enabled,
+        ActiveTrack active,
         Rect rect,
         int zOrder,
         double resolutionScale,
         int updateEveryFrames) {
 
-    /// 默认机位画面：启用、占满输出画面、层级 0、全分辨率、每帧更新。
-    public static final RigView FULL = new RigView(true, Rect.full(), 0, 1.0, 1);
+    /// 默认画面：启用、默认活动、占满输出画面、层级 0、全分辨率、每帧更新。
+    ///
+    /// 活动轨道必须带文档内唯一的 `TrackId`，因此默认画面由 [full] 按轨道构造，
+    /// 而不是一个可以直接共享的静态常量。
+    public static RigView full(ActiveTrack active) {
+        return new RigView(true, active, Rect.full(), 0, 1.0, 1);
+    }
 
     public RigView {
         if (!Double.isFinite(resolutionScale) || resolutionScale <= 0 || resolutionScale > 1) {
@@ -72,19 +85,24 @@ public record RigView(
     }
 
     public RigView withEnabled(boolean value) {
-        return new RigView(value, rect, zOrder, resolutionScale, updateEveryFrames);
+        return new RigView(value, active, rect, zOrder, resolutionScale, updateEveryFrames);
+    }
+
+    /// 换活动轨道；静态总开关与矩形不变。
+    public RigView withActive(ActiveTrack value) {
+        return new RigView(enabled, value, rect, zOrder, resolutionScale, updateEveryFrames);
     }
 
     public RigView withRect(Rect value) {
-        return new RigView(enabled, value, zOrder, resolutionScale, updateEveryFrames);
+        return new RigView(enabled, active, value, zOrder, resolutionScale, updateEveryFrames);
     }
 
     public RigView withZOrder(int value) {
-        return new RigView(enabled, rect, value, resolutionScale, updateEveryFrames);
+        return new RigView(enabled, active, rect, value, resolutionScale, updateEveryFrames);
     }
 
     public RigView withQuality(double newResolutionScale, int newUpdateEveryFrames) {
-        return new RigView(enabled, rect, zOrder, newResolutionScale, newUpdateEveryFrames);
+        return new RigView(enabled, active, rect, zOrder, newResolutionScale, newUpdateEveryFrames);
     }
 
     /// 画面矩形的两种**互斥**定位分支（主设计 §3.1、§9.1 的取舍）。

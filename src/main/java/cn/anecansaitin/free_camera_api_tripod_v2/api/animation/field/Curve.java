@@ -112,8 +112,9 @@ public record Curve(List<Keyframe> keys, Wrap preMode, Wrap postMode) {
 
     /// 首键到末键的时间跨度，单位秒；键少于两个时为 0。
     ///
-    /// 这是**键跨度**，不是动画时长：动画时长还取文档级轨道、标记与叠加范围的
-    /// 有限最大结束时间（主设计 §3.1）。
+    /// 这是**段落跨度**，只服务曲线自身的循环 / 往复段落长度，**不是**轨道或动画时长：
+    /// 轨道结束时间取末键时刻（`CurveTrack.duration()`），动画时长还取文档级轨道、
+    /// 相机来源、状态轨道、标记与叠加范围的有限最大结束时间（主设计 §3.1）。
     public float span() {
         return keys.size() < 2 ? 0f : keys.getLast().time() - keys.getFirst().time();
     }

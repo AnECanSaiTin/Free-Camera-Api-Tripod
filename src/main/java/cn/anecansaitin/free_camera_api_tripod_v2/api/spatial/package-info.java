@@ -10,7 +10,9 @@
  *   <li>空间分支：{@link cn.anecansaitin.free_camera_api_tripod_v2.api.spatial.Space}（World / Local）。</li>
  *   <li>锚点：{@link cn.anecansaitin.free_camera_api_tripod_v2.api.spatial.Anchor}（开放不可变契约）、
  *       {@link cn.anecansaitin.free_camera_api_tripod_v2.api.spatial.ResolvedAnchor}（一帧内解析结果）。</li>
- *   <li>机位空间设置：{@link cn.anecansaitin.free_camera_api_tripod_v2.api.spatial.AimTarget}（注视）、
+ *   <li>机位空间设置：{@link cn.anecansaitin.free_camera_api_tripod_v2.api.spatial.AimTarget}（注视配置）、
+ *       {@link cn.anecansaitin.free_camera_api_tripod_v2.api.spatial.AimState}（某一时刻的注视状态：
+ *       {@code Off} / {@code Target}）、
  *       {@link cn.anecansaitin.free_camera_api_tripod_v2.api.spatial.ObstacleSettings}（避障默认值）。</li>
  * </ul>
  *

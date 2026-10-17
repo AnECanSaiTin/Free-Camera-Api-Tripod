@@ -11,6 +11,11 @@
  * <p>关键帧字段由 {@code NumberSource} 驱动；{@code TrackRef} <b>不实现</b> NumberSource，
  * 因此在类型上根本进不了关键帧字段，只能作为变量的取值来源。
  *
+ * <p>命名提示：本包的 {@code Keyframe} 是<b>数值曲线键</b>（公式 / 曲柄 / 插值语义）；
+ * {@code block.ValueKeyframe<T>} 是<b>有类型状态键</b>（原生值、仅 STEP）。
+ * 旧根（v1）的 {@code Keyframe} / {@code Keyframec} 是可变的实现 / 只读视图，
+ * 不属于新契约，也不能套用其可变行为。
+ *
  * <h2>没有隐式回退</h2>
  *
  * <p>主设计 §6.1 与 §10.2 明确删除「求值失败就换回固定数值」的路径。

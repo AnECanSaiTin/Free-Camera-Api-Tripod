@@ -3,6 +3,8 @@ package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.KeyId;
 import org.jspecify.annotations.NullMarked;
 
+import java.util.Objects;
+
 /// 一个关键帧：时间 + 取值来源 + 插值参数。
 ///
 /// ## 时间
@@ -13,8 +15,12 @@ import org.jspecify.annotations.NullMarked;
 ///
 /// ## 取值
 ///
-/// `ValueSource` 是固定值或公式。**公式失败不是“取固定值”**：求值层返回 `ERROR`，
+/// `NumberSource` 是固定值或公式。**公式失败不是“取固定值”**：求值层返回 `ERROR`，
 /// 正式播放终止，编辑预览标错（主设计 §6.1、§7.3）。这里不做任何兜底。
+///
+/// 字段类型是 [NumberSource]，**不是** `ValueSource`：`TrackRef` 只实现 `ValueSource`、
+/// 不实现 `NumberSource`，所以轨道读数在类型上根本进不了关键帧字段（主设计 §6.1）。
+/// 变量读轨道请用 `Variable` 的 `ValueSource` 字段，不要指望关键帧能承载 `TrackRef`。
 ///
 /// ## 曲柄
 ///
@@ -26,7 +32,7 @@ import org.jspecify.annotations.NullMarked;
 ///
 /// @param keyId        稳定身份。移动、重排、改值都保留它；复制时由 `IdGenerator` 生成新的
 /// @param time         秒，有限且非负
-/// @param value        取值来源，非空
+/// @param value        固定值或公式，非空；不接受 `TrackRef`
 /// @param inSlope      入侧斜率
 /// @param outSlope     出侧斜率
 /// @param inLength     入侧曲柄长度倍数
@@ -36,7 +42,7 @@ import org.jspecify.annotations.NullMarked;
 public record Keyframe(
         KeyId keyId,
         float time,
-        ValueSource value,
+        NumberSource value,
         float inSlope,
         float outSlope,
         float inLength,
@@ -44,6 +50,8 @@ public record Keyframe(
         Curve.Interpolation interpolation) {
 
     public Keyframe {
+        Objects.requireNonNull(value, "value");
+
         if (!Float.isFinite(time) || time < 0f) {
             throw new IllegalArgumentException("Keyframe time must be finite and non-negative: " + time);
         }
@@ -69,8 +77,8 @@ public record Keyframe(
         return new Keyframe(keyId, newTime, value, inSlope, outSlope, inLength, outLength, interpolation);
     }
 
-    /// 改取值来源，其余不变。
-    public Keyframe withValue(ValueSource newValue) {
+    /// 改取值来源，其余不变。只接受 [NumberSource]；`TrackRef` 不是合法取值。
+    public Keyframe withValue(NumberSource newValue) {
         return new Keyframe(keyId, time, newValue, inSlope, outSlope, inLength, outLength, interpolation);
     }
 

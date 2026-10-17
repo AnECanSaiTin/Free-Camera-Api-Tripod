@@ -2,6 +2,7 @@ package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block;
 
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field.CameraChannel;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field.Curve;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field.Keyframe;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.TrackId;
 import net.minecraft.resources.Identifier;
 import org.jspecify.annotations.NullMarked;
@@ -55,15 +56,14 @@ public record CurveTrack(TrackId id, String name, @Nullable CameraChannel channe
         }
     }
 
-    /// 按相机通道建轨道：ID 用语义键，名称用通道语义键。
+    /// 按相机通道建轨道：调用方必须提供**文档内唯一**的 `TrackId` 与显示名。
     ///
-    /// 这是**新建默认文档**的写法：默认文档里通道的 ID 就是语义键，
-    /// 便于人工阅读与旧文件对照；作者后续改名只改 `name`，ID 保持稳定。
-    public static CurveTrack ofChannel(CameraChannel channel) {
-        return new CurveTrack(new TrackId(channel.key()), channel.key(), channel, Curve.EMPTY);
-    }
-
-    /// 按相机通道建轨道，但用独立 ID 与显式名称（作者新增通道时的形态）。
+    /// 不能拿通道语义键（`CameraChannel.key()`）当 `TrackId`：多机位各自建立同一通道的轨道时，
+    /// 两台机位会得到相同 ID，按 ID 查询只会命中第一台，直接破坏“`TrackId` 在整份文档内唯一”
+    /// （主设计 §3.1）。语义键只在**机位内**唯一，与轨道身份是两套东西。
+    ///
+    /// 因此本包不提供“自动用语义键当 ID”的便利工厂：创建时由宿主经 `IdGenerator`
+    /// 生成 ID，或由调用方显式给出。
     public static CurveTrack ofChannel(TrackId id, String name, CameraChannel channel, Curve curve) {
         return new CurveTrack(id, name, channel, curve);
     }
@@ -88,9 +88,16 @@ public record CurveTrack(TrackId id, String name, @Nullable CameraChannel channe
         return Optional.ofNullable(channel);
     }
 
+    /// 轨道最后一个键的时间，单位秒；空曲线为 0。
+    ///
+    /// 这是**末键时刻**（相对文档时间轴原点），不是首键到末键的跨度：
+    /// 单键曲线在 2 秒处结束时间就是 2 秒，不是 0 秒。跨度口径见 `Curve.span()`，
+    /// 它只服务曲线自身的循环段落长度，不参与动画时长（主设计 §3.1）。
     @Override
     public float duration() {
-        return curve.span();
+        Keyframe last = curve.last();
+
+        return last == null ? 0f : last.time();
     }
 
     @Override
