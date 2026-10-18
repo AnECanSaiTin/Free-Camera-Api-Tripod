@@ -5,14 +5,14 @@
  *
  * <ul>
  *   <li>{@link cn.anecansaitin.free_camera_api_tripod_v2.api.editor.EditorSession}：快照、提交、
- *       草稿事务、预览、撤销 / 重做、播放控制、视图状态、交互请求与关闭。</li>
+ *       草稿事务与 {@code EditDraftState}、预览、撤销 / 重做、播放控制、视图状态、交互请求与关闭。</li>
  *   <li>{@code SessionViewState} / {@code TimelineView} / {@code SnappingSettings} /
  *       {@code SnapSource} / {@code PreviewRange} / {@code TrackVisibility} /
  *       {@code EditorToolState}：会话 / 视图状态，不写文档、不进撤销历史。</li>
  *   <li>{@code InteractionId} / {@code InteractionOption} / {@code InteractionRequest}：带选项的
  *       交互请求，消息使用不可变 LocalizedMessage。</li>
  *   <li>{@code EditorUiBackend} / {@code EditorUiHost} / {@code EditorBackendSelector}：后端注册、
- *       选择与打开流程；不暴露客户端渲染类型。</li>
+ *       选择、实际 open 钩子与打开流程；不暴露客户端渲染类型。</li>
  * </ul>
  *
  * <h2>边界</h2>

@@ -1,10 +1,19 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.editor;
 
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.Selection;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.EditTarget;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.EditTransaction;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.Revision;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.Diagnostic;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.DiagnosticCode;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.DiagnosticScope;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.EditOp;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.LocalizedMessage;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.Severity;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.RigId;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.TrackId;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.playback.RigPlaybackOverrides;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.storage.ResourceId;
 import net.minecraft.resources.Identifier;
 import org.junit.jupiter.api.Test;
 
@@ -99,6 +108,28 @@ class EditorContractTest {
                 () -> new SessionViewState(-1f, Selection.EMPTY, TimelineView.defaults(),
                         SnappingSettings.disabled(), null, TrackVisibility.allVisible(),
                         EditorToolState.SELECT, null, Map.of()));
+    }
+
+    @Test
+    void editDraftStateKeepsTextAndCandidacy() {
+        EditTransaction transaction = new EditTransaction(
+                1, Revision.INITIAL, new EditTarget.Document(), LocalizedMessage.literal("edit"));
+        Map<String, String> fieldTexts = new HashMap<>();
+        fieldTexts.put("name", "draft");
+
+        EditDraftState draft = new EditDraftState(
+                transaction, fieldTexts, new EditOp.RenameDocument("draft"), List.of());
+        fieldTexts.clear();
+
+        assertEquals("draft", draft.fieldTexts().get("name"));
+        assertTrue(draft.hasCandidate());
+
+        Diagnostic error = new Diagnostic(DiagnosticCode.BROKEN_REFERENCE, Severity.ERROR,
+                LocalizedMessage.literal("bad"), new DiagnosticScope.File(new ResourceId("test")),
+                null, null);
+        EditDraftState invalid = new EditDraftState(
+                transaction, Map.of("name", "?"), new EditOp.RenameDocument("?"), List.of(error));
+        assertFalse(invalid.hasCandidate());
     }
 
     @Test

@@ -18,4 +18,10 @@ public interface EditorUiBackend {
 
     /// 当前会话是否可由此后端接管；拒绝时不得关闭会话或遗留接管令牌。
     boolean canOpen(EditorSession session);
+
+    /// 实际打开 / 挂载该后端界面。
+    ///
+    /// 只在 [canOpen] 为真或调用方明确指定该后端后调用。实现不得关闭会话；打开失败必须
+    /// 报告给宿主，指定后端失败时不自动切换。该方法不依赖客户端 UI 类型。
+    void open(EditorSession session);
 }

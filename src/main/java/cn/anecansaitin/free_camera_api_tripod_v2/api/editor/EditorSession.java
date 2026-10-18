@@ -5,11 +5,13 @@ import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.EditSubm
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.EditTarget;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.EditTransaction;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.PreviewState;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.EditOp;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.EditResult;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.LocalizedMessage;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.playback.PlaybackClock;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.playback.PlaybackState;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 import java.util.List;
 
@@ -32,10 +34,25 @@ public interface EditorSession {
     /// 开始一个基于稳定目标的事务。
     EditTransaction beginEdit(EditTarget target, LocalizedMessage label);
 
+    /// 读取事务草稿；面板切换 / 后端切换后按事务恢复。
+    EditDraftState draft(EditTransaction transaction);
+
+    /// 更新一个字段的原始输入文本；保留不可解析文本与诊断，不直接发布。
+    ///
+    /// 会话根据字段策略解析文本、生成候选或记录诊断；`null` 不在这里表示删除，删除字段
+    /// 由具体操作 / 草稿 API 表达。
+    void updateDraftText(EditTransaction transaction, String fieldPath, String text);
+
+    /// 直接更新结构化的完整操作候选（拖动 / 画布等非文本编辑）。
+    ///
+    /// 候选可以为空以表示尚未形成完整操作；会话必须重新校验目标与基版本，不直接发布。
+    void updateDraftOperation(EditTransaction transaction, @Nullable EditOp operation);
+
     /// 当前预览候选与诊断。
     PreviewState preview();
 
-    /// 提交事务；成功仅产生一个撤销项。
+    /// 提交事务；使用该事务已保存的草稿候选。没有候选或存在错误时必须拒绝，成功仅产生
+    /// 一个撤销项。
     EditResult commit(EditTransaction transaction);
 
     /// 取消事务，丢弃候选并恢复已发布快照预览。

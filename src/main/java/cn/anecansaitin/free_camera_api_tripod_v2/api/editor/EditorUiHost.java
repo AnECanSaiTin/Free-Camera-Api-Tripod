@@ -11,6 +11,9 @@ public interface EditorUiHost {
 
     /// 按选择器打开会话界面。
     ///
+    /// 选中可接管后端后必须调用该后端的 [EditorUiBackend#open]；指定后端拒绝接管或打开失败
+    /// 时不自动切换，未注册 ID 才警告并打开内置实现。
+    ///
     /// @param session  已创建 / 恢复的会话
     /// @param selector 自动或指定后端
     void open(EditorSession session, EditorBackendSelector selector);
