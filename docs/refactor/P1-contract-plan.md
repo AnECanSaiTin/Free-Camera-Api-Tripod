@@ -1,8 +1,8 @@
 # P1 契约施工计划（`_v2`）
 
 > 更新：2026-10-18。本文记录施工边界与状态，不替代[动画主设计](<../design-animation-editor-framework.md>)、[UI 设计](<../design-editor-ui-framework.md>)和[音频设计](<../design-spatial-audio-api.md>)。
-> 当前：第一至第五批契约已交付；C1–C4、playback 五项及后续 11 项协议已落实；**第六批 storage 契约与 R18 的两项契约缺口（Key/表版本、prepareFrame 预算）已补齐**。后续 11 项中仍有调用方责任与 core 行为未验证，见 §7。**core 算法、存储发布、事件执行、仲裁与多机位渲染尚未实现**。
-> 最近实际验证：20 个 suite / 151 个用例通过，其中 v2 为 14 / 85；141 个主源码 Java 文件。详情见[复核日志](<review-log.md>) R19。
+> 当前：第一至第五批契约已交付；C1–C4、playback 五项、后续 11 项及 storage 契约已落实；**R20 的 S1–S3 已补**（快照引用同源、接管主线程约束、诊断报告单资源作用域）。其余保证仍为调用方 / core 责任，见 §7。**core 算法、存储发布、事件执行、仲裁与多机位渲染尚未实现**。
+> 最近实际验证：20 个 suite / 151 个用例通过，其中 v2 为 14 / 85；141 个主源码 Java 文件。详情见[复核日志](<review-log.md>) R21。
 
 ## 1. 目录与迁移约定
 
@@ -135,17 +135,17 @@ Revision 包装、顶层 edit 及 edit ↔ document 例外已与主设计对齐�
 
 ## 7. 契约补齐与实现级验证（推荐方向已定）
 
-Q15 的推荐方向已定，不再重复裁决；公开类型和接口已调整，但并非全部保证已落实：bind 仅包装参数、Key.from 未校验额外表版本、准备预算承载与主线程声明尚待明确。以下需补齐契约或在 core / 宿主实现中验证。已关闭契约不等于整个 P1、完整播放或客户端验收完成。
+Q15 的推荐方向已定，不再重复裁决；R18/R20 指出的可落契约缺口已补齐：`EvaluationContext` 按快照引用身份校验索引同源、`EvaluationKey.from` 从 facts 取表版本、`prepareFrame` 承载预算、`CameraControlClaims` 声明主线程约束、`DiagnosticReport` 限定单资源 File 作用域。以下仍需在 core / 宿主实现中验证；已关闭契约不等于整个 P1、完整播放或客户端验收完成。
 
 | 范围 | 实现级验证 |
 | --- | --- |
 | document 提交 | 通知期间 `REENTRANT_SUBMIT`、延迟队列重查基版本、标签进历史且拒绝不入历史 |
 | 编辑能力 | `SetStateKey` 的轨道能力分派、`EditTarget.Field` 的字段定位、跨轨类型兼容 |
 | 试算 | FAILED/PASSED/INCOMPLETE 与诊断一致性的运行路径、报告实际覆盖量与固定事实 |
-| eval 绑定 | bind 已校验 TrackIndex 与快照同源；Key.from 从 facts 取表版本。统一生成快照/事实身份、验证 TrackLookup 同源与候选隔离仍需实现 |
+| eval 绑定 | `EvaluationContext` 用快照引用身份校验 TrackIndex 同源；`Key.from` 从 facts 取表版本。统一生成快照/事实身份、验证 TrackLookup 同源与候选隔离仍需实现 |
 | 空间与姿态错误 | AxisSample / SpatialResolution 三态在求值与合成中的消费，FOV 错误汇总与阻断 |
-| playback 启动/执行 | start 原子切换、prepareFrame 已接收 EventBudget 并要求展开时限制；事件/部分执行、主线程检查、捕获边界与旧帧失效仍待 core |
-| 存储/序列化 | 存储契约已交付；ResourceId 资源服务、参数 MapCodec/两阶段解码、未知类型与规模限制待实现 |
+| playback 启动/执行 | start 原子切换、prepareFrame 已接收 EventBudget 并要求展开时限制；CameraControlClaims 已声明主线程与 provider 同线程约束。事件/部分执行、运行线程检查、捕获边界与旧帧失效仍待 core |
+| 存储/序列化 | storage 契约已交付；DiagnosticReport 限定同一资源的 File 作用域。ResourceId 资源服务、参数 MapCodec/两阶段解码、未知类型与规模限制待实现 |
 | 消息显示 | LocalizedMessageRenderer 的翻译/参数/嵌套样式、语言切换与显示缓存边界 |
 
 这些是实现验证项，不计作已知运行缺陷；已关闭修复不代表 core 已实现。

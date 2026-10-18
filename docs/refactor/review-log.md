@@ -1,7 +1,7 @@
 # 契约复核日志（凝练版）
 
 > 更新：2026-10-18。当前施工边界见[P1 计划](<P1-contract-plan.md>)；设计规则见[主设计](<../design-animation-editor-framework.md>)。本日志只保存结论、证据与复核范围。
-> 本轮在 R18 核对后继续 P1：交付 storage 契约，并补 TrackIndex 同源校验、Key.from 表版本、prepareFrame 预算与主线程约束；**仍不宣称 core 播放、事件、仲裁或渲染已实现**。
+> 最新复核见 R21：R20 的 S1–S3 已按契约修正（快照引用同源、接管主线程约束、诊断报告单资源作用域）。**不宣称 core 存储、播放、事件、仲裁或渲染已实现**。
 > 原始 R1–R14 正文、微基准表及历史被推翻论证保存在[历史归档](<archive/review-log-R1-R14-2026-10-18.md>)。历史不作施工指令，编号保留可追溯；后续新发现追加编号，实施记录不自动等于复核通过。
 
 ## 1. 当前结论
@@ -39,7 +39,9 @@
 | R16 | 10-18 | 后续协议 1–5 实施 | 提交标签/重入、编辑目标、试算报告、显式采样、世界身份落地 |
 | R17 | 10-18 | 后续协议 6–11 实施 | 空间三态、启动/接管协议、旧帧身份、ResourceId、消息渲染契约落地 |
 | R18 | 10-18 | 十一项协议核对 | 契约方向成立；bind/预算/线程/解码等部分项待补 |
-| R19 | 10-18 | storage 契约与 R18 契约补齐 | 资源/恢复契约；TrackIndex 同源、Key.from 表版本、prepareFrame 预算、主线程约束 |
+| R19 | 10-18 | storage 契约与 R18 契约补齐 | 实施记录：资源/恢复契约及绑定/预算调整；不等同复核通过，见 R20 |
+| R20 | 10-18 | storage 与 R18 补齐复核 | 2 项 P2 残留及 1 项 P2 契约澄清；表版本入口和准备预算参数已补齐 |
+| R21 | 10-18 | R20 三项修正 | 引用同源、接管主线程约束、单资源诊断报告；待复核 |
 
 ### 2.1 C1–C4 最终方案（R12）
 
@@ -142,6 +144,8 @@ R12 的非阻断测试空白已在 R13 补充：消息输出列表不可修改�
 | R17 | 19 / 146 | 13 / 80 |
 | R18 | 19 / 146 | 13 / 80 |
 | R19 | 20 / 151 | 14 / 85 |
+| R20 | 20 / 151 | 14 / 85 |
+| R21 | 20 / 151 | 14 / 85 |
 
 早期记录中的命令、依赖门禁及原始位置保留归档；本轮未重新宣称运行级门禁/客户端效果已验证。后续记录应保存实际执行命令与结果，不沿用旧数字证明新代码。
 
@@ -168,3 +172,48 @@ R12 的非阻断测试空白已在 R13 补充：消息输出列表不可修改�
 设计同步：主设计 §3.3/§4.1–§4.3/§5.1/§6/§7/§8，UI §6.2/世界读数/试算与合成状态。已写清规范要求与当前保证强度；没有修改源码、没有补写虚假的运行完成记录。
 
 本轮实际运行 `./gradlew.bat --offline compileJava test --rerun --console=plain`，BUILD SUCCESSFUL：全工程 19 个 suite / 146 个用例通过，v2 为 13 / 80，无失败、错误、跳过。测试覆盖契约结构和已列边界，不证明绑定同源、区间展开预算、线程仲裁、Codec 或 Renderer 的运行行为。
+
+## R20. storage 契约与 R18 补齐复核
+
+**日期**：2026-10-18。**范围**：提交 `a0435f3` 的 storage 契约与 eval/playback 补齐；对照主设计 §3.4、§7、§8。本节为审查结论，不是实施记录；以下未关闭项尚未修改代码。
+
+### R20.1 待处理项
+
+| 编号 | 级别 | 位置与问题 | 触发、影响及修正要求 |
+| --- | --- | --- | --- |
+| S1 | P2 | [EvaluationContext:42](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/eval/EvaluationContext.java#L42>) 使用 `trackIndex.snapshot().equals(snapshot)` 校验同源 | AnimationSnapshot 为 record；不同 store 或正式/候选可产生 revision 与 document 等值但来源不同的两个快照，equals 仍通过。内容相等不能证明绑定同源。要求校验真实绑定身份：当前可约定索引保留原快照引用并比较引用，或使用独立来源 token；补同值异源拒绝及同源成功测试。 |
+| S2 | P2 | [CameraControlClaims](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/playback/CameraControlClaims.java#L23>) 未声明接管方法及 provider 的宿主主线程前置条件 | PlaybackService 的线程条款不能约束独立 Claims 接口。工作线程调用 winningPose 并执行 provider 仍未被其契约禁止。补 register/release/winner/winningPose 的线程约束，明确 provider 在同一线程运行；具体非法线程检查和捕获线性化测试仍留 core。 |
+| S3 | P2，契约澄清 | [DiagnosticReport:20](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/storage/DiagnosticReport.java#L20>) 未定义报告资源与各项诊断作用域/资源的一致性 | 报告头为资源 A，却能携带 File(B) 或 Document 作用域诊断并进入 Load/Save 拒绝结果，消费方可能错误定位。若定义为单资源 IO/解码报告，构造时要求全部为 File 且 resource 与报告相等；若允许关联资源/文档校验诊断，须明确其合法性、定位及 Fix 展示规则，不能保持隐含混用。补相应边界测试，未定前不强制选择某种聚合模型。 |
+
+S1/S2 是已确认残留；S3 是本批报告协议的定型项，不直接断言所有跨资源诊断均非法。它们不是重复要求实现已延期的 IO、Codec 或仲裁算法。
+
+### R20.2 已补齐与延期边界
+
+- [EvaluationKey.from](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/eval/EvaluationKey.java#L67>) 已移除独立 sampleTableVersion 参数，直接从请求上下文 facts 读取；原入口错配路径已消除，快照/事实身份生成仍待 core。
+- [PlaybackService.prepareFrame](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/playback/PlaybackService.java#L56>) 已承载 EventBudget，并规定在区间展开/事件生成时限制；PlaybackService 自身已声明所有方法限宿主主线程。预算执行及线程检测仍须实现级验证，不将延期视为缺陷。
+- storage 的 Loaded 明确仅代表解码成功，发布前仍需完整校验；恢复槽不得覆盖正式资源，KEEP 不可隐式恢复或删除。未发现这些规则的确定缺陷。
+- ResourceId 根/路径映射和安全校验、实际 IO、Codec、原子替换及恢复调度按计划延期；异步保存可由完成回调闭包关联捕获版本，未据当前签名断言无法保护新编辑。
+
+### R20.3 验证与覆盖限制
+
+本轮实际执行 `./gradlew.bat --offline compileJava test --rerun --console=plain`，BUILD SUCCESSFUL：20 个 suite / 151 个用例全部通过，v2 为 14 / 85，无失败、错误、跳过；`git diff --check` 通过。
+
+核对[StorageContractTest](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/storage/StorageContractTest.java>)及[EvalContractTest](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/eval/EvalContractTest.java>)：现有用例未覆盖等值异源快照拒绝、资源报告作用域错绑；线程仲裁与预算展开没有运行实现，测试通过不能证明这些行为。本次仅记录审查，不修改源码。
+
+文档同步待办：[契约计划 §7](<P1-contract-plan.md>)引言仍保留 Key.from 可另传表版本、prepareFrame 未承载预算等旧状态，应按 R19/R20 更新；不得把 S1 的 equals 检查写成已经可靠证明同源。
+
+## R21. R20 三项契约修正
+
+**日期**：2026-10-18。**类型**：实施记录，待复核。
+
+| 编号 | 修正 | 验证 |
+| --- | --- | --- |
+| S1 | `EvaluationContext` 改为比较 `trackIndex.snapshot() != snapshot`（引用身份），不再用 record equals；索引须保留原快照引用 | `EvalContractTest` 增加“等值新副本异源拒绝” |
+| S2 | `CameraControlClaims` 声明 register/release/winner/winningPose 与 provider 均限宿主主线程，provider 在同一捕获调用内运行、不得异步 | 契约文本；运行线程检查留 core |
+| S3 | `DiagnosticReport` 限定为单资源 IO/解码报告：每条诊断必须是 File 作用域且资源等于报告头 | `StorageContractTest` 增加跨资源 / Document 作用域拒绝 |
+
+### R21.1 验证
+
+- `.\gradlew.bat --offline compileJava test --console=plain`：BUILD SUCCESSFUL；20 个 suite / 151 个用例，v2 14 / 85；141 个主源码 Java 文件。
+- 门禁 0/0/0；`git diff --check` 通过。
+- 不宣称引用身份能替代 core 的候选/世界身份分配，也不宣称线程检查或单资源报告已运行验证。
