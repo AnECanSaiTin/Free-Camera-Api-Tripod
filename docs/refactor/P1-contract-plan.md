@@ -1,8 +1,8 @@
 # P1 契约施工计划（`_v2`）
 
 > 更新：2026-10-18。本文记录施工边界与状态，不替代[动画主设计](<../design-animation-editor-framework.md>)、[UI 设计](<../design-editor-ui-framework.md>)和[音频设计](<../design-spatial-audio-api.md>)。
-> 当前：第一至第七批及 storage 契约已交付；C1–C4、playback 五项、后续 11 项、R20/S1–S3、R24/E1–E2 已落实；**第八批 `EditTools`（缓动/批量/烘焙/注视捕获）契约已交付**。其余保证仍为调用方 / core 责任，见 §7。**core 算法、存储发布、事件执行、仲裁与多机位渲染尚未实现**。
-> 最近实际验证：21 个 suite / 158 个用例通过，其中 v2 为 15 / 92；165 个主源码 Java 文件。详情见[复核日志](<review-log.md>) R27。
+> 当前：第一至第七批及 storage 契约已交付；C1–C4、playback 五项、后续 11 项、R20/S1–S3、R24/E1–E2 已落实；**第八批 `EditTools` 契约及 R28 的 T1/T2 已补**（输入快照绑定、捕获覆盖/左侧模式/基版本一致）。其余保证仍为调用方 / core 责任，见 §7。**core 算法、存储发布、事件执行、仲裁与多机位渲染尚未实现**。
+> 最近实际验证：22 个 suite / 160 个用例通过，其中 v2 为 16 / 94；166 个主源码 Java 文件。详情见[复核日志](<review-log.md>) R29。
 
 ## 1. 目录与迁移约定
 
@@ -35,7 +35,7 @@
 | 存储资源身份 | `storage.ResourceId`、资源服务、载入/保存结果、恢复槽契约已交付 | 资源根/路径安全、原子替换、Codec 与恢复调度仍待实现 |
 | 叠加内容 | OverlayElement.content 暂为 Object | O1–O3 改封闭内容类型；不提前认定深不可变验收完成 |
 | 音频 | AudioRef / AudioRefId 仅身份与边界 | 全部非音频阶段完成后实施独立音频 API、可选接入、波形与同步 |
-| EditTools / 注视捕获 | 工具请求 / 结果契约已交付 | 缓动、批量、烘焙与注视捕获实现待 core / editor |
+| EditTools / 注视捕获 | 工具请求 / 结果契约已交付；R29 补输入快照与捕获配置 | 缓动、批量、烘焙与注视捕获实现待 core / editor |
 | 算法与服务实现 | 已交付类型/接口不等于运行实现 | core 补 store / validator / eval / playback / renderer；不得记成已运行 |
 
 Revision 包装、顶层 edit 及 edit ↔ document 例外已与主设计对齐，不再作为临时差异。api → core/editor、客户端类依赖仍禁止。
@@ -73,7 +73,7 @@ Revision 包装、顶层 edit 及 edit ↔ document 例外已与主设计对齐�
 | 第五批 | playback 新增 17 个文件 + WorldPose；五项修复已复核 | 时间推进、事件执行、合成、探针、仲裁均待 core |
 | 第六批 | storage：ResourceId、资源条目/服务、Load/SaveResult、DiagnosticReport、RecoverySlot/Service/Decision | 路径安全、编解码、原子写入与恢复调度待实现 |
 | 第七批 | editor：EditorSession、SessionViewState、时间轴/吸附/预览区间/轨道显隐、交互请求、后端选择/宿主 | 屏幕、输入、组件与 core 会话实现待后续 |
-| 第八批 | edit：EditTools、EasingPreset/Request、BatchTransform/Request、BakeRequest、AimCaptureRequest、ToolResult | 工具算法、冻结求值、原子提交待 core |
+| 第八批 | edit：EditTools、EasingPreset/Request、BatchTransform/Request、BakeRequest、AimCaptureRequest/Mode、ToolResult | 工具算法、冻结求值、原子提交待 core |
 
 源码入口：[数据模型](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/block/>)、[文档](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/document/>)、[编辑](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/edit/>)、[求值](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/eval/>)、[播放](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/playback/>)。
 
@@ -96,7 +96,7 @@ Revision 包装、顶层 edit 及 edit ↔ document 例外已与主设计对齐�
 - storage.ResourceId 是文件诊断的资源身份；ResourceId 非空白，不用绝对文件系统路径。资源载入成功仍须完整文档校验；保存 / 恢复使用临时文件与原子替换，恢复槽不覆盖正式文件，不保存渲染缓存/撤销栈。
 - PlaybackService 所有方法与 prepareFrame 在宿主主线程调用；prepareFrame 必须接收 EventBudget 并在展开区间时就限制，不得先完整展开后检查。
 - EditorSession 也不得绕过 EditSubmission / 文档存储写文档；视图状态、轨道显隐、预览覆盖只属于会话，不写文档、不进撤销历史。交互请求过期 / 无效选项必须拒绝；后端选择按 auto / 指定 / 拒绝 / 未注册规则处理，不能静默切换。
-- editor 契约已交付；EditTools 只生成 `ToolResult.Ready(EditOp)` / 整体拒绝，不发布、不读世界。缓动/批量/烘焙/注视捕获使用冻结上下文；公式不得静默转 literal，注视覆盖固定 Target 时必须先清除。
+- editor 契约已交付；EditTools 只生成 `ToolResult.Ready(EditOp)` / 整体拒绝，不发布、不读当前 store。缓动/批量请求显式绑定 `AnimationSnapshot`；注视捕获携带 `AimCaptureMode` 与生效 `AimOverride`，且 `baseRevision` 必须等于冻结快照版本。公式不得静默转 literal，固定 Target 覆盖必须先清除。
 - 内建轨道类型 ID curve / aim / active / camera_source 保留，ExtensionTrack 伪造由 L2 拒绝。Codec 归成员类型，common 注册和客户端执行分离；本批尚无完整编解码验收。
 
 ### 4.1 playback 已定协议
@@ -115,7 +115,7 @@ Revision 包装、顶层 edit 及 edit ↔ document 例外已与主设计对齐�
 .\gradlew.bat --offline compileJava test --rerun --console=plain
 ```
 
-2026-10-18 本轮实际执行成功：21 个 suite / 158 个用例，v2 为 15 / 92，无失败/错误/跳过；165 个主源码 Java 文件。测试集中在 record 结构、不变量与容器隔离，不能替代 core 的时序、仲裁、事件/渲染运行验证。
+2026-10-18 本轮实际执行成功：22 个 suite / 160 个用例，v2 为 16 / 94，无失败/错误/跳过；166 个主源码 Java 文件。测试集中在 record 结构、不变量与容器隔离，不能替代 core 的时序、仲裁、事件/渲染运行验证。
 
 必查：api 不依赖旧根、net.minecraft.client、core/editor；editor.spi 不依赖 internal。文本扫描仅辅助，正式依赖门禁检查编译产物。旧根不接线批次不应修改旧实现。按 Q13 允许 edit ↔ document 包引用，不能将此误报为禁止依赖。补丁格式检查使用 git diff --check。
 
@@ -136,7 +136,7 @@ Revision 包装、顶层 edit 及 edit ↔ document 例外已与主设计对齐�
 | 后续协议 1–11 | 已按 Q15 调整公开契约，部分保证仍为文字/调用方责任（R18） | Key 表版本、TrackIndex 同源与 prepareFrame 预算已在 R19 补齐；队列/能力分派/试算/仲裁/渲染仍待 core |
 | storage 契约 | 第六批已交付（R19） | 路径安全、Codec、原子写入与恢复调度实现 |
 | editor 契约 | 第七批已交付；R25 补齐 E1/E2 | 会话实现、草稿持久化、后端注册/选择与 open 派发运行验证 |
-| EditTools | 第八批已交付（R27） | 缓动/批量/烘焙/注视捕获算法、冻结求值、原子提交待 core |
+| EditTools | 第八批已交付；R29 补 T1/T2 | 缓动/批量/烘焙/注视捕获算法、冻结求值、覆盖清理与原子提交待 core |
 
 下一步按依赖：推进 Q14 布局 AnimatedNumber、轨道/锚点/采样注册与 Codec、O1–O3 内容类型；音频保持最后实施。不能把这份顺序理解为 core 已交付。
 
@@ -154,7 +154,7 @@ Q15 的推荐方向已定，不再重复裁决；R18/R20 指出的可落契约�
 | playback 启动/执行 | start 原子切换、prepareFrame 已接收 EventBudget 并要求展开时限制；CameraControlClaims 已声明主线程与 provider 同线程约束。事件/部分执行、运行线程检查、捕获边界与旧帧失效仍待 core |
 | 存储/序列化 | storage 契约已交付；DiagnosticReport 限定同一资源的 File 作用域。ResourceId 资源服务、参数 MapCodec/两阶段解码、未知类型与规模限制待实现 |
 | editor 会话/后端 | EditorSession 提交/草稿/预览/交互/视图状态契约已交付；EditDraftState 与后端 open 钩子已补。后端注册与选择、草稿持久化、线程与关闭生命周期待实现 |
-| EditTools | 缓动/批量/烘焙/注视捕获请求与 `ToolResult` 已交付；算法、冻结事实消费、覆盖清理与原子提交待 core / editor |
+| EditTools | 缓动/批量请求绑定冻结快照，捕获携带 mode/override/baseRevision；`ToolResult` 已交付。算法、冻结事实消费、覆盖清理与原子提交待 core / editor |
 | 消息显示 | LocalizedMessageRenderer 的翻译/参数/嵌套样式、语言切换与显示缓存边界 |
 
 这些是实现验证项，不计作已知运行缺陷；已关闭修复不代表 core 已实现。

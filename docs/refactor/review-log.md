@@ -1,7 +1,7 @@
 # 契约复核日志（凝练版）
 
 > 更新：2026-10-18。当前施工边界见[P1 计划](<P1-contract-plan.md>)；设计规则见[主设计](<../design-animation-editor-framework.md>)。本日志只保存结论、证据与复核范围。
-> 最新复核见 R27：`EditTools`（缓动 / 批量 / 烘焙 / 注视捕获）契约已交付，R26.1 的后端 open 前置条件文案已统一。**不宣称 core 存储、播放、事件、仲裁、渲染、编辑器 UI 或工具算法已实现**。
+> 最新复核见 R29：R28 的 T1/T2 已补（缓动/批量输入快照绑定，捕获覆盖/左侧模式/基版本一致）。**不宣称 core 存储、播放、事件、仲裁、渲染、编辑器 UI 或工具算法已实现**。
 > 原始 R1–R14 正文、微基准表及历史被推翻论证保存在[历史归档](<archive/review-log-R1-R14-2026-10-18.md>)。历史不作施工指令，编号保留可追溯；后续新发现追加编号，实施记录不自动等于复核通过。
 
 ## 1. 当前结论
@@ -47,7 +47,9 @@
 | R24 | 10-18 | R23 editor 复核 | 2 项公开契约缺口：草稿/预览输入链路与后端打开钩子；待修正 |
 | R25 | 10-18 | R24 E1/E2 修正 | 实施记录；EditDraftState、草稿更新入口、后端 open 钩子，复核见 R26 |
 | R26 | 10-18 | R25 修复复核 | E1/E2 原入口缺口在契约范围关闭；保留后端打开前置条件的非阻断澄清 |
-| R27 | 10-18 | EditTools 契约 | 缓动/批量/烘焙/注视捕获请求、ToolResult；后端 open 文案统一；算法待 core |
+| R27 | 10-18 | EditTools 契约 | 实施记录；缓动/批量/烘焙/捕获及结果类型交付，复核见 R28 |
+| R28 | 10-18 | R27 工具契约复核 | 2 项 P2：缓动/批量输入快照绑定，捕获覆盖来源及显式左侧选择；待修正 |
+| R29 | 10-18 | R28 T1/T2 修正 | 请求快照、AimCaptureMode/override/baseRevision；待复核 |
 
 ### 2.1 C1–C4 最终方案（R12）
 
@@ -158,6 +160,8 @@ R12 的非阻断测试空白已在 R13 补充：消息输出列表不可修改�
 | R25 | 21 / 157 | 15 / 91 |
 | R26 | 21 / 157 | 15 / 91 |
 | R27 | 21 / 158 | 15 / 92 |
+| R28 | 21 / 158 | 15 / 92 |
+| R29 | 22 / 160 | 16 / 94 |
 
 早期记录中的命令、依赖门禁及原始位置保留归档；本轮未重新宣称运行级门禁/客户端效果已验证。后续记录应保存实际执行命令与结果，不沿用旧数字证明新代码。
 
@@ -348,3 +352,44 @@ S1/S2 是已确认残留；S3 是本批报告协议的定型项，不直接断�
 - `.\gradlew.bat --offline compileJava test --console=plain`：BUILD SUCCESSFUL；21 个 suite / 158 个用例，v2 15 / 92；165 个主源码 Java 文件。
 - `EditContractTest` 增加预设/批量参数校验与 ToolResult 一致性断言。
 - 门禁 0/0/0；未验证采样、烘焙展开、注视转换、覆盖清理、原子提交与 `ToolResult` 的消费流程。
+
+## R28. R27 EditTools 契约复核
+
+**日期**：2026-10-18。**范围**：提交 `c852bf3` 的 EditTools、EasingPreset/Request、BatchTransform/Request、BakeRequest、AimCaptureRequest、ToolResult 及 EditContractTest，对照主设计 §4.6/§4.7。本次仅审查与记录，不修改源码。
+
+**结论**：发现两项 P2 公开契约缺口，建议补齐后再关闭 R27；它们是输入/绑定信息不足，不是将 core 工具算法延期本身计为缺陷。R26.1 后端 open 前置条件已统一为自动/指定均须 canOpen 为真，该文案澄清可关闭。
+
+### R28.1 待修正项
+
+| 编号 | 级别 | 位置与触发 | 影响与修正建议 |
+| --- | --- | --- | --- |
+| T1 | P2 | [EditTools:12–16](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/edit/EditTools.java#L12-L16>)、[EasingRequest:18](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/edit/EasingRequest.java#L18>)、[BatchTransformRequest:16](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/edit/BatchTransformRequest.java#L16>)只提供轨道/键 ID 与操作意图，没有输入快照，也未规定实例快照绑定 | 两份文档可沿用相同 ID 而具有不同键值、公式或邻键；相同请求不能表明工具要修改哪份文档、如何计算完整候选或检查时间冲突。显式传入冻结 AnimationSnapshot，或提供可审查的实例绑定/生命周期协议；不得在计算中读取可变当前 store。补同 ID 不同文档输入和绑定失效的协议测试。 |
+| T2 | P2 | [AimCaptureRequest:21–35](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/edit/AimCaptureRequest.java#L21-L35>)不含 AimOverride 来源及显式左侧目标选项；[FrameFacts.RigFacts](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/eval/FrameFacts.java#L84-L90>)只有覆盖后 AimState。baseRevision 也未与 context.snapshot.revision 校验一致 | 文档 Target(A)+继承 与相同文档+固定 Replace(A) 可产生完全相同请求/上下文，但设计要求后者先清除覆盖、重建环境，工具无法区分合法性。t 已有 Off 时“默认不可捕获”与“显式使用紧邻左侧 Target”也无法表达。补捕获配置来源/覆盖策略及明确的左侧选择，按 t 的位置和目标事实求值；校验基版本与冻结快照一致。补继承/固定替换同目标、Off+左侧选择、无有效左侧目标、基版本错配测试。 |
+
+### R28.2 已核对与延期边界
+
+- 请求集合使用 List.copyOf，预设/批量数值有限性与非负长度、烘焙范围/正步长/最大键数已有局部检查；Ready 不允许 ERROR，Rejected 不返回部分操作且诊断非空。未发现这些局部结构的新缺陷。
+- BakeRequest 已携带机位/轨道、区间、步长、插值、最大键数及 EvaluationContext。端点采样、区间替换和 KeyId 生成仍需统一算法/消费协议，本轮未据此追加确定缺陷。
+- ToolResult.Ready 不带版本并非单独确证缺陷：调用方可保留原请求/事务的基版本，生成 EditSubmission 时使用它；不能改用最新版本绕过过期检查。版本关联、替换已有键/公式的确认及原子提交仍需实现测试。
+- EditTools 总说明将 UNKNOWN 一律列为拒绝，消费时仍须服从主设计“未显式兜底的 UNKNOWN 才使依赖失败”的规则，不得把已成功求值的显式默认值误判为烘焙失败；此处保留为算法前文案澄清，不增加阻断项。
+
+### R28.3 实际验证
+
+实际执行 `./gradlew.bat --offline compileJava test --rerun --console=plain`，BUILD SUCCESSFUL：21 个 suite / 158 个用例全部通过，v2 为 15 / 92，无失败、错误、跳过；`git diff --check` 通过。
+
+[EditContractTest:184–205](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/edit/EditContractTest.java#L184-L205>)主要验证参数领域、列表复制和结果诊断约束，没有 BakeRequest / AimCaptureRequest 的构造与绑定边界测试。采样、烘焙、捕获及原子候选消费的真实算法按原计划留 core；测试通过不证明 T1/T2 已闭环。
+
+## R29. R28 T1/T2 修正
+
+**日期**：2026-10-18。**类型**：实施记录，待复核。
+
+| 编号 | 修正 |
+| --- | --- |
+| T1 | `EasingRequest` / `BatchTransformRequest` 增加冻结 `AnimationSnapshot`；工具不得读取当前 store；同 ID 不同文档请求不再等价 |
+| T2 | `AimCaptureRequest` 增加 `AimCaptureMode`（CURRENT / LEFT_TARGET）、实际 `AimOverride`，并校验 `baseRevision == context.snapshot().revision()`；`Replace` 覆盖须先清除，Off 左侧仍 Off 时不得再向前搜索 |
+
+### R29.1 验证
+
+- `.\gradlew.bat --offline compileJava test --console=plain`：BUILD SUCCESSFUL；22 个 suite / 160 个用例，v2 16 / 94；166 个主源码 Java 文件。
+- 新增 `EditToolsBindingTest`：同 ID 不同快照输入、空快照拒绝、捕获 mode/override/基版本错配。
+- 门禁 0/0/0；仍未验证工具实际采样、覆盖清理、左侧目标解析、原子提交与 `ToolResult` 消费。
