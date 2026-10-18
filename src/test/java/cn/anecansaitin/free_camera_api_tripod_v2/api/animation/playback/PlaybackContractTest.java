@@ -3,6 +3,9 @@ package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.playback;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.CameraAnimation;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.CameraRig;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.CameraSource;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.RigView;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.AnimationSnapshot;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.Revision;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.Diagnostic;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.DiagnosticCode;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.DiagnosticScope;
@@ -41,6 +44,10 @@ class PlaybackContractTest {
 
     private static FrameFacts facts() {
         return new FrameFacts(DIMENSION, 1L, 0f, 1L, Map.of(), Map.of(), true);
+    }
+
+    private static AnimationSnapshot snapshot() {
+        return new AnimationSnapshot(new Revision(1), document());
     }
 
     private static Diagnostic errorDiagnostic() {
@@ -95,6 +102,7 @@ class PlaybackContractTest {
 
         PreparedFrame frame = new PreparedFrame(
                 new PlaybackClock(0f, 1f, false, 10f),
+                snapshot(),
                 CameraSource.player(),
                 List.of(),
                 events,
@@ -106,7 +114,30 @@ class PlaybackContractTest {
 
         assertEquals(1, frame.events().size());
         assertEquals(1, frame.diagnostics().size());
+        assertEquals(new Revision(1), frame.snapshot().revision());
         assertFalse(frame.isExecutable());
+    }
+
+    @Test
+    void rigPoseFreezesLayerAndQualityRequests() {
+        RigPose pose = new RigPose(
+                new RigId("rig"),
+                new WorldPose(Vec3.ZERO, Rotation.NONE, 70f),
+                RigView.Rect.full(),
+                3,
+                0.5,
+                2);
+
+        assertEquals(3, pose.zOrder());
+        assertEquals(0.5, pose.resolutionScale());
+        assertEquals(2, pose.updateEveryFrames());
+
+        assertThrows(IllegalArgumentException.class, () -> new RigPose(
+                new RigId("rig"), new WorldPose(Vec3.ZERO, Rotation.NONE, 70f),
+                RigView.Rect.full(), 0, 0.0, 1));
+        assertThrows(IllegalArgumentException.class, () -> new RigPose(
+                new RigId("rig"), new WorldPose(Vec3.ZERO, Rotation.NONE, 70f),
+                RigView.Rect.full(), 0, 1.0, 0));
     }
 
     @Test
@@ -114,12 +145,31 @@ class PlaybackContractTest {
         assertThrows(IllegalArgumentException.class, () -> new EventBudget(0, 1));
         assertThrows(IllegalArgumentException.class, () -> new EventBudget(1, 0));
 
+        RigRenderStatus.SampleIdentity sample = new RigRenderStatus.SampleIdentity(1, 0f, 1);
         assertThrows(IllegalArgumentException.class, () -> new RigRenderStatus(
-                new RigId("rig"), true, 0, 100, null, null));
+                new RigId("rig"), true, 0, 100, null, sample));
 
         RigRenderStatus stopped = new RigRenderStatus(
                 new RigId("rig"), false, 0, 0, DegradeReason.RIG_PAUSED, null);
         assertFalse(stopped.rendered());
+    }
+
+    @Test
+    void renderedStatusRequiresDisplayedSampleIdentity() {
+        RigRenderStatus.SampleIdentity sample = new RigRenderStatus.SampleIdentity(42, 1.5f, 20);
+        RigRenderStatus reused = new RigRenderStatus(
+                new RigId("rig"), true, 100, 100, DegradeReason.FRAME_SKIPPED, sample);
+
+        assertEquals(sample, reused.sampledFrame());
+
+        assertThrows(IllegalArgumentException.class, () -> new RigRenderStatus(
+                new RigId("rig"), true, 100, 100, null, null));
+        assertThrows(IllegalArgumentException.class, () -> new RigRenderStatus(
+                new RigId("rig"), false, 0, 0, DegradeReason.FRAME_SKIPPED, null));
+        assertThrows(IllegalArgumentException.class, () -> new RigRenderStatus(
+                new RigId("rig"), true, 100, 100, DegradeReason.RIG_PAUSED, sample));
+        assertThrows(IllegalArgumentException.class,
+                () -> new RigRenderStatus.SampleIdentity(-1, 0f, 0));
     }
 
     @Test
