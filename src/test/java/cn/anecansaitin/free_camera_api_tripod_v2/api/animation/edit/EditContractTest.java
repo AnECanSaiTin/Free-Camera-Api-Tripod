@@ -5,7 +5,6 @@ import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.Revision
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.KeyId;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.RigId;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.TrackId;
-import net.minecraft.network.chat.Component;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -62,14 +61,48 @@ class EditContractTest {
     @Test
     void diagnosticFixCarriesBaseRevision() {
         Diagnostic.Fix fix = new Diagnostic.Fix(
-                Component.literal("fix"),
+                LocalizedMessage.literal("fix"),
                 new EditOp.RenameDocument("B"),
                 new Revision(3));
 
         assertEquals(new Revision(3), fix.baseRevision());
         assertEquals(new EditOp.RenameDocument("B"), fix.operation());
         assertThrows(NullPointerException.class,
-                () -> new Diagnostic.Fix(Component.literal("x"), null, new Revision(0)));
+                () -> new Diagnostic.Fix(LocalizedMessage.literal("x"), null, new Revision(0)));
+    }
+
+    @Test
+    void diagnosticWithFixBindsScopeRevision() {
+        EditOp operation = new EditOp.RenameDocument("B");
+        DiagnosticScope.Document scope = new DiagnosticScope.Document(new Revision(1));
+
+        Diagnostic accepted = new Diagnostic(
+                DiagnosticCode.BROKEN_REFERENCE, Severity.ERROR, LocalizedMessage.literal("x"),
+                scope, null, new Diagnostic.Fix(LocalizedMessage.literal("fix"), operation, new Revision(1)));
+        assertEquals(scope, accepted.scope());
+
+        assertThrows(IllegalArgumentException.class, () -> new Diagnostic(
+                DiagnosticCode.BROKEN_REFERENCE, Severity.ERROR, LocalizedMessage.literal("x"),
+                scope, null, new Diagnostic.Fix(LocalizedMessage.literal("fix"), operation, new Revision(2))));
+    }
+
+    @Test
+    void fileScopeRejectsFixAndObjectLocation() {
+        DiagnosticScope.File fileScope = new DiagnosticScope.File("test-resource");
+        EditOp operation = new EditOp.RenameDocument("B");
+
+        assertThrows(IllegalArgumentException.class, () -> new Diagnostic(
+                DiagnosticCode.BROKEN_REFERENCE, Severity.ERROR, LocalizedMessage.literal("x"),
+                fileScope, null, new Diagnostic.Fix(LocalizedMessage.literal("fix"), operation, new Revision(1))));
+
+        assertThrows(IllegalArgumentException.class, () -> new Diagnostic(
+                DiagnosticCode.BROKEN_REFERENCE, Severity.ERROR, LocalizedMessage.literal("x"),
+                fileScope, new Diagnostic.Location(new RigId("rig"), ""), null));
+
+        Diagnostic fileDiagnostic = new Diagnostic(
+                DiagnosticCode.BROKEN_REFERENCE, Severity.ERROR, LocalizedMessage.literal("x"),
+                fileScope, new Diagnostic.Location(null, "dataVersion"), null);
+        assertEquals(fileScope, fileDiagnostic.scope());
     }
 
     @Test

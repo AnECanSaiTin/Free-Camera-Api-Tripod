@@ -16,6 +16,7 @@
  * <h2>编辑契约</h2>
  *
  * <p>纯编辑操作与结果在 {@code api.animation.edit}；本包只消费其结果，不发放原地修改方法。
+ * 事务与历史标签使用 {@code edit.LocalizedMessage}（不可变消息描述），不保存可变 {@code Component}。
  * 文档、历史与发布序号更新完成后才通知监听者（{@link cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.DocumentListener}）。
  *
  * <h2>不属于本包</h2>

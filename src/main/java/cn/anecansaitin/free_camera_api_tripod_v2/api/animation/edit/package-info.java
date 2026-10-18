@@ -10,7 +10,10 @@
  *       {@link cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.EditResult}：
  *       候选构造结果与发布结果。</li>
  *   <li>{@link cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.Diagnostic} /
- *       {@code DiagnosticCode} / {@code Severity}：稳定错误码、级别、定位与可选修复。</li>
+ *       {@link cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.LocalizedMessage} /
+ *       {@link cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.DiagnosticScope} /
+ *       {@code DiagnosticCode} / {@code Severity}：稳定错误码、级别、不可变消息、作用域、
+ *       定位与可选修复。</li>
  *   <li>{@code DocumentValidator} / {@code ValidationLayer}：L1–L4 分层只读校验。</li>
  *   <li>{@code TrialRun} / {@code TrialResult} / {@code TrialStatus}：有预算的试算，不是安全证明。</li>
  * </ul>

@@ -4,10 +4,11 @@ import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.CameraAnima
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.CameraRig;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.Diagnostic;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.DiagnosticCode;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.DiagnosticScope;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.LocalizedMessage;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.Severity;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.RigId;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.TrackId;
-import net.minecraft.network.chat.Component;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -64,7 +65,8 @@ class DocumentContractTest {
         List<Diagnostic> diagnostics = new ArrayList<>(List.of(new Diagnostic(
                 DiagnosticCode.BROKEN_REFERENCE,
                 Severity.ERROR,
-                Component.literal("broken"),
+                LocalizedMessage.literal("broken"),
+                new DiagnosticScope.File("test-resource"),
                 null,
                 null)));
 
@@ -78,9 +80,23 @@ class DocumentContractTest {
     @Test
     void editTransactionRejectsNegativeIdAndMissingParts() {
         assertThrows(IllegalArgumentException.class, () -> new EditTransaction(
-                -1, Revision.INITIAL, new EditTarget.Document(), Component.literal("x")));
+                -1, Revision.INITIAL, new EditTarget.Document(), LocalizedMessage.literal("x")));
 
         assertThrows(NullPointerException.class, () -> new EditTransaction(
-                0, null, new EditTarget.Document(), Component.literal("x")));
+                0, null, new EditTarget.Document(), LocalizedMessage.literal("x")));
+    }
+
+    @Test
+    void labelsUseImmutableLocalizedMessages() {
+        LocalizedMessage label = LocalizedMessage.translatable(
+                "test.label", new LocalizedMessage.Argument.Text("value"));
+
+        EditTransaction transaction = new EditTransaction(
+                0, Revision.INITIAL, new EditTarget.Document(), label);
+        UndoHistory.Entry entry = new UndoHistory.Entry(
+                new AnimationSnapshot(Revision.INITIAL, document()), label);
+
+        assertEquals(label, transaction.label());
+        assertEquals(label, entry.label());
     }
 }
