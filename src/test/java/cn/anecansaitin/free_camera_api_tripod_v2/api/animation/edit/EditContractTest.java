@@ -1,5 +1,8 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit;
 
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.CameraAnimation;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.CameraRig;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.AnimationSnapshot;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.EditTarget;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.Revision;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.KeyId;
@@ -27,6 +30,13 @@ class EditContractTest {
 
     private static KeyId key(String value) {
         return new KeyId(value);
+    }
+
+    private static AnimationSnapshot snapshot() {
+        CameraRig rig = CameraRig.create(new RigId("rig"), "rig", List.of(),
+                new TrackId("aim"), new TrackId("active"));
+        return new AnimationSnapshot(Revision.INITIAL,
+                CameraAnimation.create("doc", rig, new TrackId("source")));
     }
 
     @Test
@@ -186,7 +196,7 @@ class EditContractTest {
         EasingPreset preset = new EasingPreset(
                 "smooth", Curve.Interpolation.HERMITE, 0f, 0f, 0.2f, 0.2f);
         List<KeyId> keys = new ArrayList<>(List.of(key("k")));
-        EasingRequest request = new EasingRequest(track("t"), keys, preset);
+        EasingRequest request = new EasingRequest(track("t"), keys, preset, snapshot());
         keys.clear();
 
         assertEquals(1, request.keyIds().size());
