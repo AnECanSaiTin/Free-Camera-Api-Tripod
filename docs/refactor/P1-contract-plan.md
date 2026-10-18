@@ -1,8 +1,8 @@
 # P1 契约施工计划（`_v2`）
 
 > 更新：2026-10-18。本文记录施工边界与状态，不替代[动画主设计](<../design-animation-editor-framework.md>)、[UI 设计](<../design-editor-ui-framework.md>)和[音频设计](<../design-spatial-audio-api.md>)。
-> 当前：第一至第五批契约已交付；C1–C4 及 playback 五项修复已在契约范围复核关闭。后续 11 项协议已按提案推荐方向全部落实（第 1 批 1–5、第 2 批 6–11），不修改主设计文档。**core 算法、存储发布、事件执行、仲裁与多机位渲染尚未实现**，实现级验证见 §7。
-> 最近实际验证：19 个 suite / 146 个用例通过，其中 v2 为 13 / 80；133 个主源码 Java 文件。详情见[复核日志](<review-log.md>) R17。
+> 当前：第一至第五批契约已交付；C1–C4、playback 五项及后续 11 项协议已落实；**第六批 storage 契约与 R18 的两项契约缺口（Key/表版本、prepareFrame 预算）已补齐**。后续 11 项中仍有调用方责任与 core 行为未验证，见 §7。**core 算法、存储发布、事件执行、仲裁与多机位渲染尚未实现**。
+> 最近实际验证：20 个 suite / 151 个用例通过，其中 v2 为 14 / 85；141 个主源码 Java 文件。详情见[复核日志](<review-log.md>) R19。
 
 ## 1. 目录与迁移约定
 
@@ -19,7 +19,7 @@
 | api.animation.document | Revision / 快照 / 句柄 / store / EditSubmission / 监听 / 历史 / 事务 / 预览 / 稳定选择 |
 | api.animation.eval | 查询/索引、FrameFacts（含世界实例身份）、显式采样请求、AxisSample / SpatialResolution、DocumentPose / SpatialReadings、依赖图与缓存接口 |
 | api.animation.playback | 请求/覆盖/服务/时钟/准备帧、事件预算/分发、接管/探针、合成请求/结果/状态（含旧帧采样身份） |
-| api.storage | 当前仅 ResourceId；资源服务、保存/载入、恢复槽待后续 |
+| api.storage | ResourceId、资源条目/服务、Load/SaveResult、DiagnosticReport、RecoverySlot/Service/Decision |
 | api.animation.expression | 仅包说明，编译与符号解析仍待后续 |
 | editor / editor.spi / editor.internal | 仅分区说明；UI 契约与实现未交付 |
 
@@ -31,7 +31,7 @@
 | field / expression / symbol 分工 | 值源/曲线/符号条目在 field，expression 预留 | 编译/符号批次复核归属，变更时更新本表 |
 | 布局动画 | RigView.Rect 仍是静态几何 | 按 Q14 补 field.AnimatedNumber 并改造矩形；Q11 是被更新的早期暂缓记录 |
 | 轨道/锚点/采样注册与 Codec | 参数 SampleArgs 已有；注册表/采集器/Codec 未交付 | common 类型与客户端解析分离；S1 / 编解码批次补齐 |
-| 存储资源身份 | `storage.ResourceId` 已交付并用于 `DiagnosticScope.File` | 资源服务、保存/载入与恢复槽仍待 storage 批次 |
+| 存储资源身份 | `storage.ResourceId`、资源服务、载入/保存结果、恢复槽契约已交付 | 资源根/路径安全、原子替换、Codec 与恢复调度仍待实现 |
 | 叠加内容 | OverlayElement.content 暂为 Object | O1–O3 改封闭内容类型；不提前认定深不可变验收完成 |
 | 音频 | AudioRef / AudioRefId 仅身份与边界 | 全部非音频阶段完成后实施独立音频 API、可选接入、波形与同步 |
 | EditTools / 注视捕获 | 未交付工具请求/实现 | 依赖冻结事实、采样结果与原子 EditOp，随 eval/editor 补齐 |
@@ -59,7 +59,7 @@ Revision 包装、顶层 edit 及 edit ↔ document 例外已与主设计对齐�
 | Q12 | 第二批历史范围 | 当时只补 aim / 来源 / 活动与世界采样读数；不是对第三至第五批的范围限制（§3） |
 | Q13 | `edit` 包位置与第三批节奏 | **按 P1 计划放顶层 `api.animation.edit`**（不采用设计 §2.1 的 `document` 子包建议）；先做 edit + document 一批，接受 `edit ↔ document` 双向包引用；`EditTools` 随后续批次补 |
 | Q14 | 布局 `AnimatedNumber` 落地时机 | **本轮随后落地**（block/spatial 余项批次）：新增 `field.AnimatedNumber` 并改写 `RigView.Rect`；不再只记录差异 |
-| Q15 | 后续 11 项协议 | **全部按 `P1-protocol-decisions-proposal.md` 的推荐方向**落实，分两批；不修改主设计文档 |
+| Q15 | 后续 11 项协议 | 全部按提案推荐方向落实，分两批；原“暂不改主设计”为当时施工限制，已由本次“补充进设计文档”请求更新，不改变其余裁决 |
 
 ## 3. 交付批次与阅读入口
 
@@ -70,6 +70,7 @@ Revision 包装、顶层 edit 及 edit ↔ document 例外已与主设计对齐�
 | 第三批 | document 13 个文件 + edit 14 个文件（含最终消息/作用域） | store / 编辑执行 / validator 仅契约；EditTools 延期 |
 | 第四批 | eval 新增 11 个类型，含 TrackIndex、FrameFacts、EvaluationContext/Key、采样/姿态/图/缓存 | A3 只完成接口，构建与绑定仍待实现 |
 | 第五批 | playback 新增 17 个文件 + WorldPose；五项修复已复核 | 时间推进、事件执行、合成、探针、仲裁均待 core |
+| 第六批 | storage：ResourceId、资源条目/服务、Load/SaveResult、DiagnosticReport、RecoverySlot/Service/Decision | 路径安全、编解码、原子写入与恢复调度待实现 |
 
 源码入口：[数据模型](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/block/>)、[文档](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/document/>)、[编辑](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/edit/>)、[求值](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/eval/>)、[播放](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/playback/>)。
 
@@ -82,14 +83,15 @@ Revision 包装、顶层 edit 及 edit ↔ document 例外已与主设计对齐�
 - EditOp 只描述纯意图，Batch 一次构造完整候选、一次校验发布；无变化不添历史，目标不存在由提交层明确诊断。不要静默夹取、覆盖、量化或运行期 fallback。状态键单值修改用 `SetStateKey`，草稿字段用 `EditTarget.Field` 保留对象种类。
 - 提交使用 `EditSubmission` 携带不可变动作标签；同步 `submit` 在监听通知期间返回 `REENTRANT_SUBMIT`，延迟写入用 `submitAfterNotifications` 并在通知结束后重查基版本。标签只随成功提交进入历史。
 - `TrialResult` 的 `FAILED` 必须含 ERROR，`PASSED` / `INCOMPLETE` 不得含 ERROR；`INCOMPLETE` 必须给出原因；报告包含区间、采样策略、实际检查量、固定事实身份或说明。
-- `CurveSampler` 只接受显式 `CurveSampleRequest`（上下文 + 轨道 + 机位 + 时间），不依赖当前活动机位或当前 store；`EvaluationContext.bind` 统一绑定快照、事实与索引。`FrameFacts` 携带独立 `worldInstanceId`，同一维度重进世界也变化，缓存键经 `EvaluationKey.from` 统一生成。
+- `CurveSampler` 只接受显式 `CurveSampleRequest`（上下文 + 轨道 + 机位 + 时间），不依赖当前活动机位或当前 store；`EvaluationContext.bind` 统一绑定快照、事实与索引，并校验 `TrackIndex.snapshot()` 与快照同源。`FrameFacts` 携带独立 `worldInstanceId`，同一维度重进世界也变化；`EvaluationKey.from` 从事实取采样表版本，不再允许另传不一致版本。
 - 同一 store 换档/撤销/重做继续递增 Revision；快照一次读取文档与序号。发布线程与通知队列由 core 实现，不反向依赖编辑器。
 - LocalizedMessage 为封闭不可变消息树；DiagnosticScope 区分 Document(非空 Revision) / File(ResourceId)。File 不携带对象 ID 或 Fix，Fix 版本须等于 Document 版本；显示时才通过无状态 `LocalizedMessageRenderer` 转 Component。
 - SampleReading 区分 VALUE / UNKNOWN / COLLECTION_ERROR，只有 UNKNOWN 可被作者显式 sample 默认值兜底。读数不入文档/历史，SampleArgs 深不可变且 kind 与 args.type 一致。
 - EvaluationKey 含快照/上下文/世界实例/帧/sampleTime/机位/轨道/事实/采样表身份；`EvaluationKey.from(CurveSampleRequest, ...)` 是统一键入口。TrackIndex 先拒重复 ID，TrackRef 用被引用轨道所属机位上下文；文档结构缓存不能代替动态帧缓存。
 - 姿态逐轴使用 AxisSample 的 ABSENT / VALUE / ERROR；锚点 / 目标使用 SpatialResolution 的 NotRequired / Resolved / Failed。错误不得压成缺失，存在掩码只由有值轴派生；任一实际依赖错误阻止姿态合成。
 - 旧画面 `SampleIdentity` 同时绑定渲染帧序号、动画时间、游戏刻、世界实例、快照、机位活动区间代际与来源代际；任一不匹配必须失效，不得跨活动区间/来源交接复用。
-- storage.ResourceId 是文件诊断的资源身份；ResourceId 非空白，不用绝对文件系统路径。
+- storage.ResourceId 是文件诊断的资源身份；ResourceId 非空白，不用绝对文件系统路径。资源载入成功仍须完整文档校验；保存 / 恢复使用临时文件与原子替换，恢复槽不覆盖正式文件，不保存渲染缓存/撤销栈。
+- PlaybackService 所有方法与 prepareFrame 在宿主主线程调用；prepareFrame 必须接收 EventBudget 并在展开区间时就限制，不得先完整展开后检查。
 - 内建轨道类型 ID curve / aim / active / camera_source 保留，ExtensionTrack 伪造由 L2 拒绝。Codec 归成员类型，common 注册和客户端执行分离；本批尚无完整编解码验收。
 
 ### 4.1 playback 已定协议
@@ -99,7 +101,7 @@ Revision 包装、顶层 edit 及 edit ↔ document 例外已与主设计对齐�
 - 事件保留“推进区间/周期顺序 → 区间内时间递增 → 同一发生时刻按轨道序”；EventDispatcher 接收整帧，以帧快照解析载荷，原样消费。零事件、跨多周期、上限及部分执行仍需运行测试。
 - CameraControlClaims 登记 PoseProvider，winningPose 一次捕获 Claim + WorldPose；provider 失败转准备失败，不静默退回 Player。释放后不得发起新调用或复用旧缓存；捕获过程中释放/新登记的同帧边界按接口实现，并在 core 批次验证。
 - 已呈现画面必须携带 SampleIdentity（renderFrameIndex、animationTime、gameTick、worldInstanceId、snapshotId、activityGeneration、sourceGeneration）；FRAME_SKIPPED 必须呈现旧画面，RIG_PAUSED 不呈现；任一身份不匹配时旧区间画面失效。
-- start 必须先校验请求并准备初始条件，成功后才切换文档/状态；失败时原文档、序号、播放状态与相机控制不变。接管按捕获边界线性化，provider 异常转准备失败。
+- start 必须先校验请求并准备初始条件，成功后才切换文档/状态；失败时原文档、序号、播放状态与相机控制不变。接管按捕获边界线性化，provider 异常转准备失败。`prepareFrame` 接收 `EventBudget`，预算在区间展开时执行；所有方法与帧准备限主线程。
 - WorldPose 旋转弧度 YXZ、FOV 为正有限角度（度）。降级可见/可恢复且不改创作数据，不得掩盖求值或渲染错误。
 
 ## 5. 验证基线与门禁
@@ -108,7 +110,7 @@ Revision 包装、顶层 edit 及 edit ↔ document 例外已与主设计对齐�
 .\gradlew.bat --offline compileJava test --rerun --console=plain
 ```
 
-2026-10-18 本轮实际执行成功：19 个 suite / 146 个用例，v2 为 13 / 80，无失败/错误/跳过；133 个主源码 Java 文件。测试集中在 record 结构、不变量与容器隔离，不能替代 core 的时序、仲裁、事件/渲染运行验证。
+2026-10-18 本轮实际执行成功：20 个 suite / 151 个用例，v2 为 14 / 85，无失败/错误/跳过；141 个主源码 Java 文件。测试集中在 record 结构、不变量与容器隔离，不能替代 core 的时序、仲裁、事件/渲染运行验证。
 
 必查：api 不依赖旧根、net.minecraft.client、core/editor；editor.spi 不依赖 internal。文本扫描仅辅助，正式依赖门禁检查编译产物。旧根不接线批次不应修改旧实现。按 Q13 允许 edit ↔ document 包引用，不能将此误报为禁止依赖。补丁格式检查使用 git diff --check。
 
@@ -126,23 +128,24 @@ Revision 包装、顶层 edit 及 edit ↔ document 例外已与主设计对齐�
 | A6 | 标记退出 duration 为待裁决产品项，非缺陷 | 未裁决前保持全部标记参与时长，不新增 affectsDuration；若改则定义编辑范围、定位/循环和同步全部口径 |
 | C1–C4 | 契约修复关闭（R12） | store 旧请求拒绝、异步诊断绑定、消息渲染及实际缓存随后续验证 |
 | playback 五项 | 契约修复关闭（R15） | 仍需仲裁/事件顺序/快照切换/旧帧失效的 core 运行测试 |
-| 后续协议 1–11 | 已按 Q15 分两批落实（R16/R17） | 实现级排队/标签、状态键能力分派、试算、显式采样、空间三态、启动/仲裁、旧帧失效与渲染器仍需 core 验证 |
+| 后续协议 1–11 | 已按 Q15 调整公开契约，部分保证仍为文字/调用方责任（R18） | Key 表版本、TrackIndex 同源与 prepareFrame 预算已在 R19 补齐；队列/能力分派/试算/仲裁/渲染仍待 core |
+| storage 契约 | 第六批已交付（R19） | 路径安全、Codec、原子写入与恢复调度实现 |
 
-下一步按依赖：storage（资源服务/载入/恢复槽）→ editor 会话/后端 → EditTools；并推进 Q14 布局 AnimatedNumber、轨道/锚点/采样注册与 Codec、O1–O3 内容类型。音频保持最后实施。不能把这份顺序理解为 core 已交付。
+下一步按依赖：editor 会话/后端 → EditTools；并推进 Q14 布局 AnimatedNumber、轨道/锚点/采样注册与 Codec、O1–O3 内容类型。音频保持最后实施。不能把这份顺序理解为 core 已交付。
 
-## 7. 实现级验证（协议已定）
+## 7. 契约补齐与实现级验证（推荐方向已定）
 
-Q15 的 11 项已按推荐方向落实；以下不是待定协议，而是 `core` / 宿主实现阶段必须验证的行为。已关闭契约不等于整个 P1、完整播放或客户端验收完成。
+Q15 的推荐方向已定，不再重复裁决；公开类型和接口已调整，但并非全部保证已落实：bind 仅包装参数、Key.from 未校验额外表版本、准备预算承载与主线程声明尚待明确。以下需补齐契约或在 core / 宿主实现中验证。已关闭契约不等于整个 P1、完整播放或客户端验收完成。
 
 | 范围 | 实现级验证 |
 | --- | --- |
 | document 提交 | 通知期间 `REENTRANT_SUBMIT`、延迟队列重查基版本、标签进历史且拒绝不入历史 |
 | 编辑能力 | `SetStateKey` 的轨道能力分派、`EditTarget.Field` 的字段定位、跨轨类型兼容 |
 | 试算 | FAILED/PASSED/INCOMPLETE 与诊断一致性的运行路径、报告实际覆盖量与固定事实 |
-| eval 绑定 | 显式 `CurveSampleRequest`、统一上下文工厂、世界实例/快照/事实身份生成与失效 |
+| eval 绑定 | bind 已校验 TrackIndex 与快照同源；Key.from 从 facts 取表版本。统一生成快照/事实身份、验证 TrackLookup 同源与候选隔离仍需实现 |
 | 空间与姿态错误 | AxisSample / SpatialResolution 三态在求值与合成中的消费，FOV 错误汇总与阻断 |
-| playback 启动/执行 | start 原子切换、事件顺序与预算、部分执行报告、接管捕获边界、旧帧身份失效 |
-| 存储/序列化 | ResourceId 的资源服务、参数 MapCodec/两阶段解码、未知类型与规模限制 |
+| playback 启动/执行 | start 原子切换、prepareFrame 已接收 EventBudget 并要求展开时限制；事件/部分执行、主线程检查、捕获边界与旧帧失效仍待 core |
+| 存储/序列化 | 存储契约已交付；ResourceId 资源服务、参数 MapCodec/两阶段解码、未知类型与规模限制待实现 |
 | 消息显示 | LocalizedMessageRenderer 的翻译/参数/嵌套样式、语言切换与显示缓存边界 |
 
 这些是实现验证项，不计作已知运行缺陷；已关闭修复不代表 core 已实现。

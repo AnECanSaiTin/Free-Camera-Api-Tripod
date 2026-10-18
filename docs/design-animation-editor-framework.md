@@ -244,8 +244,10 @@ public interface AnimationHandle {
 - 后台任务只构造候选或执行纯校验，结果回到发布线程后重新检查基版本。
 - 过期提交返回 `STALE_REVISION`，不得自动覆盖当前文档。
 - 文档、历史和发布序号更新完成后才通知监听者。
-- 通知期间禁止重入发布；后续请求排队执行。
+- 通知期间禁止重入同步写入：同步 submit 返回 REENTRANT_SUBMIT，不修改文档、不隐式排队。延迟提交使用 submitAfterNotifications，在通知结束后按提交顺序执行并重新检查基版本，结果在存储线程恰好回调一次；调用方不能阻塞等待同线程队列。
 - 初始化、编辑、换档、网络载入和历史恢复均通过存储对象。
+
+提交以 `EditSubmission(EditOp operation, Revision expectedRevision, LocalizedMessage label)` 携带操作、基版本与不可变动作标签；成功且内容有变化时标签随历史项保存，拒绝不写历史。实际存储、线程检查和队列尚待 core；现有接口固定同步拒绝与显式延迟的区别。
 
 <a id="derived-query-rules"></a>
 ### 3.4 派生数据与缓存
@@ -254,13 +256,15 @@ public interface AnimationHandle {
 | --- | --- |
 | 编译结果 | 按公式文本缓存，使用有界 LRU |
 | 依赖图 | 从完整文档及编译后语法树派生，允许按文档身份缓存 |
-| 采样结果缓存 | EvaluationKey 包含 snapshotId、contextId、frameIndex、sampleTime、可空 RigId、trackId、factsIdentity 与 sampleTableVersion；sampleTime 有限非负并正规化 -0.0。单键字段/槽位缓存若另行建立，必须再区分 KeyId/槽位，不能仅复用轨道结果键 |
+| 采样结果缓存 | EvaluationKey 包含 snapshotId、contextId、worldInstanceId、frameIndex、sampleTime、可空 RigId、trackId、factsIdentity 与 sampleTableVersion；sampleTime 有限非负并正规化 -0.0。单键字段/槽位缓存若另行建立，必须再区分 KeyId/槽位，不能仅复用轨道结果键 |
 | 变量及轨道读数 | 在单个求值上下文中按帧缓存，失败结果也必须缓存 |
 | 路径弧长与查询索引 | 在不可变对象内部惰性计算或使用外部派生缓存 |
 | 文档派生查询 | 静态启用机位列表、曲线目录与按现规则计算的时长可在绑定层按不可变文档身份复用；不代表运行期 active(t)、来源或姿态结果 |
 | 轨道查找索引 | eval 绑定快照时派生 TrackId 到轨道及所属 Rig 的索引；先验证唯一性，重复 ID 不得静默覆盖 |
 
 快照身份必须区分不同存储实例；相同 `revision` 不代表同一文档。预览候选使用独立身份。
+
+世界实例使用独立运行期 worldInstanceId，同一维度重进世界也分配新值；不能由维度、游戏刻或 revision 推导世界、快照、候选或事实批次身份。EvaluationKey.from 从 CurveSampleRequest 读取 contextId、worldInstanceId、时间、轨道和机位，其他身份由同次绑定分配；采样表版本必须与上下文 facts 一致。当前工厂仍接受调用方提供的快照/事实身份和索引，尚未执行来源一致性验证，core 必须统一生成并绑定，不能将便捷工厂视为已证明同源。
 
 版本变化时重绑定符号表和曲线查询，不得仅清空数值缓存后继续引用旧文档。未解析状态使用位掩码或独立标记，不得使用 NaN 兼任哨兵。
 
@@ -292,12 +296,14 @@ public sealed interface EditResult {
 诊断至少包含稳定错误码、严重级别、不可变可本地化消息、显式作用域、对象或字段定位及可选修复操作。采用当前契约：
 
 - `LocalizedMessage` 为 sealed 的 Literal / Translatable，翻译参数仅允许文本、有限数字、布尔和嵌套消息，参数列表防御性复制；Formatting 仅含 RGB 颜色、粗体、斜体、下划线。诊断、Fix、事务及历史共享此描述类型，宿主显示时再渲染为 Component；click/hover、selector、NBT 和任意 contents 不在该消息契约内。
-- `DiagnosticScope.Document(Revision)` 强制非空版本，允许对象/字段定位与 Fix；`DiagnosticScope.File(resource)` 标识文件/解码资源，仅允许无对象 ID 的字段定位，不允许 Fix。不得以可空基版本兼表两种作用域。
+- `DiagnosticScope.Document(Revision)` 强制非空版本，允许对象/字段定位与 Fix；`DiagnosticScope.File(ResourceId resource)` 标识文件/解码资源，仅允许无对象 ID 的字段定位，不允许 Fix。不得以可空基版本兼表两种作用域。
 - Fix 的 baseRevision 必须等于 Document scope 的 revision。异步结果、定位跳转和修复提交均须核对适用作用域与当前版本，过期结果不得定位/修改新文档。候选及会话身份的绑定由后续宿主负责，不因增加作用域 record 就视为已实现。
 
 批量移动、粘贴、模式切换等复合操作必须构造一个完整候选，一次校验、一次发布，不得循环提交单对象操作。
 
 第三方专属数据通过 `ReplaceTrack(expectedRevision, trackId, replacement)` 提交。注册的轨道与采样类型校验器参与统一校验。需要通用时间轴编辑的轨道提供纯派生能力接口；数据接口不得发放原地增删移动方法。
+
+保留具体 EditOp，状态键单值修改由 SetStateKey 描述，值类型依目标轨道能力校验；跨轨不兼容整批拒绝。草稿字段用 EditTarget.Field(owner, fieldPath)：owner 保留文档/机位/轨道/键等对象种类，路径在该对象内解释，不允许 Field 再嵌套 Field。当前字段路径仍为非空字符串，字段枚举/适配规则与轨道能力分派留到编辑实现；选择仍按对象/键 ID，不必与字段草稿同构。
 
 ### 4.2 静态校验
 
@@ -320,8 +326,10 @@ public sealed interface EditResult {
 
 - 采样包括关键时刻、区间中点和固定步长；策略可配置但必须有上限。
 - 同时限制最大采样点数、求值工作量与输出诊断数。
-- 报告采样范围、环境参数和完成状态：`Passed`、`Failed`、`Incomplete`。
+- TrialResult 使用 PASSED / FAILED / INCOMPLETE 与 TrialReport：包含 rangeStart/rangeEnd、samplingStrategy、samplesChecked、fixedFactsIdentity 或 fixedFactsNote，以及 incompleteReason。区间有限非负且结束不早于开始，点数非负；世界依赖由生产者提供实际使用的固定事实，不能只填说明而伪称全域检查。
 - `Passed` 仅表示已检查点未发现错误。
+
+- FAILED 至少含一条 ERROR；PASSED 和 INCOMPLETE 不得含已确认 ERROR。INCOMPLETE 必须有不可变未完成原因，其他状态不能携带该原因；hasError 与错误诊断一致。上述状态/报告不变量已有构造检查，采样步长、预算默认值和截断算法仍待实现。
 - 确定发现求值错误时拒绝候选；预算不足时允许提交并附 `Incomplete` 提示。
 - 依赖 `wt` 时必须说明检查的世界时间；非确定公式返回 `Incomplete` 提示，不以一次随机结果作为提交拒绝依据。
 - 试算不得执行 Tick 轨道或其他副作用。
@@ -381,10 +389,12 @@ public sealed interface EditResult {
 
 会话负责事务，面板只读取状态和提交意图。
 
+会话将事务的操作、基版本与动作标签组装为 EditSubmission，不让每个 EditOp 重复持有标签；同步提交与监听通知中的延迟提交遵守 §3.3。
+
 ```java
 public interface EditorSession {
     AnimationSnapshot snapshot();
-    EditResult submit(EditOp op, Revision expectedRevision);
+    EditResult submit(EditSubmission submission);
     EditTransaction beginEdit(EditTarget target, LocalizedMessage label);
     PreviewState preview();
     EditResult commit(EditTransaction transaction);
@@ -444,6 +454,8 @@ public sealed interface NumberSource extends ValueSource permits Constant, Formu
 
 插值参与项失败时传播错误，不跳过失败端点。无环境静态读取只能明确读取 literal 或常量，不得伪装为动态采样结果；依赖当前值的插键必须提供完整求值环境。
 
+采样入口使用 `CurveSampler.sample(CurveSampleRequest)`；请求显式携带 EvaluationContext、TrackId、可空 RigId 和有限非负 sampleTime，不依赖当前编辑机位或采样器隐式环境。EvaluationContext.bind 是统一绑定入口，约定快照、FrameFacts、TrackLookup、TrackIndex 同源；目前只是包装工厂，索引构建/身份分配/一致性检查仍待 core。普通曲线须明确空间上下文，只有无机位空间依赖时 RigId 可空；TrackRef 切到被引用轨道所属机位。
+
 表达式实现还须满足：
 
 - 编译与求值失败返回结构化诊断，由宿主决定展示和日志，不在底层静默替换数值。
@@ -459,11 +471,11 @@ public sealed interface NumberSource extends ValueSource permits Constant, Formu
 
 | 类型 | 用途 |
 | --- | --- |
-| `DocumentPose` | 文档空间中的逐轴采样结果；带位置、旋转掩码与诊断 |
+| `DocumentPose` | 位置 x/y/z、旋转 pitch/yaw/roll 使用 AxisSample 三态，FOV 使用 ChannelSample，带汇总诊断；掩码派生 |
 | `WorldPose` | 已补全并完成参考系合成，可交给相机的完整姿态 |
 | `PoseBuffer` | 内部可复用计算缓冲区，不进入文档与历史 |
 
-位置和旋转分别使用三轴存在掩码；FOV 单独标记。错误不得压缩为缺失位。自由视角覆盖返回 `WorldPose`，不经过锚点变换。
+AxisSample 为 Absent / Value(double finite) / Error(ERROR Diagnostic)。DocumentPose 的位置/旋转掩码仅由 VALUE 轴派生，不承担错误表示；hasError 检查六轴、FOV 及汇总 ERROR，任一实际依赖错误阻止合成。轴/FOV 诊断汇总由结果生产者负责，当前构造器不自动汇总；三轴不全为值时完整向量查询为空，消费方必须先看错误状态，不得按 ABSENT 补错轴。自由视角覆盖返回 WorldPose，不经过锚点变换。
 
 ### 6.3 空间与锚点
 
@@ -482,6 +494,8 @@ public record RotationMask(boolean x, boolean y, boolean z) {}
 ```
 
 锚点为开放不可变契约。内置类型包括固定坐标、实体 UUID、玩家 UUID。类型 ID、`MapCodec`、`StreamCodec` 在 common 侧注册；客户端解析器单独注册，不在 common 初始化过程中加载。
+
+FrameFacts.RigFacts 的 anchor/target 均为非空 SpatialResolution：NotRequired、Resolved(ResolvedAnchor)、Failed(ERROR Diagnostic)。合法不需要与解析失败不能再以同一个 null 表示；Failed 阻止依赖它的通道/姿态。空间读取与最终合成算法仍待宿主，不能以 record 三态已存在宣称失败消费已验证。
 
 对每个机位，锚点优先级为播放覆盖、机位文档默认；选定覆盖锚点解析失败后不得尝试默认锚点。局部空间允许无默认锚点，但开始播放前必须由请求提供有效锚点。
 
@@ -542,6 +556,8 @@ public record PlaybackRequest(
 
 速度必须有限且大于零；第一版不支持反向播放。开始时间必须有限、非负且位于可播放范围，空动画仅接受零时刻。编辑屏幕不主动暂停世界；动画暂停不等于世界冻结，不新增多人服务器暂停能力。请求通过文档校验后由同一文档存储切换文档；编辑器打开时按整份换档处理。
 
+PlaybackService.start 先校验请求与 expectedRevision，并准备初始运行条件；全部成功后才由同一 store 换档、递增序号并切换播放状态。启动准备失败时原文档、序号、播放状态与相机控制不变，不允许先换档再回滚。此规则区别于已启动播放中的失败终止；实际原子切换实现仍待 core。
+
 ### 7.2 帧准备与执行
 
 每帧只捕获一次正式快照，按以下顺序处理：
@@ -552,8 +568,8 @@ public record PlaybackRequest(
 → 纯求值 cameraSource、机位活动及注视状态，应用显式覆盖并确定实际依赖
 → 一次捕获环境、基础姿态、实际所需锚点/目标与声明式采样
 → 在同一事实快照上求值当前活动机位及被引用通道，完成注视、避障、矩形与姿态检查
-→ 检查渲染能力、音频与事件预算
-→ 得到携带相机来源、活动集合、矩形与姿态的 PreparedFrame、待执行文档事件或错误
+→ 检查渲染能力及可选音频；事件预算须在区间展开/事件生成时已持续检查
+→ 得到携带捕获 AnimationSnapshot、相机来源、活动集合、姿态/矩形/层级/质量、冻结事实与有序事件的 PreparedFrame 或错误
 
 执行阶段：
 成功：更新时间与状态 → 按 cameraSource 应用或释放玩家相机 → 提交多路渲染与音频同步 → 文档事件仅分发一次
@@ -588,15 +604,17 @@ public record PlaybackRequest(
 - 正向推进区间为 `(from, to]`。
 - 从零开始播放及进入每个新循环时，单独包含零时刻事件一次。
 - 跨越多个周期时完整处理各周期，不能只对最终时间取模后分发两段。
-- 同时刻跨轨道事件按文档轨道顺序执行。
+- 事件列表按跨越区间/周期的推进顺序，再按区间内时间递增；仅同一发生时刻跨轨道按文档轨道顺序。EventDispatcher 接收整帧，从 frame.snapshot 解析载荷并原序消费，不重新读取当前 store。
 - 定位、暂停、拖动草稿和试算不触发事件。
 - 编辑器显式播放才执行事件。
-- 每帧限制事件执行数量及区间处理工作量；超限明确终止。
+- 每帧限制事件执行数量及区间处理工作量；在展开区间、生成事件时就检查，超限立即停止准备，不能先完整展开再交执行器限流。当前 EventBudget 类型已定义，但 prepareFrame 尚无预算参数，准备器注入/配置的承载方式须在 core 实现前补明，不宣称已运行限额。
 - 循环、末尾停止、从中途开始和零长度动画均有独立边界测试。
 
 ### 7.5 相机接管
 
 编辑器通过带生命周期的登记令牌声明接管，相机控制声明可提供自由视角 `WorldPose`。关闭会话或切换世界时释放令牌。
+
+推荐在宿主主线程协调仲裁与写相机。声明注册 PoseProvider，宿主每帧以 winningPose 一次捕获 Claim + WorldPose，provider 每帧至多调用一次；捕获期间登记/释放影响下一次捕获，已开始的本次结果最多应用一次。释放后不得发起新调用或复用旧缓存；provider 禁止发布文档或嵌套捕获，异常转本帧准备失败，不静默退回 Player。线性化已有接口说明，线程限定、重入检测与每帧次数由 core 验证；当前接口尚未明示线程约束。
 
 多个声明按显式优先级和稳定登记顺序仲裁；只有获胜声明影响相机。没有编辑器覆盖声明时，由正式播放状态和 `cameraSource.at(t)` 决定接管：Player 使用正常玩家相机并作为底图；Rig 使用该活动机位的最终姿态。副机位活动、机位排序、UI 选择和性能降级均不能自行改变来源。相机来源的阶跃变化立即交接，不做平滑；普通定位可更新预览来源，但不触发 Tick 副作用。相机探针读取宿主基础姿态，不得将上一帧本插件输出再次作为基础输入。
 
@@ -605,6 +623,8 @@ public record PlaybackRequest(
 `CameraCompositionService` 接收 `PreparedFrame`，以同一目标时钟绘制当前活动机位。世界/实体模拟与文档事件每帧只执行一次；各视角的提取、剔除、投影、提交与区块可见性调度可能重复，不承诺“区块构建只跑一次”。当前 Minecraft 26.1.2 的提取/渲染分阶段架构要求每路拥有独立视角状态，不能仅替换全局相机后复用主视角提取结果。
 
 - 每个活动机位按本帧已求值矩形、静态层级与稳定顺序合成；当前相机来源 Rig 可复用正常世界画面，是否避免重复绘制由适配层验证。来源为 Player 时保留正常玩家画面作为底图，活动机位按布局叠加。
+
+- RigPose 在准备阶段冻结 zOrder、resolutionScale、updateEveryFrames；按 zOrder 升序绘制，大层级在上，同层按文档机位顺序。CompositionRequest 的 includePlayerBase 在来源 Player 时必须为真，由合成服务交叉检查；不能只依靠输出尺寸 record 的局部校验。
 - 宿主集中隔离/恢复相机、目标、投影、视角提取、雾、后处理与提交集合，异常路径也须清理。渲染期间不接受重入发布或编辑操作；渲染目标、尺寸与临时状态不暴露到 common API。
 - 固定层序：机位世界画面 → 成片叠加（遮幅/字幕/图片/透明度）→ 游戏 HUD → 编辑器构图辅助 → 编辑器工作区 → UI 菜单/提示/模态。成片叠加不使用 UI `OverlayHost`。
 - 声音监听器每帧只更新一次，跟随实际玩家相机来源：Rig 的最终姿态或正常玩家相机。副机位不得更新监听器或重复播放世界声音；参考音频是非空间声音，独立音频接入仍最后实施。
@@ -612,6 +632,8 @@ public record PlaybackRequest(
 - 不活动机位停止世界渲染，不提交旧画面；离屏目标允许在有界空闲缓存内短期复用，超时或超预算释放。重新活动时必须准备有效新帧，不能先显示停用前缓存。窗口/全屏/缩放变化集中调整目标，换世界或会话关闭释放资源。
 
 质量策略支持路数/显存/帧时上限、分辨率降低、隔帧复用、末尾副机位暂时停路及一键单路。优先保留当前来源 Rig，再按活动机位文档顺序；来源为 Player 时按活动机位顺序保留合成路。不得因降级改写 cameraSource、view.enabled、活动轨道或矩形曲线。连续超预算才降级，恢复有滞回，阈值由实测确定。必须显示降分辨率、旧帧的采样时刻/延迟、停路原因和恢复状态；活动切换或来源交接时不得复用此前活动区间的旧帧。隔帧复用不代表所有路图像始终同一瞬间。
+
+RigRenderStatus.SampleIdentity 同时包含 renderFrameIndex、animationTime、gameTick、worldInstanceId、snapshotId、activityGeneration、sourceGeneration；候选快照独立分配身份，任一生命周期身份不匹配即使游戏刻相同也失效。已呈现必须有采样身份，FRAME_SKIPPED 必须呈现复用画面，RIG_PAUSED 不呈现。实际缓存失效、质量档位、显存/帧时阈值与兼容矩阵由 R0/core 实测，数据结构检查不等于纹理失效已经实现。
 
 多机位兼容性是验证门槛。已有 PiP 只拷贝主目标，不能证明第二视角渲染可用；全面迁移机位数据模型前先完成原生管线最小双路验证，再测优化/着色器组合。使用 Minecraft 渲染抽象有助隔离但不保证兼容。已知不兼容时可见地退回单路；真正渲染异常须终止，不能伪装性能降级。未被客户端加载的远端区块不因多机位而强制加载，不承诺远距离完整场景。
 
@@ -660,6 +682,8 @@ A2 增加有声同步前，必须验证解码、播放时钟、任意定位、�
 - 数据类型维护自身字段名、`Codec` 或 `MapCodec`。
 - 文档 Codec 组合成员 Codec；容器只认识自身字段，不复制子对象字段规则。
 - 轨道、锚点与世界采样通过类型注册表分派；封闭值源与内置叠加元素使用固定分支。
+
+- 采样先读取 kind，再通过冻结注册表选择参数 MapCodec；kind 与 SampleArgs.type 必须一致。覆盖编码保留继承/显式禁用/替换分支，StreamCodec 不用可空值抹平意图。
 - 机位列表、cameraSource 默认值与阶跃键、注视与活动状态、矩形默认值与曲线、标记、采样、音频引用与叠加元素均参与往返；不序列化 FrameFacts、渲染目标或运行降级状态。状态轨道使用既有轨道类型注册表与关键帧成员 Codec，保存原生值和仅 STEP 的插值约束；不序列化独立 StepProperty 副本，不新增第四类开放注册表。
 - `KeyField` 统一驱动关键帧来源字段，避免多处维护槽位清单。
 - 必填字段缺失、类型错误、非法枚举及未知类型必须报错；可选字段仅使用明确定义的缺省值。
@@ -668,6 +692,8 @@ A2 增加有声同步前，必须验证解码、播放时钟、任意定位、�
 - 曲线通道的标签、颜色和默认信息由通道描述注册表派生；用户可编辑的轨道名称或外观覆盖显式存储。
 
 顶层必须含 `dataVersion`，新格式从 1 开始。版本缺失、较旧或高于当前支持范围均明确拒绝，不尝试按当前默认字段读取。
+
+磁盘和网络解码均限制嵌套深度、对象数量与输入字节规模，在遍历/分配前或过程中检查；未知类型、版本和非法字段失败不发布部分结果。上限默认值、两阶段分派和完整 Codec/解码测试当前仍未交付，不能把严格规则已写进设计视为已实现。
 
 ### 8.2 存储与诊断
 
@@ -679,7 +705,11 @@ A2 增加有声同步前，必须验证解码、播放时钟、任意定位、�
 
 存储实现负责资源定位、字节与 Ops 转换、调用 Codec、报告错误，不解释文档子对象字段。
 
+文件诊断使用 storage.ResourceId，不再用自由字符串；当前 value 为非空白相对资源标识。资源根、本地路径映射与安全校验由资源服务定义，不能把 ResourceId 仅非空白检查当成绝对路径/越界路径已被拒绝。服务、恢复槽、Codec 与网络压缩实现仍待相应批次。
+
 诊断模式为只读资源视图，展示文件、字段或对象路径、错误码和消息，不构造可发布的非法文档。JSON 源码行列仅在解析器可提供时展示，不将 DFU 字段路径等同于源码位置。
+
+消息显示经无状态 LocalizedMessageRenderer，每次生成独立 Component，保留翻译键、fallback、参数顺序与嵌套样式；不得先转纯字符串或将结果写回契约/共享可变状态。接口已交付，实际渲染器、语言切换与安全显示缓存待宿主实现和测试。
 
 ### 8.3 网络
 
