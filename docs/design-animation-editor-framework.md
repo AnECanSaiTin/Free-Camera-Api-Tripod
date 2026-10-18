@@ -86,7 +86,7 @@
 | `editor.spi` | 面板注册与可复用组件的公开契约 | `api.*`、客户端 UI |
 | `editor.internal` | 不承诺兼容的内部实现 | 编辑器内部类型 |
 
-纯编辑操作契约置于 `api.animation.document` 的子包；`api.editor` 使用这些契约，文档存储不得反向依赖编辑器会话。
+纯编辑操作契约置于顶层 `api.animation.edit`，快照、存储、事务及历史置于 `api.animation.document`；`api.editor` 使用这些契约，文档存储不得反向依赖编辑器会话。按 P1 计划 Q13，document 的提交入口与 edit 的结果类型允许双向包引用；该例外不放宽 api 对 core/editor 的禁止依赖。
 
 依赖方向：
 
@@ -210,7 +210,7 @@ AnimationTrack
 ### 3.2 深不可变规则
 
 - 集合和数组在构造时防御性复制，不保留调用方可变容器。
-- 对外不得暴露可变数组、集合、JOML 向量或可变 `Component` 实例。
+- 对外不得暴露可变数组、集合、JOML 向量或可变 `Component` 实例。诊断消息、修复标签、事务及历史动作标签使用封闭不可变 `LocalizedMessage`；不保存 Component，也不依赖其 copy() 实现深隔离。
 - 文档数学数据使用不可变值；JOML 可变类型仅用于计算缓冲区。
 - `with*` 返回派生对象，只复制变化路径，允许共享未变化的不可变对象。
 - 惰性缓存不得影响逻辑相等性，不得泄漏内部可变结果。
@@ -221,14 +221,14 @@ AnimationTrack
 ### 3.3 快照与只读句柄
 
 ```java
-public record AnimationSnapshot(long revision, CameraAnimation document) {}
+public record AnimationSnapshot(Revision revision, CameraAnimation document) {}
 
 public interface AnimationHandle {
     AnimationSnapshot snapshot();
 }
 ```
 
-实现以一个 `volatile AnimationSnapshot` 保存当前状态。`revision` 是该存储实例单调递增的发布序号；撤销恢复旧文档时也产生新的发布序号。不得分别读取文档和计数器来组成快照。
+实现以一个 `volatile AnimationSnapshot` 保存当前状态。`revision` 是该存储实例单调递增的发布序号；撤销、重做及整份换档都产生新的发布序号；同一存储实例不因换档重置或回退，旧 expectedRevision 在换档后失效。不得分别读取文档和计数器来组成快照。
 
 `AnimationHandle` 不提供发布方法。所有变更由 `AnimationDocumentStore` 处理：
 
@@ -254,7 +254,7 @@ public interface AnimationHandle {
 | --- | --- |
 | 编译结果 | 按公式文本缓存，使用有界 LRU |
 | 依赖图 | 从完整文档及编译后语法树派生，允许按文档身份缓存 |
-| 关键帧槽位采样 | 键包含快照身份、求值上下文身份与帧序号、RigId、曲线 ID、空间事实身份与采样表版本 |
+| 采样结果缓存 | EvaluationKey 包含 snapshotId、contextId、frameIndex、sampleTime、可空 RigId、trackId、factsIdentity 与 sampleTableVersion；sampleTime 有限非负并正规化 -0.0。单键字段/槽位缓存若另行建立，必须再区分 KeyId/槽位，不能仅复用轨道结果键 |
 | 变量及轨道读数 | 在单个求值上下文中按帧缓存，失败结果也必须缓存 |
 | 路径弧长与查询索引 | 在不可变对象内部惰性计算或使用外部派生缓存 |
 | 文档派生查询 | 静态启用机位列表、曲线目录与按现规则计算的时长可在绑定层按不可变文档身份复用；不代表运行期 active(t)、来源或姿态结果 |
@@ -289,7 +289,11 @@ public sealed interface EditResult {
 }
 ```
 
-诊断至少包含稳定错误码、严重级别、对象或字段定位、可本地化消息及可选修复操作。带引用的诊断和修复必须关联基版本；过期修复需重新生成。
+诊断至少包含稳定错误码、严重级别、不可变可本地化消息、显式作用域、对象或字段定位及可选修复操作。采用当前契约：
+
+- `LocalizedMessage` 为 sealed 的 Literal / Translatable，翻译参数仅允许文本、有限数字、布尔和嵌套消息，参数列表防御性复制；Formatting 仅含 RGB 颜色、粗体、斜体、下划线。诊断、Fix、事务及历史共享此描述类型，宿主显示时再渲染为 Component；click/hover、selector、NBT 和任意 contents 不在该消息契约内。
+- `DiagnosticScope.Document(Revision)` 强制非空版本，允许对象/字段定位与 Fix；`DiagnosticScope.File(resource)` 标识文件/解码资源，仅允许无对象 ID 的字段定位，不允许 Fix。不得以可空基版本兼表两种作用域。
+- Fix 的 baseRevision 必须等于 Document scope 的 revision。异步结果、定位跳转和修复提交均须核对适用作用域与当前版本，过期结果不得定位/修改新文档。候选及会话身份的绑定由后续宿主负责，不因增加作用域 record 就视为已实现。
 
 批量移动、粘贴、模式切换等复合操作必须构造一个完整候选，一次校验、一次发布，不得循环提交单对象操作。
 
@@ -380,8 +384,8 @@ public sealed interface EditResult {
 ```java
 public interface EditorSession {
     AnimationSnapshot snapshot();
-    EditResult submit(EditOp op, long expectedRevision);
-    EditTransaction beginEdit(EditTarget target, Component label);
+    EditResult submit(EditOp op, Revision expectedRevision);
+    EditTransaction beginEdit(EditTarget target, LocalizedMessage label);
     PreviewState preview();
     EditResult commit(EditTransaction transaction);
     void cancel(EditTransaction transaction);
@@ -719,11 +723,11 @@ A2 增加有声同步前，必须验证解码、播放时钟、任意定位、�
 ```java
 public record InteractionRequest(
         InteractionId id,
-        Component message,
+        LocalizedMessage message,
         List<InteractionOption> options) {}
 ```
 
-会话提供 `choose(requestId, optionId)` 与取消入口。二元确认是普通选项请求；路径新建、绑定及来源选择使用同一协议。过期请求、已关闭请求和无效选项必须拒绝，不能执行旧回调。
+交互请求的消息采用 LocalizedMessage，沿用不可变消息边界；此处为后续 api.editor 目标签名，当前尚未交付 InteractionRequest 实现。会话提供 `choose(requestId, optionId)` 与取消入口。二元确认是普通选项请求；路径新建、绑定及来源选择使用同一协议。过期请求、已关闭请求和无效选项必须拒绝，不能执行旧回调。
 
 ### 9.3 后端选择
 
@@ -788,6 +792,8 @@ A0–A2 统称最终音频阶段，具体内部顺序见[独立音频 API 设计
 
 - 提交拒绝时，文档、发布序号和历史均不变；过期基版本明确拒绝。
 - 一帧内发生后续提交时，当前帧仍只使用捕获的快照。
+- 同一 store 换档、撤销、重做继续递增发布序号，旧请求始终拒绝（随存储实现验证）；同帧同轨不同 sampleTime 缓存键不等，负零正规化，非有限/负采样时间拒绝。
+- 消息参数列表与嵌套消息无可变别名；File 作用域拒绝对象 ID 和 Fix，Document 作用域版本非空且与 Fix 一致。宿主异步诊断绑定与消息渲染随后续实现验证，不能以契约测试代替。
 - 构造参数或 getter 返回值不能修改已发布内置文档；历史版本不被后续操作污染。
 - 变量、函数、轨道引用与作用域、无环深调用、运行期工作量上限分别测试。
 - 窄时间区间错误、`wt` 变化、非确定函数及试算预算不足不能被误报为全域安全。

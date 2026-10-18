@@ -4,7 +4,7 @@
 > [`P1-contract-plan.md`](P1-contract-plan.md) 的施工约定。
 >
 > - 每条结论一个编号（`R1`、`R2`…），**新复核追加在末尾**，不重写既有正文；速查表、当前待办和范围说明随复核更新。
-> - **当前执行依据为 R4–R6 与 §3 待办**。R1–R3 保留历史论证；其中绝对性能结论、键类型“不可合并”和标记时长的缺陷判定已被后续修订，不得直接据旧段落修改代码。
+> - **当前执行依据为 R4–R6、最新复核 R12 与 §3 待办**。R1–R3 保留历史论证；其中绝对性能结论、键类型“不可合并”和标记时长的缺陷判定已被后续修订，不得直接据旧段落修改代码。
 > - 结论被推翻时不删旧条目，追加「修订」说明并指向新编号。
 > - 每条结论标注**核查位置**与**核查日期**；源码变更后以重新核查为准，
 >   不能仅凭旧条目认定现状。
@@ -27,6 +27,10 @@
 | [R6](#r6-修订标记时长的判定与裁决边界) | 修订 R3、A6 | 默认保留标记时长贡献；注释措辞和覆盖测试可先补 | 注释与远端标记测试已补（R7）；产品语义未改 |
 | [R7](#r7-实施记录a0a1a4a5a7-落地与验证) | 实施记录：A0/A1/A4/A5/A7 | 代码与回归测试落地；A2/A3/A6 见正文 | 是（构建与测试通过） |
 | [R8](#r8-实施记录document--edit-契约批次) | 实施记录：document + edit 契约 | 快照/存储/历史/事务/预览/选择 + 纯编辑/诊断/校验/试算；EditTools 未做 | 契约已交付（测试通过） |
+| [R9](#r9-实施记录eval-契约批次) | 实施记录：eval 余项 | FrameFacts/EvaluationContext/采样状态/姿态/依赖图/缓存/A3 索引 | 契约已交付（测试通过） |
+| [R10](#r10-实施记录p1-计划-65-的-c1c4-修正) | 实施记录：§6.5 C1–C4 | C1/C2 已修正；C3/C4 由 R11 重做（浅拷贝与可空版本问题） | 部分（C3/C4 见 R11） |
+| [R11](#r11-实施记录c3c4-深层修正) | 实施记录：C3/C4 深层修正 | 不可变 LocalizedMessage + 受限样式；显式 DiagnosticScope | 已修正，复核结论见 R12 |
+| [R12](#r12-复核关闭c1c4-契约修复与运行边界) | 复核关闭 C1–C4 | 四项修复在当前契约范围成立；无新增确定缺陷 | 契约已复核；运行实现另验 |
 
 ---
 
@@ -569,3 +573,152 @@ public float viewExtent() {
   **10 个 suite / 51 个用例**（上一轮为 14 / 105，v2 8 / 39）。
 - 门禁：`_v2` 旧根引用 0、`net.minecraft.client` 引用 0、旧根已跟踪文件改动 0。
 - 其他：`git diff --check` 通过；未修改 R1–R7 正文，仅更新 §0 状态并追加本节。
+
+---
+
+## R9. 实施记录：eval 契约批次
+
+**记录日期**：2026-10-18
+**类型**：实施记录（非新复核）；结论沿用 R4–R8，未执行项见正文。
+**核查位置**：
+[`eval/`](../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/eval/)；测试：
+[`eval/EvalContractTest`](../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/eval/EvalContractTest.java)。
+
+### R9.1 交付内容
+
+- 新增 11 个公开类型：`TrackIndex`（A3：`TrackId` → 轨道 + 所属机位 + 重复 ID 诊断）、
+  `FrameFacts`（含 `RigFacts`）、`EvaluationContext`、`EvaluationKey`、`CurveSampler`、
+  `SampleStatus`、`ChannelSample`、`DocumentPose`（含 `PositionMask`）、`SpatialReadings`、
+  `DependencyGraph`、`EvaluationCache`。
+- `eval/package-info` 由“仅 TrackLookup”更新为完整契约说明。
+- A3 只交付索引**契约**（唯一性诊断、所属机位、按快照重绑的要求）；索引实现与绑定留到
+  eval 实现批次，不在 `block` 反向依赖 eval。
+
+### R9.2 未执行
+
+- `CurveSampler`、`DependencyGraph`、`EvaluationCache`、姿态合成与 `TrackIndex` 的实现（`core`）。
+- A2 条件缓存仍等宿主重复查询证据；`EditTools` 与 playback / storage / editor / block-spatial
+  余项仍在后续批次。
+
+### R9.3 验证结果
+
+- 命令：`.\gradlew.bat --offline compileJava test --console=plain`
+- 结果：`BUILD SUCCESSFUL`；**17 个测试 suite / 123 个用例全绿**，其中 `_v2` 为
+  **11 个 suite / 57 个用例**（上一轮为 16 / 117，v2 10 / 51）。
+- 门禁：`_v2` 旧根引用 0、`net.minecraft.client` 引用 0、旧根已跟踪文件改动 0。
+- 其他：`git diff --check` 通过；未修改 R1–R8 正文，仅更新 §0 状态并追加本节。
+
+---
+
+## R10. 实施记录：P1 计划 §6.5 的 C1–C4 修正
+
+**记录日期**：2026-10-18
+**类型**：实施记录（非新复核）；对应 P1 计划 §6.5，修正后仍待人工审核。
+**核查位置**：
+[`document/`](../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/document/)、
+[`edit/Diagnostic.java`](../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/edit/Diagnostic.java)、
+[`eval/EvaluationKey.java`](../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/eval/EvaluationKey.java)。
+
+### R10.1 修正内容
+
+- **C1**：`Revision` / `SessionSwitch` / `AnimationDocumentStore` 的契约注释统一为
+  “同一存储实例换档继续递增，不重置/回退；旧 `expectedRevision` 永久失效；撤销/重做生成新序号”。
+  存储实现未交付，暂无运行测试。
+- **C2**：`EvaluationKey` 增加 `sampleTime`，要求有限、非负、`-0.0 → 0.0`；同帧同轨
+  `t=0` 与 `t=1` 不再相等。
+- **C3**：`Diagnostic.message`、`Diagnostic.Fix.label`、`EditTransaction.label`、
+  `UndoHistory.Entry.label` 构造时复制可变 `Component`，访问器每次返回新副本；修改传入或
+  返回对象都不能改变既有记录。
+- **C4**：`Diagnostic` 增加 `@Nullable Revision baseRevision`；带 `Fix` 时必须非空且与
+  `Fix.baseRevision` 一致；纯文件诊断允许为空。
+
+### R10.2 验证结果
+
+- 命令：`.\gradlew.bat --offline compileJava test --console=plain`
+- 结果：`BUILD SUCCESSFUL`；**17 个测试 suite / 127 个用例全绿**，其中 `_v2` 为
+  **11 个 suite / 61 个用例**（R9 为 17 / 123，v2 11 / 57）。
+- 新增/变更测试：`EvalContractTest`（采样时间键、非法时间）、`EditContractTest`
+  （消息/标签副本、诊断基版本一致性）、`DocumentContractTest`（事务/历史标签副本）。
+- 门禁：`_v2` 旧根引用 0、`net.minecraft.client` 引用 0、旧根已跟踪文件改动 0。
+
+### R10.3 未完成
+
+- C1 的存储实现（换档序号延续、旧请求拒绝）与 C4 的异步/提交上下文绑定仍在 `core`；
+- 本记录不宣称人工审核通过，§6.5 仍需复核后关闭。
+
+---
+
+## R11. 实施记录：C3/C4 深层修正
+
+**记录日期**：2026-10-18
+**类型**：实施记录；**取代 R10 的 C3/C4 结论**（R10 的 `Component.copy()` 与可空版本方案被证明不完整）。
+**核查位置**：
+[`edit/LocalizedMessage.java`](../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/edit/LocalizedMessage.java)、
+[`edit/DiagnosticScope.java`](../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/edit/DiagnosticScope.java)、
+[`edit/Diagnostic.java`](../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/edit/Diagnostic.java)、
+[`document/EditTransaction.java`](../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/document/EditTransaction.java)、
+[`document/UndoHistory.java`](../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/document/UndoHistory.java)。
+
+### R11.1 问题复述
+
+- `Component.copy()` 只新建顶层与兄弟列表；`ComponentContents`、`TranslatableContents.args` 与
+  子组件仍共享，修改输入子组件或访问器返回的子组件仍会改变既有记录。
+- 只限制“有 `Fix` 时必有版本”仍允许“有对象定位、无 `Fix`、无版本”的诊断，换档后同 ID
+  风险未消除。
+
+### R11.2 修正
+
+- **C3**：契约改用不可变 `LocalizedMessage`：
+  - `Literal` / `Translatable` + 文本/数字/布尔/嵌套参数；
+  - 受限样式 `Formatting`（颜色 / 粗体 / 斜体 / 下划线），不支持 click/hover/selector/NBT；
+  - `Diagnostic.message`、`Diagnostic.Fix.label`、`EditTransaction.label`、`UndoHistory.Entry.label`
+    全部改用该类型；契约不再保存 `Component`，宿主显示时渲染。
+- **C4**：新增 `DiagnosticScope`：
+  - `Document(Revision)`：允许对象 / 字段定位与 `Fix`，修复版本必须与作用域一致；
+  - `File(resource)`：不允许对象 ID 定位与 `Fix`；
+  - `Diagnostic` 用 `scope` 替代可空基版本。
+
+### R11.3 验证结果
+
+- 命令：`.\gradlew.bat --offline compileJava test --console=plain`
+- 结果：`BUILD SUCCESSFUL`；**18 个测试 suite / 131 个用例全绿**，其中 `_v2` 为
+  **12 个 suite / 65 个用例**（R10 为 17 / 127，v2 11 / 61）。
+- 新增测试：`edit/LocalizedMessageContractTest`（参数复制、受限样式、非法值、值相等）；
+  `EditContractTest` 增加作用域 / 修复版本 / `File` 作用域拒绝；
+  `DocumentContractTest` 改用不可变标签。
+- 门禁：`_v2` 旧根引用 0、`net.minecraft.client` 引用 0、旧根已跟踪文件改动 0。
+
+### R11.4 未完成
+
+- 宿主渲染器（`LocalizedMessage → Component`）尚未实现，留到 `core` / `editor`；
+- 文件作用域的资源身份暂用 `String`，`api.storage` 批次可改为 `ResourceId`；
+- 仍待人工复核，不宣称审核通过。
+
+
+---
+
+## R12. 复核关闭：C1–C4 契约修复与运行边界
+
+**核查日期**：2026-10-18
+
+**类型**：契约复核结论；核对 R10/R11 实施记录，关闭 C1–C4 的契约问题。保留历史正文，不把实施记录本身当作验收。
+
+**核查位置**：[版本](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/document/Revision.java>)、[换档入口](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/document/AnimationDocumentStore.java>)、[缓存键](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/eval/EvaluationKey.java>)、[消息树](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/edit/LocalizedMessage.java>)、[作用域](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/edit/DiagnosticScope.java>)、[诊断](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/edit/Diagnostic.java>)、[事务](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/document/EditTransaction.java>)、[历史](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/document/UndoHistory.java>)。
+
+| 项目 | 最终方案与核查 | 关闭范围 |
+| --- | --- | --- |
+| C1 | Revision、SessionSwitch、Store 统一同一 store 换档继续递增；撤销/重做生成新序号，旧 expectedRevision 不复用 | 原重置契约冲突关闭；没有 store 实现，尚不能宣称运行级旧请求拒绝已验证 |
+| C2 | EvaluationKey 加入有限非负 sampleTime 并正规化负零；同帧同轨 t=0/t=1 不相等 | 时间身份缺口关闭；缓存/批量求值实际接入仍随后续 core 验证 |
+| C3 | LocalizedMessage 与 Argument 都为 sealed + record，叶子为不可变值；Translatable 参数 List.copyOf，嵌套仍属于封闭消息树；四类消息/标签均不再保存 Component | 原始/返回嵌套 Component 共享路径已从契约移除，关闭；宿主渲染未实现 |
+| C4 | scope 非空；Document 强制非空 Revision；File 禁止对象 ID 与 Fix；Fix 必须属于 Document 且版本匹配 | 无 Fix 对象诊断无版本路径已被排除，关闭；异步结果绑定当前会话/候选仍由宿主实现 |
+
+### R12.1 实际验证与未覆盖项
+
+- 最近一次复核实际执行 `./gradlew.bat --offline compileJava test --rerun --console=plain`，BUILD SUCCESSFUL；18 个 suite / 131 个用例全部通过，其中 v2 为 12 / 65；git diff --check 无补丁格式错误。
+- 测试核对：[消息测试](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/edit/LocalizedMessageContractTest.java>)、[作用域/修复测试](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/edit/EditContractTest.java>)、[事务/历史测试](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/document/DocumentContractTest.java>)、[时间键测试](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/eval/EvalContractTest.java>)。本次同步文档没有修改源码、增加测试或重新运行构建，沿用此次真实基线。
+- 非阻断测试空白：参数输出列表不可修改、多层嵌套 Translatable 的逐层输入隔离、Document(null) 拒绝、无 Fix 的文档对象定位合法分支；不能在记录中写为已经覆盖。
+- 不扩展关闭范围：求值环境/机位绑定、世界实例身份、空间解析失败传递、DocumentPose ERROR 消费规则、回调期间提交协议和 TrialResult 报告仍按 P1 §7.5 定型；本轮无新增确定缺陷不等于这些协议已经全部审核完毕。
+
+### R12.2 设计及施工记录同步
+
+主设计 §3.2/§3.3/§3.4/§4.1 明确不可变消息、换档递增、sampleTime 与诊断作用域；§5.1 事务标签改为 LocalizedMessage。UI §6.2 明确显示时才渲染消息以及作用域/版本检查。主设计 §9.2 的交互消息同步为不可变描述的目标签名，InteractionRequest 仍是后续 api.editor 契约，未据此声称已交付。P1 §6.5 历史发现保留，当前状态改为四项契约复核关闭，完整运行实现仍延期。
