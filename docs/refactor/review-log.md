@@ -1,7 +1,7 @@
 # 契约复核日志（凝练版）
 
 > 更新：2026-10-18。当前施工边界见[P1 计划](<P1-contract-plan.md>)；设计规则见[主设计](<../design-animation-editor-framework.md>)。本日志只保存结论、证据与复核范围。
-> 最新复核见 R23：`api.editor` 会话 / 视图 / 交互 / 后端契约已交付（R22 为 S1–S3 复核关闭）。**不宣称 core 存储、播放、事件、仲裁、渲染或编辑器 UI 已实现**。
+> 最新复核见 R25：R24 的 E1/E2 已补（会话草稿/候选入口、第三方后端 open 钩子），待复核。**不宣称 core 存储、播放、事件、仲裁、渲染或编辑器 UI 已实现**。
 > 原始 R1–R14 正文、微基准表及历史被推翻论证保存在[历史归档](<archive/review-log-R1-R14-2026-10-18.md>)。历史不作施工指令，编号保留可追溯；后续新发现追加编号，实施记录不自动等于复核通过。
 
 ## 1. 当前结论
@@ -43,7 +43,9 @@
 | R20 | 10-18 | storage 与 R18 补齐复核 | 2 项 P2 残留及 1 项 P2 契约澄清；表版本入口和准备预算参数已补齐 |
 | R21 | 10-18 | R20 三项修正 | 实施记录；引用同源、接管主线程约束、单资源报告，复核见 R22 |
 | R22 | 10-18 | R21 修复复核 | S1–S3 在当前契约范围关闭；无新增确定缺陷，运行实现仍另验 |
-| R23 | 10-18 | editor 契约 | 会话/视图/交互/后端类型落地；UI/core 实现待后续 |
+| R23 | 10-18 | editor 契约 | 实施记录；会话/视图/交互/后端类型交付，审查见 R24 |
+| R24 | 10-18 | R23 editor 复核 | 2 项公开契约缺口：草稿/预览输入链路与后端打开钩子；待修正 |
+| R25 | 10-18 | R24 E1/E2 修正 | EditDraftState、草稿更新入口、后端 open 钩子；待复核 |
 
 ### 2.1 C1–C4 最终方案（R12）
 
@@ -150,6 +152,8 @@ R12 的非阻断测试空白已在 R13 补充：消息输出列表不可修改�
 | R21 | 20 / 151 | 14 / 85 |
 | R22 | 20 / 151 | 14 / 85 |
 | R23 | 21 / 156 | 15 / 90 |
+| R24 | 21 / 156 | 15 / 90 |
+| R25 | 21 / 157 | 15 / 91 |
 
 早期记录中的命令、依赖门禁及原始位置保留归档；本轮未重新宣称运行级门禁/客户端效果已验证。后续记录应保存实际执行命令与结果，不沿用旧数字证明新代码。
 
@@ -256,3 +260,44 @@ S1/S2 是已确认残留；S3 是本批报告协议的定型项，不直接断�
 - `.\gradlew.bat --offline compileJava test --console=plain`：BUILD SUCCESSFUL；21 个 suite / 156 个用例，v2 15 / 90；156 个主源码 Java 文件。
 - 新增 `EditorContractTest`：交互选项、时间轴 / 预览区间 / 吸附校验、轨道显隐、视图容器复制、后端选择。
 - 门禁 0/0/0；未验证会话实现、后端注册/选择、草稿持久化、交互回调、线程与关闭生命周期。
+
+## R24. R23 editor 契约复核
+
+**日期**：2026-10-18。**范围**：提交 `ef0a61a` 的 api.editor 全部 15 个文件及 EditorContractTest，对照主设计 §5/§9、UI 设计 §3/§6/§7。实施记录不等同审核通过；本次未修改源码。
+
+### R24.1 待修正项
+
+| 编号 | 级别 | 位置与触发 | 影响与建议 |
+| --- | --- | --- | --- |
+| E1 | P1 | [EditorSession:32–42](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/editor/EditorSession.java#L32-L42>)只有 beginEdit、只读 preview、commit/cancel；[EditTransaction](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/document/EditTransaction.java>)只保存 ID、基版本、目标与标签。接口集中没有草稿读写、预览候选或操作更新入口 | 第三方面板在 beginEdit 后输入文本/拖动值，无法将内容传入会话事务，commit 无从知道编辑结果；直接 submit 则绕过预览/取消协议。补充按事务读取/更新草稿与生成候选或操作的公开契约，保留不可解析文本和诊断，commit 使用该事务候选；明确目标/版本校验、取消丢弃及后端切换恢复。 |
+| E2 | P2 | [EditorUiBackend:19–20](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/editor/EditorUiBackend.java#L19-L20>)只有 canOpen；[EditorUiHost:12–19](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/editor/EditorUiHost.java#L12-L19>)只有按选择器打开/打开默认界面，没有与选定后端关联的公开 opener | 宿主选中 canOpen=true 的第三方后端后，不能仅通过契约调用其实际打开行为，只能下转具体类型、硬编码或滥用探测副作用。新增不引用客户端 UI 类型的打开/挂载钩子，或公开描述符与 opener 工厂的注册绑定；保持 canOpen 为探测，明确打开失败及指定后端不自动切换规则。 |
+
+这是公开接口的数据/调用通路不足，不是要求提前完成会话、注册表或 Screen 实现。E1、E2 尚未修正，不宣称 R23 已通过。
+
+### R24.2 已核对与后续验证
+
+- SessionViewState、TrackVisibility、SnappingSettings、InteractionRequest 的集合有防御性复制；消息为 LocalizedMessage；数值边界与交互选项唯一性未发现确定缺陷。
+- EditorBackendSelector 区分 auto/指定 ID；指定已注册后端拒绝不回退、未注册才提示并回内置的文字约定与设计一致。实际注册、排序、转发与打开调用待接口补齐后实现。
+- 不额外将 core/editor 的草稿存储、线程检测、交互过期处理或关闭资源释放尚未实现计作缺陷；仍需后续行为测试。
+
+### R24.3 实际验证
+
+执行 `./gradlew.bat --offline compileJava test --rerun --console=plain`，BUILD SUCCESSFUL：21 个 suite / 156 个用例全部通过，v2 为 15 / 90，无失败、错误、跳过；`git diff --check` 通过。
+
+[EditorContractTest](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/editor/EditorContractTest.java>)目前覆盖交互选项、数值范围、显隐、容器复制和 selector 值，不覆盖 begin→更新→预览→commit/cancel、非法草稿恢复或选中第三方后端后的实际派发。接口补齐后须加入对应协议测试，运行实现仍随后续批次验收。
+
+## R25. R24 E1/E2 修正
+
+**日期**：2026-10-18。**类型**：实施记录，待复核；不宣称 R23/R24 已通过。
+
+### R25.1 修正
+
+| 编号 | 修正 |
+| --- | --- |
+| E1 | 新增 `EditDraftState`（事务、字段原文、候选、诊断）与 `EditorSession.draft` / `updateDraftText` / `updateDraftOperation`；`commit` 明确使用事务已保存候选，无候选或错误时拒绝，保留不可解析文本与诊断 |
+| E2 | `EditorUiBackend` 新增 `open(EditorSession)` 实际打开钩子；`EditorUiHost` 明确选中可接管后端后调用该钩子，指定后端失败不回退、未注册才回内置 |
+
+### R25.2 验证
+
+- `.\gradlew.bat --offline compileJava test --console=plain`：BUILD SUCCESSFUL；21 个 suite / 157 个用例，v2 15 / 91；157 个主源码 Java 文件。
+- `EditorContractTest` 新增草稿原文复制与候选就绪断言；stub 后端 open 派发、真实 begin→预览→commit 与后端注册排序仍待实现 / 测试。
