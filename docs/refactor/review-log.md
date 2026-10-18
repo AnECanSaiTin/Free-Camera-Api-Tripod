@@ -1,7 +1,7 @@
 # 契约复核日志（凝练版）
 
 > 更新：2026-10-18。当前施工边界见[P1 计划](<P1-contract-plan.md>)；设计规则见[主设计](<../design-animation-editor-framework.md>)。本日志只保存结论、证据与复核范围。
-> 最新复核见 R21：R20 的 S1–S3 已按契约修正（快照引用同源、接管主线程约束、诊断报告单资源作用域）。**不宣称 core 存储、播放、事件、仲裁或渲染已实现**。
+> 最新复核见 R23：`api.editor` 会话 / 视图 / 交互 / 后端契约已交付（R22 为 S1–S3 复核关闭）。**不宣称 core 存储、播放、事件、仲裁、渲染或编辑器 UI 已实现**。
 > 原始 R1–R14 正文、微基准表及历史被推翻论证保存在[历史归档](<archive/review-log-R1-R14-2026-10-18.md>)。历史不作施工指令，编号保留可追溯；后续新发现追加编号，实施记录不自动等于复核通过。
 
 ## 1. 当前结论
@@ -41,7 +41,9 @@
 | R18 | 10-18 | 十一项协议核对 | 契约方向成立；bind/预算/线程/解码等部分项待补 |
 | R19 | 10-18 | storage 契约与 R18 契约补齐 | 实施记录：资源/恢复契约及绑定/预算调整；不等同复核通过，见 R20 |
 | R20 | 10-18 | storage 与 R18 补齐复核 | 2 项 P2 残留及 1 项 P2 契约澄清；表版本入口和准备预算参数已补齐 |
-| R21 | 10-18 | R20 三项修正 | 引用同源、接管主线程约束、单资源诊断报告；待复核 |
+| R21 | 10-18 | R20 三项修正 | 实施记录；引用同源、接管主线程约束、单资源报告，复核见 R22 |
+| R22 | 10-18 | R21 修复复核 | S1–S3 在当前契约范围关闭；无新增确定缺陷，运行实现仍另验 |
+| R23 | 10-18 | editor 契约 | 会话/视图/交互/后端类型落地；UI/core 实现待后续 |
 
 ### 2.1 C1–C4 最终方案（R12）
 
@@ -146,6 +148,8 @@ R12 的非阻断测试空白已在 R13 补充：消息输出列表不可修改�
 | R19 | 20 / 151 | 14 / 85 |
 | R20 | 20 / 151 | 14 / 85 |
 | R21 | 20 / 151 | 14 / 85 |
+| R22 | 20 / 151 | 14 / 85 |
+| R23 | 21 / 156 | 15 / 90 |
 
 早期记录中的命令、依赖门禁及原始位置保留归档；本轮未重新宣称运行级门禁/客户端效果已验证。后续记录应保存实际执行命令与结果，不沿用旧数字证明新代码。
 
@@ -217,3 +221,38 @@ S1/S2 是已确认残留；S3 是本批报告协议的定型项，不直接断�
 - `.\gradlew.bat --offline compileJava test --console=plain`：BUILD SUCCESSFUL；20 个 suite / 151 个用例，v2 14 / 85；141 个主源码 Java 文件。
 - 门禁 0/0/0；`git diff --check` 通过。
 - 不宣称引用身份能替代 core 的候选/世界身份分配，也不宣称线程检查或单资源报告已运行验证。
+
+## R22. R21 修复复核关闭
+
+**日期**：2026-10-18。**类型**：代码与测试复核。对应提交 `f885bd3`，核对 R21 实施记录及 R20 的 S1–S3；本次不修改源码。
+
+**结论**：S1–S3 均在当前契约范围修正，可关闭；本轮未发现新增确定缺陷。关闭不等于 core 算法、IO 或线程运行保障已经实现。
+
+| 项目 | 复核证据 | 关闭范围 |
+| --- | --- | --- |
+| S1：快照同源 | [EvaluationContext:44–48](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/eval/EvaluationContext.java#L44-L48>)按引用身份比较；[TrackIndex:25–27](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/eval/TrackIndex.java#L25-L27>)要求保留原快照引用；[测试:185–187](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/eval/EvalContractTest.java#L185-L187>)拒绝 revision/document 等值的新快照副本 | 原 record equals 放过等值异源快照的路径已消除；TrackLookup 构建、候选/世界身份分配与实际重绑仍待实现 |
+| S2：接管线程 | [CameraControlClaims:16–20](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/playback/CameraControlClaims.java#L16-L20>)明确 register/release/winner/winningPose 与 provider 均限宿主主线程，provider 在同一捕获调用内执行且不得异步 | 原线程前置条件缺口关闭；跨线程拒绝、provider 重入和捕获线性化的实际检查随 core 验证 |
+| S3：单资源报告 | [DiagnosticReport:30–40](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/storage/DiagnosticReport.java#L30-L40>)强制每项为同一资源的 File 作用域；[测试:70–77](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/storage/StorageContractTest.java#L70-L77>)覆盖跨资源与 Document 作用域拒绝 | 单资源 IO/解码报告的聚合规则已明确并执行构造校验；文档校验诊断走独立文档链路，实际资源载入/保存仍待 IO 实现 |
+
+### R22.1 实际验证
+
+执行 `./gradlew.bat --offline compileJava test --rerun --console=plain`，BUILD SUCCESSFUL：20 个 suite / 151 个用例全部通过，v2 为 14 / 85，无失败、错误、跳过；`git diff --check` 通过。测试数量未增加，本批是在原有测试方法内新增断言。
+
+本轮确认构造校验、快照引用规则与线程契约，不把测试通过扩展为 IO、Codec、恢复调度、仲裁线程或预算执行已可运行。S1–S3 关闭不重新打开此前已关闭的 C1–C4 和 playback 五项修复。
+
+## R23. editor 契约
+
+**日期**：2026-10-18。**类型**：实施记录，待复核。
+
+### R23.1 交付
+
+- `api.editor`：`EditorSession`、`SessionViewState`、`TimelineView`、`SnappingSettings` / `SnapSource`、`PreviewRange`、`TrackVisibility`、`EditorToolState`。
+- 交互：`InteractionId`、`InteractionOption`、`InteractionRequest`（不可变消息、唯一非空选项）。
+- 后端：`EditorUiBackend`、`EditorUiHost`、`EditorBackendSelector`（auto / 指定 ID），不依赖客户端渲染类型。
+- 包说明明确：会话不直接写文档、视图状态不进历史、所有方法限主线程、交互过期拒绝。
+
+### R23.2 验证
+
+- `.\gradlew.bat --offline compileJava test --console=plain`：BUILD SUCCESSFUL；21 个 suite / 156 个用例，v2 15 / 90；156 个主源码 Java 文件。
+- 新增 `EditorContractTest`：交互选项、时间轴 / 预览区间 / 吸附校验、轨道显隐、视图容器复制、后端选择。
+- 门禁 0/0/0；未验证会话实现、后端注册/选择、草稿持久化、交互回调、线程与关闭生命周期。

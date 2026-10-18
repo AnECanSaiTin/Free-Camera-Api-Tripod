@@ -1,8 +1,8 @@
 # P1 契约施工计划（`_v2`）
 
 > 更新：2026-10-18。本文记录施工边界与状态，不替代[动画主设计](<../design-animation-editor-framework.md>)、[UI 设计](<../design-editor-ui-framework.md>)和[音频设计](<../design-spatial-audio-api.md>)。
-> 当前：第一至第五批契约已交付；C1–C4、playback 五项、后续 11 项及 storage 契约已落实；**R20 的 S1–S3 已补**（快照引用同源、接管主线程约束、诊断报告单资源作用域）。其余保证仍为调用方 / core 责任，见 §7。**core 算法、存储发布、事件执行、仲裁与多机位渲染尚未实现**。
-> 最近实际验证：20 个 suite / 151 个用例通过，其中 v2 为 14 / 85；141 个主源码 Java 文件。详情见[复核日志](<review-log.md>) R21。
+> 当前：第一至第六批及 storage 契约已交付；C1–C4、playback 五项、后续 11 项与 R20/S1–S3 已落实；**第七批 `api.editor` 会话 / 视图 / 交互 / 后端契约已交付**。其余保证仍为调用方 / core 责任，见 §7。**core 算法、存储发布、事件执行、仲裁与多机位渲染尚未实现**。
+> 最近实际验证：21 个 suite / 156 个用例通过，其中 v2 为 15 / 90；156 个主源码 Java 文件。详情见[复核日志](<review-log.md>) R23。
 
 ## 1. 目录与迁移约定
 
@@ -21,7 +21,8 @@
 | api.animation.playback | 请求/覆盖/服务/时钟/准备帧、事件预算/分发、接管/探针、合成请求/结果/状态（含旧帧采样身份） |
 | api.storage | ResourceId、资源条目/服务、Load/SaveResult、DiagnosticReport、RecoverySlot/Service/Decision |
 | api.animation.expression | 仅包说明，编译与符号解析仍待后续 |
-| editor / editor.spi / editor.internal | 仅分区说明；UI 契约与实现未交付 |
+| api.editor | 会话 / 视图状态 / 交互请求 / 后端与宿主契约；客户端 UI 与实现未交付 |
+| editor / editor.spi / editor.internal | 仅分区说明；UI 实现未交付 |
 
 ### 1.1 当前差异与延期（唯一施工差异表）
 
@@ -71,6 +72,7 @@ Revision 包装、顶层 edit 及 edit ↔ document 例外已与主设计对齐�
 | 第四批 | eval 新增 11 个类型，含 TrackIndex、FrameFacts、EvaluationContext/Key、采样/姿态/图/缓存 | A3 只完成接口，构建与绑定仍待实现 |
 | 第五批 | playback 新增 17 个文件 + WorldPose；五项修复已复核 | 时间推进、事件执行、合成、探针、仲裁均待 core |
 | 第六批 | storage：ResourceId、资源条目/服务、Load/SaveResult、DiagnosticReport、RecoverySlot/Service/Decision | 路径安全、编解码、原子写入与恢复调度待实现 |
+| 第七批 | editor：EditorSession、SessionViewState、时间轴/吸附/预览区间/轨道显隐、交互请求、后端选择/宿主 | 屏幕、输入、组件与 core 会话实现待后续 |
 
 源码入口：[数据模型](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/block/>)、[文档](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/document/>)、[编辑](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/edit/>)、[求值](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/eval/>)、[播放](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/playback/>)。
 
@@ -92,6 +94,7 @@ Revision 包装、顶层 edit 及 edit ↔ document 例外已与主设计对齐�
 - 旧画面 `SampleIdentity` 同时绑定渲染帧序号、动画时间、游戏刻、世界实例、快照、机位活动区间代际与来源代际；任一不匹配必须失效，不得跨活动区间/来源交接复用。
 - storage.ResourceId 是文件诊断的资源身份；ResourceId 非空白，不用绝对文件系统路径。资源载入成功仍须完整文档校验；保存 / 恢复使用临时文件与原子替换，恢复槽不覆盖正式文件，不保存渲染缓存/撤销栈。
 - PlaybackService 所有方法与 prepareFrame 在宿主主线程调用；prepareFrame 必须接收 EventBudget 并在展开区间时就限制，不得先完整展开后检查。
+- EditorSession 也不得绕过 EditSubmission / 文档存储写文档；视图状态、轨道显隐、预览覆盖只属于会话，不写文档、不进撤销历史。交互请求过期 / 无效选项必须拒绝；后端选择按 auto / 指定 / 拒绝 / 未注册规则处理，不能静默切换。
 - 内建轨道类型 ID curve / aim / active / camera_source 保留，ExtensionTrack 伪造由 L2 拒绝。Codec 归成员类型，common 注册和客户端执行分离；本批尚无完整编解码验收。
 
 ### 4.1 playback 已定协议
@@ -110,7 +113,7 @@ Revision 包装、顶层 edit 及 edit ↔ document 例外已与主设计对齐�
 .\gradlew.bat --offline compileJava test --rerun --console=plain
 ```
 
-2026-10-18 本轮实际执行成功：20 个 suite / 151 个用例，v2 为 14 / 85，无失败/错误/跳过；141 个主源码 Java 文件。测试集中在 record 结构、不变量与容器隔离，不能替代 core 的时序、仲裁、事件/渲染运行验证。
+2026-10-18 本轮实际执行成功：21 个 suite / 156 个用例，v2 为 15 / 90，无失败/错误/跳过；156 个主源码 Java 文件。测试集中在 record 结构、不变量与容器隔离，不能替代 core 的时序、仲裁、事件/渲染运行验证。
 
 必查：api 不依赖旧根、net.minecraft.client、core/editor；editor.spi 不依赖 internal。文本扫描仅辅助，正式依赖门禁检查编译产物。旧根不接线批次不应修改旧实现。按 Q13 允许 edit ↔ document 包引用，不能将此误报为禁止依赖。补丁格式检查使用 git diff --check。
 
@@ -130,8 +133,9 @@ Revision 包装、顶层 edit 及 edit ↔ document 例外已与主设计对齐�
 | playback 五项 | 契约修复关闭（R15） | 仍需仲裁/事件顺序/快照切换/旧帧失效的 core 运行测试 |
 | 后续协议 1–11 | 已按 Q15 调整公开契约，部分保证仍为文字/调用方责任（R18） | Key 表版本、TrackIndex 同源与 prepareFrame 预算已在 R19 补齐；队列/能力分派/试算/仲裁/渲染仍待 core |
 | storage 契约 | 第六批已交付（R19） | 路径安全、Codec、原子写入与恢复调度实现 |
+| editor 契约 | 第七批已交付（R23） | 会话实现、界面宿主、草稿持久化、后端注册/选择运行验证 |
 
-下一步按依赖：editor 会话/后端 → EditTools；并推进 Q14 布局 AnimatedNumber、轨道/锚点/采样注册与 Codec、O1–O3 内容类型。音频保持最后实施。不能把这份顺序理解为 core 已交付。
+下一步按依赖：EditTools；并推进 Q14 布局 AnimatedNumber、轨道/锚点/采样注册与 Codec、O1–O3 内容类型。音频保持最后实施。不能把这份顺序理解为 core 已交付。
 
 ## 7. 契约补齐与实现级验证（推荐方向已定）
 
@@ -146,6 +150,7 @@ Q15 的推荐方向已定，不再重复裁决；R18/R20 指出的可落契约�
 | 空间与姿态错误 | AxisSample / SpatialResolution 三态在求值与合成中的消费，FOV 错误汇总与阻断 |
 | playback 启动/执行 | start 原子切换、prepareFrame 已接收 EventBudget 并要求展开时限制；CameraControlClaims 已声明主线程与 provider 同线程约束。事件/部分执行、运行线程检查、捕获边界与旧帧失效仍待 core |
 | 存储/序列化 | storage 契约已交付；DiagnosticReport 限定同一资源的 File 作用域。ResourceId 资源服务、参数 MapCodec/两阶段解码、未知类型与规模限制待实现 |
+| editor 会话/后端 | EditorSession 提交/草稿/预览/交互/视图状态契约已交付；后端注册与选择、会话草稿持久化、线程与关闭生命周期待实现 |
 | 消息显示 | LocalizedMessageRenderer 的翻译/参数/嵌套样式、语言切换与显示缓存边界 |
 
 这些是实现验证项，不计作已知运行缺陷；已关闭修复不代表 core 已实现。
