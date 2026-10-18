@@ -3,7 +3,7 @@
 > 本文是**施工约定**，不是设计文档。设计以 `docs/` 下三份设计为准；
 > 本文固定三件事：新契约放哪、叫什么、怎么写，以及本批交付了什么供审核。
 >
-> 状态：**P1 第三批 document/edit 核心与第四批 eval 契约已交付；C1–C4 修复已通过契约层复核，其他定型事项仍见 §7.5**。
+> 状态：**P1 第三批 document/edit、第四批 eval 与第五批 playback 契约已交付；C1–C4 修复已通过契约层复核，其他定型事项仍见 §7.5**。
 > 第三批声明快照 / 存储 / 历史 / 事务 / 预览 / 选择、纯编辑操作 / 诊断 / 校验 / 试算；
 > 第四批声明索引 / 帧事实 / 求值上下文 / 缓存键 / 采样与姿态等契约。这里只交付契约，
 > 不代表存储、校验器、采样器、依赖图或缓存实现已完成；2026-10-18 审查四项的最终方案及关闭范围见 §6.5、复核日志 R12。
@@ -51,7 +51,7 @@ cn/anecansaitin/free_camera_api_tripod_v2/
   api/animation/expression/  预留：编译与符号契约（当前只有包说明，见 §1.4）
   api/animation/eval/        求值与帧事实（TrackLookup/TrackIndex/FrameFacts/采样/姿态）
   api/animation/block/       不可变文档模型（文档根、有类型状态轨道、采样声明/参数/读数）
-  api/animation/playback/    播放裁决类型（AimOverride；其余待下一批）
+  api/animation/playback/    播放请求、帧准备、事件、接管与合成契约
   api/animation/document/    快照、句柄、存储、历史、事务、预览与选择
   api/animation/edit/        纯编辑操作、诊断、分层校验与试算
   api/spatial/               空间、锚点、姿态值、注视状态
@@ -74,7 +74,7 @@ cn/anecansaitin/free_camera_api_tripod_v2/
 | 布局矩形动画 | §3.1.2 要求 `AnimatedNumber` 的 x/y/width/height 可随时间变化 | RigView.Rect 仍为静态几何，尚未交付 | Q11 为早期暂缓记录，已由 Q14 更新为后续 block/spatial 批次落地 |
 | 采样参数 Codec | 类型自身的 `MapCodec` + common 侧注册 | `SampleArgs` 名义接口已交付（Q7）；Codec 与注册表未写 | 随 S1 采样类型注册表批次补齐 |
 | 叠加元素内容 | O1–O3 阶段定义各类字段 | `OverlayElement.content` 仍是不透明 `Object` | 随 O1–O3 改为按种类拆分的封闭内容类型（Q7：不提前定型） |
-| `eval` / `playback` 包完整性 | 设计要求求值与播放契约及宿主实现 | 第四批已交付 §4.9 所列 eval 契约，尚无算法实现；playback 仍仅 AimOverride | §6.5 C1–C4 契约修复已复核；补 playback 其余类型，eval 算法留 core |
+| `eval` / `playback` 包完整性 | 设计要求求值与播放契约及宿主实现 | 第四批已交付 §4.9 所列 eval 契约，第五批已交付 §4.10 所列 playback 契约；算法、事件执行、合成与渲染仍无实现 | §6.5 C1–C4 契约修复已复核；算法与宿主实现留 `core` |
 | `edit` 与 `document` 包依赖 | 主设计已按 Q13 同步顶层 edit 与 document 双向引用例外 | 实现与目标设计一致 | 不再是临时差异；仍禁止 api 依赖 core/editor |
 | 修订号类型 | 主设计 §3.3 已同步 Revision 包装 | 事务 / 历史 / 快照统一使用，换档不重置 | 已对齐；存储运行实现仍待 core |
 | `EditTools` 工具契约 | §4.6 / §4.7 要求缓动、批量、烘焙、注视姿态捕获 | 本批只交付 `EditOp` / 诊断 / 校验 / 试算核心，未定义工具请求 | 随 eval / editor 批次补（依赖冻结事实与采样） |
@@ -128,7 +128,7 @@ cn/anecansaitin/free_camera_api_tripod_v2/
 | 主设计 §4.1–4.5 编辑、校验、历史、工具 | `api.animation.edit` + `document` | **已交付（核心契约）**（余 `EditTools`） |
 | 主设计 §4.3 试算 | `edit.TrialRun` / `TrialResult` / `TrialStatus` | **已交付（契约）** |
 | 主设计 §3.4 / I5–I7 求值与帧事实 | `api.animation.eval`（`FrameFacts` / `EvaluationContext` / `CurveSampler` / `DocumentPose` / `TrackIndex` 等） | **已交付（契约）** |
-| 主设计 §7.1–7.3 播放 | `api.animation.playback`（余项） | 部分交付 |
+| 主设计 §7.1–7.6 播放、事件与合成 | `api.animation.playback`（请求 / 覆盖 / 服务 / 帧 / 事件 / 接管 / 合成） | **已交付（契约）**（实现留 `core`） |
 | 主设计 §8.1–8.4 存储 | `api.storage` | 待下一批 |
 | 主设计 §5.1–5.3、§9.2–9.4 会话与扩展面 | `api.editor`、`editor.spi` | 分区已建立，契约待 U1–U3 |
 
@@ -202,10 +202,11 @@ cn/anecansaitin/free_camera_api_tripod_v2/
 | `ResolvedAnchor` | 一帧内解析结果（位置 + 旋转 + 是否应用 partial tick） |
 | `AimTarget` | 注视配置（目标 + 掩码 + 世界轴偏移）；请求覆盖见 `playback.AimOverride`（Q5） |
 | `AimState` | 某一时刻的注视状态：`Off \| Target(AimTarget)`（供状态轨道与帧事实使用） |
+| `WorldPose` | 已补全并完成参考系合成的最终姿态（第五批 playback 依赖） |
 | `ObstacleSettings` | 避障默认设置 |
 
-**余项**：`AnchorTypeRegistry`（common 侧类型注册）、`AnchorResolver`（客户端解析器）、
-`WorldPose`（世界姿态，主设计 §6.2）；`DocumentPose` 已在第四批 eval 交付，不再列为 spatial 余项。
+**余项**：`AnchorTypeRegistry`（common 侧类型注册）、`AnchorResolver`（客户端解析器）。
+`WorldPose` 已在第五批交付；`DocumentPose` 已在第四批 eval 交付，不再列为 spatial 余项。
 
 ### 4.7 `api.animation.edit` —— 编辑与诊断（主设计 §4）**已交付（核心）**
 
@@ -238,15 +239,16 @@ cn/anecansaitin/free_camera_api_tripod_v2/
 
 采样器、依赖图、缓存与姿态合成的实现留到 `core`；本批只声明契约，不宣称帧求值可用。
 
-### 4.10 `api.animation.playback` —— 播放（主设计 §7.1–7.3）**部分交付**
+### 4.10 `api.animation.playback` —— 播放（主设计 §7.1–7.6）**已交付（契约）**
 
-已交付：`AimOverride`（Q5：`Inherit` / `Disabled` / `Replace`）。覆盖只在宿主层应用，
-求值层只接收生效的 `AimState`；固定 `Replace` 不能靠写文档 `Off` 关闭。
+`PlaybackRequest`、`RigPlaybackOverrides`、`AimOverride`（Q5）、`PlaybackService`（含 `StartResult`）、
+`PlaybackState`、`PlaybackClock`、`PreparedFrame`（含 `Event`）、`RigPose`、`PlaybackFailure`
+（含 `Reason`）、`EventBudget`、`EventDispatcher`（含 `Result`）、`CameraControlClaims`（含 `Claim`）、
+`CameraProbe`、`CameraCompositionService`、`CompositionRequest`、`CompositionResult`、
+`RigRenderStatus`、`DegradeReason`。
 
-**余项**：`PlaybackRequest`、`RigPlaybackOverrides`、`PlaybackService`、`PlaybackState`、
-`PreparedFrame`、`RigPose`、`PlaybackFailure`、`PlaybackClock`、`EventBudget`、
-`EventDispatcher`、`CameraControlClaims`、`CameraProbe`、`CameraCompositionService`、
-`CompositionRequest`、`CompositionResult`、`RigRenderStatus`、`DegradeReason`。
+实现（时间推进、事件执行、多路合成、探针与接管仲裁）留到 `core`；本批只声明契约，
+不宣称播放链路、渲染或事件执行可用。
 
 ### 4.11 `api.storage` —— 资源与恢复（主设计 §2.2、§8）**待下一批**
 
@@ -309,8 +311,9 @@ cn/anecansaitin/free_camera_api_tripod_v2/
 第四批新增 11 个主源码文件（`eval` 余项：`TrackIndex`、`FrameFacts`、`EvaluationContext`、
 `EvaluationKey`、`CurveSampler`、`SampleStatus`、`ChannelSample`、`DocumentPose`、
 `SpatialReadings`、`DependencyGraph`、`EvaluationCache`）。
-`_v2` 现有 **108 个 Java 文件**：
-94 个公开顶层类型 + 13 个 `package-info.java` + 1 个包内工具 `KeyframeSequences`。
+第五批新增 18 个主源码文件（`playback` 17 个 + `spatial.WorldPose`）。
+`_v2` 现有 **126 个 Java 文件**：
+112 个公开顶层类型 + 13 个 `package-info.java` + 1 个包内工具 `KeyframeSequences`。
 
 第二批新增（有类型轨道 / 读数切片）：
 
@@ -346,6 +349,16 @@ Q4–Q7 裁决新增：
 
 第四批未交付：采样器、依赖图、姿态合成与缓存的实现（`core`）；A2 的条件缓存仍待宿主证据。
 
+第五批新增（playback）：
+
+- `playback/`：`PlaybackRequest`、`RigPlaybackOverrides`、`PlaybackService`、`PlaybackState`、
+  `PlaybackClock`、`PreparedFrame`、`RigPose`、`PlaybackFailure`、`EventBudget`、
+  `EventDispatcher`、`CameraControlClaims`、`CameraProbe`、`CameraCompositionService`、
+  `CompositionRequest`、`CompositionResult`、`RigRenderStatus`、`DegradeReason`
+- `spatial/WorldPose`：最终姿态
+
+第五批未交付：时间推进、事件执行器、多路合成、探针与接管仲裁实现（`core`）。
+
 第二批修订：`CameraAnimation`（移除 `trackLookup()`）、`CameraRig`、`RigView`、
 `AnimationTrack`（扩展轨道保留 ID 约束）、`CurveTrack`（移除无 ID 便利工厂）、
 `WorldSample`（`SampleArgs` + `kind == args.type()`）、`OverlayElement`（访问器语义与时长贡献分离）、
@@ -361,7 +374,7 @@ Q4–Q7 裁决新增：
 | P2 | `OverlayElement.endTime()` 重写访问器，未启用时返回 0，创作数据被隐藏，访问器重建对象会得到非法区间 | 删除访问器重写，`endTime()` 恢复原始区间；新增派生查询 `durationContribution()`，`CameraAnimation.duration()` 改读它；新增 `OverlayElementContractTest` |
 | P2 | `CurveTrack.ofChannel(CameraChannel)` 用语义键当 `TrackId`，多机位同通道会重复身份 | 删除该便利工厂；通道轨道必须显式提供文档内唯一 `TrackId`（`ofChannel(TrackId, String, CameraChannel, Curve)`）；新增双机位同通道测试 |
 
-v2 契约测试类 12 个（65 个用例）；包含旧实现测试的全工程基线为 18 个 suite / 131 个用例：
+v2 契约测试类 13 个（74 个用例）；包含旧实现测试的全工程基线为 19 个 suite / 140 个用例：
 
 - `block/StateTrackContractTest`：STEP 语义、键时间唯一、时长口径、统一轨道目录、读数三分支、
   双机位同通道需不同 `TrackId`
@@ -375,6 +388,8 @@ v2 契约测试类 12 个（65 个用例）；包含旧实现测试的全工程�
 - `edit/EditContractTest`：操作时间、`Batch` 复制、拒绝诊断、诊断作用域与修复基版本（第三批）
 - `document/DocumentContractTest`：Revision、快照、选择、预览、事务与历史标签（第三批）
 - `edit/LocalizedMessageContractTest`：不可变消息、受限样式、翻译参数复制（§6.5 C3）
+- `playback/PlaybackContractTest`：请求校验、覆盖默认、时钟、帧复制、事件预算、合成结果、
+  `WorldPose`（第五批）
 - `eval/EvalContractTest`：`ChannelSample` 三态、`FrameFacts` 复制与 partial tick、
   `DocumentPose` 掩码、`SpatialReadings`、`EvaluationKey` / `EvaluationContext`（第四批）
 
@@ -397,21 +412,19 @@ v2 契约测试类 12 个（65 个用例）；包含旧实现测试的全工程�
    文件无条目。本批修订的是 `_v2` 已跟踪文件，因此 `M` 条目应全部位于 `_v2` 下；
    新增文件为 `??`。
 
-验收标准为编译、测试及依赖边界检查通过，并关闭对应审查项。最近一次复核实际运行 compileJava test --rerun：18 个 suite / 131 个用例通过，其中 v2 为 12 / 65；C1–C4 在契约范围已关闭，见 R12。该测试基线不代表 core 存储、缓存、异步诊断绑定或消息渲染已验证，也不代表 §7.5 全部定型事项已关闭。本次文档同步未重跑测试。
+验收标准为编译、测试及依赖边界检查通过，并关闭对应审查项。第五批 playback 契约后实际运行 `compileJava test`：19 个 suite / 140 个用例通过，其中 v2 为 13 / 74；C1–C4 契约层复核关闭见 R12，playback 契约待人工审核。该基线不代表 time 推进、事件执行器、合成或 core 存储已验证。
 
 ### 6.3 下一批（P1 余下契约）
 
 §6.5 C1–C4 契约问题已复核关闭；后续结合 §7.5 的未决绑定/实现事项，按依赖补齐契约：
 
-1. `api.animation.playback`（补齐余项）：播放请求、每路覆盖（`RigPlaybackOverrides` 引用
-   已交付的 `AimOverride`）、准备帧、合成与相机契约；覆盖在宿主层应用，求值层只收生效状态。
-2. `api.storage`：资源服务与恢复槽。
-3. `api.editor`：会话与后端契约（含基于稳定 ID 的选择、状态轨道时间轴与配置）。
-4. `api.animation.edit` 余项：`EditTools`（缓动 / 批量 / 烘焙 / 注视姿态转旋转键并关闭注视）。
+1. `api.storage`：资源服务、保存 / 载入结果与恢复槽。
+2. `api.editor`：会话与后端契约（含基于稳定 ID 的选择、状态轨道时间轴与配置）。
+3. `api.animation.edit` 余项：`EditTools`（缓动 / 批量 / 烘焙 / 注视姿态转旋转键并关闭注视）。
    它依赖 eval 的采样、冻结世界事实与 `EditOp` 复合提交；不提前发明工具请求类型。
-5. `block` / `spatial` 余项：`TrackTypeRegistry`、`AnchorTypeRegistry`、`AnchorResolver`、
-   `WorldPose`（`DocumentPose` 已在 eval 交付）；`field.AnimatedNumber` 与 `RigView.Rect` 的布局动画
-   （Q14：本轮随后落地）；采样参数 `MapCodec` 与注册表（S1）；叠加内容类型（O1–O3）。
+4. `block` / `spatial` 余项：`TrackTypeRegistry`、`AnchorTypeRegistry`、`AnchorResolver`；
+   `field.AnimatedNumber` 与 `RigView.Rect` 的布局动画（Q14：随后落地）；采样参数 `MapCodec`
+   与注册表（S1）；叠加内容类型（O1–O3）。
 
 <a id="p1-follow-up"></a>
 ### 6.4 后续代码修复、验证与优化清单
@@ -430,7 +443,7 @@ v2 契约测试类 12 个（65 个用例）；包含旧实现测试的全工程�
 
 性能调整先确认调用位置和频率；不得把 v1 调用当成 v2 已有热点。需要量化结论时保留可复现源码、真实数据规模、JDK/GC 参数、多轮结果与分配依据；原替身微基准的绝对值和比值均不作门槛。不要仅因 Stream 写法改循环，也不永久禁止某种实现。
 
-当前状态：A0/A1/A4/A5 的模型修正与回归测试已随 R7 落地；A7 的注释和时长测试已完成，事件执行副作用验证仍待执行器。A3 已随 R9 交付 TrackIndex 契约，但索引构建、绑定与运行验证尚未完成；A2 仍等待宿主重复查询证据。R7、R8、R9、R10、R11 分别记录 105、117、123、127、131 个全工程用例，当前基线为 R11 的 131（v2 65），不再沿用旧数字。
+当前状态：A0/A1/A4/A5 的模型修正与回归测试已随 R7 落地；A7 的注释和时长测试已完成，事件执行副作用验证仍待执行器。A3 已随 R9 交付 TrackIndex 契约，但索引构建、绑定与运行验证尚未完成；A2 仍等待宿主重复查询证据。R13 记录 140 个全工程用例（v2 74），R11 为 131（v2 65），不再沿用旧数字。
 
 ### 6.5 2026-10-18 第三/四批审查：历史问题与最终修复
 
@@ -527,6 +540,15 @@ v2 契约测试类 12 个（65 个用例）；包含旧实现测试的全工程�
 24. **`DiagnosticScope` 作用域**：`Document(Revision)` 允许对象 / 字段定位与 `Fix`，
     `File(resource)` 不允许对象 ID 与 `Fix`；`Fix.baseRevision` 必须等于作用域版本。
     请确认文件诊断的资源身份用 `String` 是否足够（storage 批次可能引入 `ResourceId`）。
+25. **`PlaybackRequest` 与 `PlaybackService`**：请求持有 `CameraAnimation` 而非快照，`start`
+    接收 `Revision` 并由同一 store 换档；`StartResult` 强制 accepted / failure 一致。请确认
+    请求载入与文档切换的原子边界，以及未知 `RigId` 覆盖的拒绝位置。
+26. **`PreparedFrame.Event` 仅含 `TrackId + time`**：事件载荷留在轨道，执行器按轨道类型解析；
+    `EventDispatcher.Result` 报告已分发数与失败。请确认这是否足够支撑第三方 Tick 轨道，
+    以及执行器异常时“部分执行”的报告口径。
+27. **`WorldPose` / `CompositionResult` / `RigRenderStatus`**：`WorldPose.fov` 用度且必须为正；
+    合成结果强制 presented / failure 一致；降级状态带 `sampledAtGameTick`。请确认 FOV 单位、
+    渲染目标身份与旧帧时间标识是否足够。
 
 ### 7.2 已裁决（用户）
 
@@ -585,7 +607,7 @@ Q4–Q7、Q13 已裁决关闭，以下仍需在后续批次定型；若涉及 §
 - 显式姿态捕获工具冻结基版本与 t 的事实，按关闭前有效目标求姿态、逆变换到文档参考系，一次写入 t 的完整 XYZ 常量键和 Off。若 t 已有 Off，可显式选左侧有效目标配置，但姿态仍求 t 时刻；覆盖/公式替换须确认，固定 Target 请求覆盖（`AimOverride.Replace`）先清除再重算。任何失败不部分提交，一次撤销完整恢复。
 - 该工具固化编辑时世界事实，不保证动态目标重播时连续；不引入运行期上一帧姿态继承、平滑注视或镜头混合。
 
-契约进度：field/block 第二批、document/edit 第三批及 eval 第四批类型均已交付；第三/四批的 §6.5 C1–C4 已通过契约复核；§7.5 其余定型事项仍待审核。A3 仅完成索引契约，core 绑定实现未交付。后续补 playback / storage / editor、按 Q14 补布局动画，再推进 EditTools；不得将契约交付写成算法、发布或播放链路已实现。
+契约进度：field/block 第二批、document/edit 第三批、eval 第四批及 playback 第五批类型均已交付；第三/四批的 §6.5 C1–C4 已通过契约复核；§7.5 其余定型事项仍待审核。A3 仅完成索引契约，core 绑定实现未交付。第五批 playback 也只交付契约，时间推进、事件执行、合成与探针实现仍在 `core`；后续补 storage / editor、按 Q14 补布局动画，再推进 EditTools。不得将契约交付写成算法、发布或播放链路已实现。
 
 
 ### 7.5 相较上一轮新增的人工审核清单
@@ -601,5 +623,6 @@ Q4–Q7、Q13 已裁决关闭，以下仍需在后续批次定型；若涉及 §
 | 上下文与世界身份 | 同维度重进世界、撤销/候选变化时，快照/上下文/帧/事实/采样表身份由谁生成 | 统一绑定/身份分配规则；TrackLookup、TrackIndex 与缓存键同源，时间身份采用 C2 已加入的 sampleTime，生成/绑定协议仍待实现 |
 | 空间与姿态错误 | FrameFacts 的合法空值与解析失败、失败原因传递；DocumentPose 轴 ERROR 与 ABSENT、FOV 错误汇总 | 准备结果诊断通道及合成阻断规则，不能把缺失二值掩码当作错误兜底 |
 | 轨道索引 | 唯一 ID 拒绝、TrackLookup 不能绕过冲突、TrackRef 在被引用机位求值 | A3 实现批次的跨机位/换档/候选一致性验收 |
+| playback 帧准备与执行 | `PlaybackRequest` 的文档切换边界、`PreparedFrame.Event` 仅 trackId/time、`StartResult`/`CompositionResult` 一致性、`WorldPose` FOV 单位与降级状态 | 事件载荷解析协议、执行器异常的部分执行报告、合成失败与降级区分 |
 
 Q13 已接受的双向包引用无需重新请求确认；store、校验器、采样器、依赖图、缓存和 EditTools 的实现延期仍保持。Q11 是早期暂缓记录，Q14 已更新后续实施安排；本次更正不将任何新增审核项写为 Q15 等“用户已裁决”。

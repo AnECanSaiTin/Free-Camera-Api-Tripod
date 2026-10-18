@@ -31,6 +31,7 @@
 | [R10](#r10-实施记录p1-计划-65-的-c1c4-修正) | 实施记录：§6.5 C1–C4 | C1/C2 已修正；C3/C4 由 R11 重做（浅拷贝与可空版本问题） | 部分（C3/C4 见 R11） |
 | [R11](#r11-实施记录c3c4-深层修正) | 实施记录：C3/C4 深层修正 | 不可变 LocalizedMessage + 受限样式；显式 DiagnosticScope | 已修正，复核结论见 R12 |
 | [R12](#r12-复核关闭c1c4-契约修复与运行边界) | 复核关闭 C1–C4 | 四项修复在当前契约范围成立；无新增确定缺陷 | 契约已复核；运行实现另验 |
+| [R13](#r13-实施记录playback-契约批次) | 实施记录：playback 契约 | 请求/覆盖/服务/帧/事件/接管/合成 + WorldPose | 契约已交付（测试通过） |
 
 ---
 
@@ -722,3 +723,41 @@ public float viewExtent() {
 ### R12.2 设计及施工记录同步
 
 主设计 §3.2/§3.3/§3.4/§4.1 明确不可变消息、换档递增、sampleTime 与诊断作用域；§5.1 事务标签改为 LocalizedMessage。UI §6.2 明确显示时才渲染消息以及作用域/版本检查。主设计 §9.2 的交互消息同步为不可变描述的目标签名，InteractionRequest 仍是后续 api.editor 契约，未据此声称已交付。P1 §6.5 历史发现保留，当前状态改为四项契约复核关闭，完整运行实现仍延期。
+
+---
+
+## R13. 实施记录：playback 契约批次
+
+**记录日期**：2026-10-18
+**类型**：实施记录（非新复核）；第五批契约，待人工审核。
+**核查位置**：
+[`playback/`](../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/playback/)、
+[`spatial/WorldPose.java`](../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/spatial/WorldPose.java)；测试：
+[`playback/PlaybackContractTest`](../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/playback/PlaybackContractTest.java)。
+
+### R13.1 交付内容
+
+- `PlaybackRequest` / `RigPlaybackOverrides` / `AimOverride`：请求、每路覆盖与继承语义。
+- `PlaybackService`（含 `StartResult`）/ `PlaybackState` / `PlaybackClock` /
+  `PreparedFrame`（含 `Event`）/ `RigPose` / `PlaybackFailure`（含 `Reason`）。
+- `EventBudget` / `EventDispatcher`（含 `Result`）：事件数量与区间预算、部分执行报告。
+- `CameraControlClaims`（含 `Claim`）/ `CameraProbe`：编辑器接管仲裁与宿主基础姿态。
+- `CameraCompositionService` / `CompositionRequest` / `CompositionResult` /
+  `RigRenderStatus` / `DegradeReason`：多路合成与可见降级。
+- `spatial.WorldPose`：已补全的最终姿态；`PlaybackFailure` 与合成状态使用不可变消息。
+
+### R13.2 验证结果
+
+- 命令：`.\gradlew.bat --offline compileJava test --console=plain`
+- 结果：`BUILD SUCCESSFUL`；**19 个测试 suite / 140 个用例全绿**，其中 `_v2` 为
+  **13 个 suite / 74 个用例**（R12 为 18 / 131，v2 12 / 65）。
+- 本批新增 `playback/PlaybackContractTest`；同时补齐 R12 列出的非阻断空白：
+  `LocalizedMessage` 参数列表不可修改 / 多层嵌套隔离、`Document` 作用域空版本拒绝、
+  无 Fix 的文档对象定位合法分支。
+- 门禁：`_v2` 旧根引用 0、`net.minecraft.client` 引用 0、旧根已跟踪文件改动 0。
+
+### R13.3 未完成
+
+- 时间推进、事件执行器、多路合成、探针与接管仲裁的实现均在 `core`；
+- `PreparedFrame.Event` 仅含 `TrackId + time`，事件载荷解析与第三方轨道执行协议仍需审核；
+- 播放契约与 §7.5 的求值绑定 / 世界身份 / 空间错误传递仍未闭环，不宣称播放链路可用。
