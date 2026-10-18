@@ -22,7 +22,8 @@ import java.util.Optional;
 @NullMarked
 public interface TrackIndex {
 
-    /// 本索引绑定的快照；求值上下文必须与它同源。
+    /// 本索引绑定的快照；求值上下文用**引用身份**校验同源，必须返回建立索引时的原快照引用，
+    /// 不能返回内容相等的新副本。
     AnimationSnapshot snapshot();
 
     /// 按 `TrackId` 查索引条目；不存在或重复冲突时返回空（冲突见 [diagnostics]）。

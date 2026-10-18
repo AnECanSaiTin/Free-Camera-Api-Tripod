@@ -12,7 +12,9 @@ import java.util.Objects;
 /// 区分帧、机位与事实版本。
 ///
 /// 推荐通过 [bind] 统一创建，确保快照、事实、轨道查询与索引来自同一次绑定；公开构造器
-/// 只保留给无法使用工厂的宿主。`TrackIndex` 必须由同一快照构建，不能与快照 / 查询混用。
+/// 只保留给无法使用工厂的宿主。`TrackIndex` 必须由同一快照构建，不能与快照 / 查询混用；
+/// 同源校验按**快照引用身份**比较，不使用 record 的 `equals`（内容相等不能证明来自同一 store /
+/// 候选绑定）。索引必须保留原快照引用。
 ///
 /// 预览候选使用独立上下文身份，不能与正式播放共享缓存。
 ///
@@ -39,9 +41,10 @@ public record EvaluationContext(
         Objects.requireNonNull(tracks, "tracks");
         Objects.requireNonNull(trackIndex, "trackIndex");
 
-        if (!trackIndex.snapshot().equals(snapshot)) {
+        // 引用身份而不是 equals：同 revision/document 的异源快照不能被当成同源绑定。
+        if (trackIndex.snapshot() != snapshot) {
             throw new IllegalArgumentException(
-                    "EvaluationContext trackIndex must be bound to the same snapshot");
+                    "EvaluationContext trackIndex must hold the exact bound snapshot reference");
         }
     }
 

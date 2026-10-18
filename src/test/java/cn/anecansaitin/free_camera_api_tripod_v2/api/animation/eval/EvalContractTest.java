@@ -182,6 +182,10 @@ class EvalContractTest {
         EvaluationContext context = EvaluationContext.bind(1, snapshot, emptyFacts(), lookup, index);
         assertEquals(1, context.contextId());
 
+        AnimationSnapshot equalValueCopy = new AnimationSnapshot(snapshot.revision(), snapshot.document());
+        assertThrows(IllegalArgumentException.class,
+                () -> EvaluationContext.bind(2, equalValueCopy, emptyFacts(), lookup, index));
+
         CurveSampleRequest request = new CurveSampleRequest(
                 context, new TrackId("track"), new RigId("rig"), -0.0f);
         assertEquals(0, Float.floatToIntBits(request.sampleTime()));

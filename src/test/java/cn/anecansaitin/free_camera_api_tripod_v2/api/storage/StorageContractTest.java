@@ -66,6 +66,15 @@ class StorageContractTest {
 
         assertEquals(1, report.diagnostics().size());
         assertTrue(report.hasErrors());
+
+        assertThrows(IllegalArgumentException.class,
+                () -> new DiagnosticReport(new ResourceId("other"), List.of(errorDiagnostic())));
+
+        Diagnostic documentDiagnostic = new Diagnostic(DiagnosticCode.BROKEN_REFERENCE,
+                Severity.ERROR, LocalizedMessage.literal("document"),
+                new DiagnosticScope.Document(new Revision(1)), null, null);
+        assertThrows(IllegalArgumentException.class,
+                () -> new DiagnosticReport(resource(), List.of(documentDiagnostic)));
     }
 
     @Test
