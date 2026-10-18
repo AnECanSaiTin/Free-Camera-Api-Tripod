@@ -38,6 +38,11 @@ public record EvaluationContext(
         Objects.requireNonNull(facts, "facts");
         Objects.requireNonNull(tracks, "tracks");
         Objects.requireNonNull(trackIndex, "trackIndex");
+
+        if (!trackIndex.snapshot().equals(snapshot)) {
+            throw new IllegalArgumentException(
+                    "EvaluationContext trackIndex must be bound to the same snapshot");
+        }
     }
 
     /// 统一绑定入口：调用方必须保证快照、事实、查询与索引来自同一次快照绑定。

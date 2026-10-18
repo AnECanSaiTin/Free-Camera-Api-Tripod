@@ -1,6 +1,7 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.eval;
 
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.AnimationTrack;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.AnimationSnapshot;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.Diagnostic;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.RigId;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.TrackId;
@@ -20,6 +21,9 @@ import java.util.Optional;
 /// - 仍以 `Optional` 返回，具体分配次数不属于契约承诺。
 @NullMarked
 public interface TrackIndex {
+
+    /// 本索引绑定的快照；求值上下文必须与它同源。
+    AnimationSnapshot snapshot();
 
     /// 按 `TrackId` 查索引条目；不存在或重复冲突时返回空（冲突见 [diagnostics]）。
     Optional<Entry> find(TrackId trackId);

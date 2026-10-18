@@ -62,14 +62,13 @@ public record EvaluationKey(
 
     /// 由显式采样请求生成缓存键：统一入口，避免调用方各自拼装身份。
     ///
-    /// `snapshotId` 必须是独立分配的运行期身份，不能使用 revision；世界实例身份取自
-    /// 请求上下文的 [FrameFacts#worldInstanceId]，采样时间直接使用请求值。
+    /// `snapshotId` 必须是独立分配的运行期身份，不能使用 revision；世界实例身份与采样表版本
+    /// 直接取自请求上下文的 [FrameFacts]，调用方不能另传一个与事实不一致的表版本。
     public static EvaluationKey from(
             CurveSampleRequest request,
             long snapshotId,
             long frameIndex,
-            long factsIdentity,
-            long sampleTableVersion) {
+            long factsIdentity) {
         Objects.requireNonNull(request, "request");
 
         return new EvaluationKey(
@@ -81,6 +80,6 @@ public record EvaluationKey(
                 request.rigId(),
                 request.trackId(),
                 factsIdentity,
-                sampleTableVersion);
+                request.context().facts().sampleTableVersion());
     }
 }

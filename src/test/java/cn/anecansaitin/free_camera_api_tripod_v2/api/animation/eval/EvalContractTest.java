@@ -164,6 +164,11 @@ class EvalContractTest {
         TrackLookup lookup = trackId -> Optional.empty();
         TrackIndex index = new TrackIndex() {
             @Override
+            public AnimationSnapshot snapshot() {
+                return snapshot;
+            }
+
+            @Override
             public Optional<Entry> find(TrackId trackId) {
                 return Optional.empty();
             }
@@ -181,8 +186,9 @@ class EvalContractTest {
                 context, new TrackId("track"), new RigId("rig"), -0.0f);
         assertEquals(0, Float.floatToIntBits(request.sampleTime()));
 
-        EvaluationKey fromRequest = EvaluationKey.from(request, 9L, 3L, 4L, 5L);
+        EvaluationKey fromRequest = EvaluationKey.from(request, 9L, 3L, 4L);
         assertEquals(7L, fromRequest.worldInstanceId());
+        assertEquals(1L, fromRequest.sampleTableVersion());
         assertEquals(0, Float.floatToIntBits(fromRequest.sampleTime()));
 
         assertThrows(IllegalArgumentException.class,

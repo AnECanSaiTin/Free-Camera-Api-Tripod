@@ -9,6 +9,9 @@ import org.jspecify.annotations.Nullable;
 /// 内核只负责时间、状态、文档空间求值与事件区间准备；不读取世界、不写相机、不执行指令。
 /// 请求通过文档校验后由同一文档存储切换文档；编辑器打开时按整份换档处理。
 ///
+/// **线程约束**：所有方法与帧准备必须在宿主主线程调用；实现须拒绝其他线程，不能用内部锁
+/// 把编辑 / 发布 / 渲染重入伪装成安全。主线程协调的具体检查留到 core 实现。
+///
 /// 失败规则：
 ///
 /// - 任一实际依赖失败 → 终止播放、释放相机、保留失败时刻、不执行本帧事件；
@@ -52,10 +55,14 @@ public interface PlaybackService {
 
     /// 准备一帧；成功返回可执行帧，失败 / 停止时返回空并把失败写入 [failure]。
     ///
+    /// 事件预算必须在**展开区间、生成事件时**执行，不能先完整展开再检查；超限按
+    /// [PlaybackFailure.Reason#EVENT_BUDGET_EXCEEDED] 终止。
+    ///
     /// @param frameIndex   帧序号，非负
     /// @param deltaSeconds 距上一帧的推进量，秒；有限且非负
+    /// @param eventBudget  本帧事件与区间预算
     @Nullable
-    PreparedFrame prepareFrame(long frameIndex, float deltaSeconds);
+    PreparedFrame prepareFrame(long frameIndex, float deltaSeconds, EventBudget eventBudget);
 
     /// 开始结果。
     ///
