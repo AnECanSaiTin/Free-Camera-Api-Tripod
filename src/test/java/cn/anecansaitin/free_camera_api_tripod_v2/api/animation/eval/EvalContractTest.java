@@ -16,6 +16,7 @@ import cn.anecansaitin.free_camera_api_tripod_v2.api.spatial.ResolvedAnchor;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.spatial.Rotation;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.spatial.RotationMask;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.spatial.Vec3;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.storage.ResourceId;
 import net.minecraft.resources.Identifier;
 import org.junit.jupiter.api.Test;
 
@@ -38,12 +39,12 @@ class EvalContractTest {
             Identifier.fromNamespaceAndPath("free_camera_api_tripod", "test_anchor");
 
     private static FrameFacts emptyFacts() {
-        return new FrameFacts(DIMENSION, 1L, 0.5f, 1L, Map.of(), Map.of(), true);
+        return new FrameFacts(DIMENSION, 7L, 1L, 0.5f, 1L, Map.of(), Map.of(), true);
     }
 
     private static Diagnostic errorDiagnostic() {
         return new Diagnostic(DiagnosticCode.BROKEN_REFERENCE, Severity.ERROR,
-                LocalizedMessage.literal("broken"), new DiagnosticScope.File("test-resource"),
+                LocalizedMessage.literal("broken"), new DiagnosticScope.File(new ResourceId("test-resource")),
                 null, null);
     }
 
@@ -65,25 +66,28 @@ class EvalContractTest {
     void frameFactsCopiesMapsAndValidatesPartialTick() {
         Map<RigId, FrameFacts.RigFacts> rigs = new HashMap<>();
         rigs.put(new RigId("rig"), new FrameFacts.RigFacts(
-                ResolvedAnchor.at(() -> ANCHOR_TYPE, Vec3.ZERO), null, AimState.off()));
+                new SpatialResolution.Resolved(ResolvedAnchor.at(() -> ANCHOR_TYPE, Vec3.ZERO)),
+                new SpatialResolution.NotRequired(), AimState.off()));
 
-        FrameFacts facts = new FrameFacts(DIMENSION, 10L, 0.25f, 3L, rigs, Map.of(), true);
+        FrameFacts facts = new FrameFacts(DIMENSION, 7L, 10L, 0.25f, 3L, rigs, Map.of(), true);
         rigs.clear();
 
         assertTrue(facts.rig(new RigId("rig")).isPresent());
         assertEquals(0.25f, facts.partialTick());
         assertThrows(IllegalArgumentException.class,
-                () -> new FrameFacts(DIMENSION, 0L, 1f, 0L, Map.of(), Map.of(), true));
+                () -> new FrameFacts(DIMENSION, 7L, 0L, 1f, 0L, Map.of(), Map.of(), true));
         assertThrows(IllegalArgumentException.class,
-                () -> new FrameFacts(DIMENSION, -1L, 0f, 0L, Map.of(), Map.of(), true));
+                () -> new FrameFacts(DIMENSION, 7L, -1L, 0f, 0L, Map.of(), Map.of(), true));
+        assertThrows(IllegalArgumentException.class,
+                () -> new FrameFacts(DIMENSION, -1L, 0L, 0f, 0L, Map.of(), Map.of(), true));
     }
 
     @Test
-    void documentPoseCopiesDiagnosticsAndKeepsMasksSeparate() {
+    void documentPoseCopiesDiagnosticsAndKeepsAxisStatesSeparate() {
         List<Diagnostic> diagnostics = new ArrayList<>(List.of(errorDiagnostic()));
-        DocumentPose pose = new DocumentPose(Vec3.ZERO,
-                new DocumentPose.PositionMask(true, false, true),
-                Rotation.NONE, new RotationMask(true, true, false),
+        DocumentPose pose = new DocumentPose(
+                new AxisSample.Value(0), new AxisSample.Absent(), new AxisSample.Value(0),
+                new AxisSample.Value(0), new AxisSample.Value(0), new AxisSample.Absent(),
                 ChannelSample.absent(), diagnostics);
         diagnostics.clear();
 
@@ -91,6 +95,29 @@ class EvalContractTest {
         assertTrue(pose.positionMask().x());
         assertFalse(pose.positionMask().y());
         assertFalse(pose.rotationMask().z());
+        assertFalse(pose.position().isPresent());
+        assertFalse(pose.rotation().isPresent());
+        assertTrue(pose.hasError());
+    }
+
+    @Test
+    void axisAndSpatialResolutionKeepErrorSeparateFromAbsence() {
+        Diagnostic error = errorDiagnostic();
+
+        assertTrue(new AxisSample.Absent().isAbsent());
+        assertEquals(1.0, ((AxisSample.Value) new AxisSample.Value(1.0)).value());
+        assertTrue(new AxisSample.Error(error).isError());
+        assertThrows(IllegalArgumentException.class,
+                () -> new AxisSample.Value(Double.NaN));
+        assertThrows(IllegalArgumentException.class,
+                () -> new AxisSample.Error(new Diagnostic(DiagnosticCode.BROKEN_REFERENCE,
+                        Severity.WARNING, LocalizedMessage.literal("warning"),
+                        new DiagnosticScope.File(new ResourceId("test")), null, null)));
+
+        assertFalse(new SpatialResolution.NotRequired().isResolved());
+        assertTrue(new SpatialResolution.Resolved(
+                ResolvedAnchor.at(() -> ANCHOR_TYPE, Vec3.ZERO)).isResolved());
+        assertTrue(new SpatialResolution.Failed(error).isFailed());
     }
 
     @Test
@@ -102,24 +129,28 @@ class EvalContractTest {
 
     @Test
     void evaluationKeyRequiresTrackAndNonNegativeIdentities() {
-        EvaluationKey key = new EvaluationKey(1, 2, 3, 0.5f, new RigId("rig"),
+        EvaluationKey key = new EvaluationKey(1, 2, 7, 3, 0.5f, new RigId("rig"),
                 new TrackId("track"), 4, 5);
 
         assertEquals(new TrackId("track"), key.trackId());
         assertThrows(IllegalArgumentException.class,
-                () -> new EvaluationKey(-1, 0, 0, 0f, null, new TrackId("t"), 0, 0));
+                () -> new EvaluationKey(-1, 0, 0, 0, 0f, null, new TrackId("t"), 0, 0));
         assertThrows(NullPointerException.class,
-                () -> new EvaluationKey(1, 2, 3, 0f, null, null, 4, 5));
+                () -> new EvaluationKey(1, 2, 7, 3, 0f, null, null, 4, 5));
         assertThrows(IllegalArgumentException.class,
-                () -> new EvaluationKey(1, 2, 3, Float.NaN, null, new TrackId("t"), 4, 5));
+                () -> new EvaluationKey(1, 2, 7, 3, Float.NaN, null, new TrackId("t"), 4, 5));
+        assertThrows(IllegalArgumentException.class,
+                () -> new EvaluationKey(1, 2, -1, 3, 0f, null, new TrackId("t"), 4, 5));
     }
 
     @Test
-    void evaluationKeyDistinguishesSampleTimesWithinOneFrame() {
-        EvaluationKey atZero = new EvaluationKey(1, 2, 3, -0.0f, null, new TrackId("t"), 4, 5);
-        EvaluationKey atOne = new EvaluationKey(1, 2, 3, 1.0f, null, new TrackId("t"), 4, 5);
+    void evaluationKeyDistinguishesSampleTimesAndWorldInstances() {
+        EvaluationKey atZero = new EvaluationKey(1, 2, 7, 3, -0.0f, null, new TrackId("t"), 4, 5);
+        EvaluationKey atOne = new EvaluationKey(1, 2, 7, 3, 1.0f, null, new TrackId("t"), 4, 5);
+        EvaluationKey otherWorld = new EvaluationKey(1, 2, 8, 3, 0f, null, new TrackId("t"), 4, 5);
 
         assertFalse(atZero.equals(atOne));
+        assertFalse(atZero.equals(otherWorld));
         assertEquals(0, Float.floatToIntBits(atZero.sampleTime()));
     }
 
@@ -143,8 +174,19 @@ class EvalContractTest {
             }
         };
 
-        EvaluationContext context = new EvaluationContext(1, snapshot, emptyFacts(), lookup, index);
+        EvaluationContext context = EvaluationContext.bind(1, snapshot, emptyFacts(), lookup, index);
         assertEquals(1, context.contextId());
+
+        CurveSampleRequest request = new CurveSampleRequest(
+                context, new TrackId("track"), new RigId("rig"), -0.0f);
+        assertEquals(0, Float.floatToIntBits(request.sampleTime()));
+
+        EvaluationKey fromRequest = EvaluationKey.from(request, 9L, 3L, 4L, 5L);
+        assertEquals(7L, fromRequest.worldInstanceId());
+        assertEquals(0, Float.floatToIntBits(fromRequest.sampleTime()));
+
+        assertThrows(IllegalArgumentException.class,
+                () -> new CurveSampleRequest(context, new TrackId("track"), null, Float.NaN));
 
         assertThrows(NullPointerException.class, () -> new AnimationSnapshot(new Revision(1), null));
         assertThrows(NullPointerException.class, () -> new EvaluationContext(0, null, emptyFacts(), lookup, index));

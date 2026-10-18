@@ -19,6 +19,10 @@ public record DiagnosticCode(String value) implements Comparable<DiagnosticCode>
     public static final DiagnosticCode TARGET_NOT_FOUND =
             new DiagnosticCode("free_camera_api_tripod:target_not_found");
 
+    /// 监听通知期间重入同步提交：必须拒绝，延迟提交应使用 `submitAfterNotifications`。
+    public static final DiagnosticCode REENTRANT_SUBMIT =
+            new DiagnosticCode("free_camera_api_tripod:reentrant_submit");
+
     /// 同一轨道内键时间重复。
     public static final DiagnosticCode DUPLICATE_KEY_TIME =
             new DiagnosticCode("free_camera_api_tripod:duplicate_key_time");

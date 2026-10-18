@@ -26,6 +26,9 @@ public interface PlaybackService {
 
     /// 开始播放。
     ///
+    /// 必须**先校验请求并准备初始运行条件**，成功后才切换文档 / 发布序号并进入播放状态；
+    /// 失败时原文档、发布序号、播放状态与相机控制均保持不变，不得先换档再回滚。
+    ///
     /// @param request          播放请求
     /// @param expectedRevision 当前文档发布序号；切换文档仍走同一存储
     StartResult start(PlaybackRequest request, Revision expectedRevision);
@@ -55,6 +58,8 @@ public interface PlaybackService {
     PreparedFrame prepareFrame(long frameIndex, float deltaSeconds);
 
     /// 开始结果。
+    ///
+    /// 拒绝 / 启动失败时 `failure` 非空，且调用前后文档、发布序号、播放状态与相机控制不变。
     ///
     /// @param accepted 是否接受并进入播放
     /// @param failure  拒绝或启动失败原因；成功时为空

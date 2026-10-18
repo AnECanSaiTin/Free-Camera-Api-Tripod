@@ -1,9 +1,10 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document;
 
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.CameraAnimation;
-import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.EditOp;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.EditResult;
 import org.jspecify.annotations.NullMarked;
+
+import java.util.function.Consumer;
 
 /// 文档存储：所有已发布变更的唯一入口（主设计 §3.3、D8）。
 ///
@@ -11,7 +12,7 @@ import org.jspecify.annotations.NullMarked;
 ///
 /// ```text
 /// 检查 expectedRevision
-/// → 执行纯编辑操作（[EditOp]）
+/// → 执行纯编辑操作（EditOp）
 /// → 校验候选（强制文档校验）
 /// → 更新历史与快照
 /// → 通知监听者
@@ -21,19 +22,33 @@ import org.jspecify.annotations.NullMarked;
 ///
 /// - 发布必须在宿主指定线程执行；纯内核不依赖客户端线程实现。
 /// - 过期提交返回 `STALE_REVISION`，**不得自动覆盖**当前文档。
-/// - 文档、历史与发布序号更新完成后才通知监听者；通知期间禁止重入发布，后续请求排队。
+/// - 文档、历史与发布序号更新完成后才通知监听者。
+/// - **监听通知期间禁止重入同步提交**：同步 [submit] 必须返回带
+///   [cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.DiagnosticCode#REENTRANT_SUBMIT]
+///   的拒绝，不得静默排队或修改文档；需要延后执行的写入使用 [submitAfterNotifications]。
+/// - 延迟提交在通知结束后执行，并重新检查基版本；过期同样拒绝。
 /// - 初始化、编辑、换档、网络载入与历史恢复均通过本接口。
 ///
 /// 本接口同时是 [AnimationHandle]：读取方只拿快照，写方法只在本接口。
 @NullMarked
 public interface AnimationDocumentStore extends AnimationHandle {
 
-    /// 提交一个纯编辑操作。
+    /// 同步提交一个纯编辑操作。
     ///
-    /// @param op               操作；不得修改输入文档，不得执行 IO
-    /// @param expectedRevision 调用方读取快照时的发布序号
+    /// @param submission 操作、基版本与动作标签
     /// @return 成功发布的快照或结构化拒绝诊断
-    EditResult submit(EditOp op, Revision expectedRevision);
+    EditResult submit(EditSubmission submission);
+
+    /// 延迟提交：在当前监听通知结束后执行，并重新检查基版本。
+    ///
+    /// 通知期间调用本方法不会重入发布；请求进入队列，待通知结束后按提交顺序处理。
+    /// 结果通过 [completion] 回调一次；回调在存储线程执行，不得假定在调用线程。
+    /// 回调前必须重新检查 `expectedRevision`，过期返回 `STALE_REVISION`，不得自动覆盖。
+    ///
+    /// @param submission 操作、基版本与动作标签
+    /// @param completion 结果回调；恰好调用一次
+    /// @return 请求标识，非负；只用于日志 / 取消之外的关联，不进入文档
+    long submitAfterNotifications(EditSubmission submission, Consumer<EditResult> completion);
 
     /// 整份换档。
     ///

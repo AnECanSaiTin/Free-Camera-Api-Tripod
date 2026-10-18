@@ -17,6 +17,7 @@ import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.TrackId;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.spatial.Rotation;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.spatial.Vec3;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.spatial.WorldPose;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.storage.ResourceId;
 import net.minecraft.resources.Identifier;
 import org.junit.jupiter.api.Test;
 
@@ -43,7 +44,7 @@ class PlaybackContractTest {
     }
 
     private static FrameFacts facts() {
-        return new FrameFacts(DIMENSION, 1L, 0f, 1L, Map.of(), Map.of(), true);
+        return new FrameFacts(DIMENSION, 7L, 1L, 0f, 1L, Map.of(), Map.of(), true);
     }
 
     private static AnimationSnapshot snapshot() {
@@ -52,7 +53,7 @@ class PlaybackContractTest {
 
     private static Diagnostic errorDiagnostic() {
         return new Diagnostic(DiagnosticCode.BROKEN_REFERENCE, Severity.ERROR,
-                LocalizedMessage.literal("broken"), new DiagnosticScope.File("test-resource"),
+                LocalizedMessage.literal("broken"), new DiagnosticScope.File(new ResourceId("test-resource")),
                 null, null);
     }
 
@@ -145,7 +146,7 @@ class PlaybackContractTest {
         assertThrows(IllegalArgumentException.class, () -> new EventBudget(0, 1));
         assertThrows(IllegalArgumentException.class, () -> new EventBudget(1, 0));
 
-        RigRenderStatus.SampleIdentity sample = new RigRenderStatus.SampleIdentity(1, 0f, 1);
+        RigRenderStatus.SampleIdentity sample = new RigRenderStatus.SampleIdentity(1, 0f, 1, 7, 1, 0, 0);
         assertThrows(IllegalArgumentException.class, () -> new RigRenderStatus(
                 new RigId("rig"), true, 0, 100, null, sample));
 
@@ -156,11 +157,14 @@ class PlaybackContractTest {
 
     @Test
     void renderedStatusRequiresDisplayedSampleIdentity() {
-        RigRenderStatus.SampleIdentity sample = new RigRenderStatus.SampleIdentity(42, 1.5f, 20);
+        RigRenderStatus.SampleIdentity sample = new RigRenderStatus.SampleIdentity(
+                42, 1.5f, 20, 7, 1, 2, 3);
         RigRenderStatus reused = new RigRenderStatus(
                 new RigId("rig"), true, 100, 100, DegradeReason.FRAME_SKIPPED, sample);
 
         assertEquals(sample, reused.sampledFrame());
+        assertEquals(7, sample.worldInstanceId());
+        assertEquals(2, sample.activityGeneration());
 
         assertThrows(IllegalArgumentException.class, () -> new RigRenderStatus(
                 new RigId("rig"), true, 100, 100, null, null));
@@ -169,7 +173,7 @@ class PlaybackContractTest {
         assertThrows(IllegalArgumentException.class, () -> new RigRenderStatus(
                 new RigId("rig"), true, 100, 100, DegradeReason.RIG_PAUSED, sample));
         assertThrows(IllegalArgumentException.class,
-                () -> new RigRenderStatus.SampleIdentity(-1, 0f, 0));
+                () -> new RigRenderStatus.SampleIdentity(-1, 0f, 0, 0, 0, 0, 0));
     }
 
     @Test

@@ -16,8 +16,11 @@
  * <h2>编辑契约</h2>
  *
  * <p>纯编辑操作与结果在 {@code api.animation.edit}；本包只消费其结果，不发放原地修改方法。
- * 事务与历史标签使用 {@code edit.LocalizedMessage}（不可变消息描述），不保存可变 {@code Component}。
- * 文档、历史与发布序号更新完成后才通知监听者（{@link cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.DocumentListener}）。
+ * 提交使用 {@link cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.EditSubmission}
+ * 携带不可变动作标签；成功提交的标签进入历史，拒绝时不进入。监听通知期间禁止重入同步提交
+ * （返回 `REENTRANT_SUBMIT`），需要延后写入时使用 `submitAfterNotifications` 并在通知结束后
+ * 重新检查基版本。文档、历史与发布序号更新完成后才通知监听者
+ * （{@link cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.DocumentListener}）。
  *
  * <h2>不属于本包</h2>
  *

@@ -5,10 +5,12 @@ import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.CameraRig;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.Diagnostic;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.DiagnosticCode;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.DiagnosticScope;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.EditOp;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.LocalizedMessage;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.Severity;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.RigId;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.TrackId;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.storage.ResourceId;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -66,7 +68,7 @@ class DocumentContractTest {
                 DiagnosticCode.BROKEN_REFERENCE,
                 Severity.ERROR,
                 LocalizedMessage.literal("broken"),
-                new DiagnosticScope.File("test-resource"),
+                new DiagnosticScope.File(new ResourceId("test-resource")),
                 null,
                 null)));
 
@@ -98,5 +100,16 @@ class DocumentContractTest {
 
         assertEquals(label, transaction.label());
         assertEquals(label, entry.label());
+    }
+
+    @Test
+    void editSubmissionCarriesLabelAndExpectedRevision() {
+        EditSubmission submission = new EditSubmission(
+                new EditOp.RenameDocument("B"), Revision.INITIAL, LocalizedMessage.literal("rename"));
+
+        assertEquals(new Revision(0), submission.expectedRevision());
+        assertEquals(LocalizedMessage.literal("rename"), submission.label());
+        assertThrows(NullPointerException.class,
+                () -> new EditSubmission(null, Revision.INITIAL, LocalizedMessage.literal("x")));
     }
 }

@@ -295,6 +295,19 @@ public sealed interface EditOp {
         }
     }
 
+    /// 单键修改状态轨道的原生值；值类型必须与目标轨道能力一致。
+    ///
+    /// 内建状态轨道应传 `AimState` / `Boolean` / `CameraSource`，不得把状态编码成浮点数；
+    /// 第三方状态轨道由轨道能力分派校验其不可变原生值。目标轨道 / 键不存在或类型不匹配时
+    /// 整个提交拒绝，不做运行期类型转换或静默兜底。
+    record SetStateKey(TrackId trackId, KeyId keyId, Object value) implements EditOp {
+        public SetStateKey {
+            Objects.requireNonNull(trackId, "trackId");
+            Objects.requireNonNull(keyId, "keyId");
+            Objects.requireNonNull(value, "value");
+        }
+    }
+
     record SetKeyHandles(TrackId trackId, KeyId keyId,
                          float inSlope, float outSlope, float inLength, float outLength) implements EditOp {
         public SetKeyHandles {

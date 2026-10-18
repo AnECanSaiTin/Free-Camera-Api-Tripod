@@ -20,7 +20,7 @@ import java.util.Objects;
 public sealed interface EditTarget permits EditTarget.Document,
         EditTarget.Rig, EditTarget.Track, EditTarget.Key, EditTarget.Marker, EditTarget.Sample,
         EditTarget.Audio, EditTarget.Overlay, EditTarget.Variable, EditTarget.Function,
-        EditTarget.PathNode {
+        EditTarget.PathNode, EditTarget.Field {
 
     /// 文档级字段（名称、`dataVersion` 等）。
     record Document() implements EditTarget {
@@ -99,6 +99,27 @@ public sealed interface EditTarget permits EditTarget.Document,
         public PathNode {
             Objects.requireNonNull(rigId, "rigId");
             Objects.requireNonNull(nodeId, "nodeId");
+        }
+    }
+
+    /// 对象上的一个类型化字段，用于区分同一对象上的不同草稿字段。
+    ///
+    /// 不把字段目标压成裸字符串或下标：`owner` 保留对象种类，`fieldPath` 只在该对象内解释。
+    /// 字段目标不能再嵌套字段目标；字段路径非空白。
+    ///
+    /// @param owner     拥有该字段的稳定目标
+    /// @param fieldPath 对象内字段路径，例如 `view.rect.width`
+    record Field(EditTarget owner, String fieldPath) implements EditTarget {
+        public Field {
+            Objects.requireNonNull(owner, "owner");
+
+            if (owner instanceof Field) {
+                throw new IllegalArgumentException("EditTarget.Field cannot own another Field target");
+            }
+
+            if (fieldPath.isBlank()) {
+                throw new IllegalArgumentException("EditTarget.Field fieldPath must not be blank");
+            }
         }
     }
 }

@@ -14,8 +14,9 @@ import java.util.Objects;
 /// 暂停世界后定位也不改变游戏刻。
 ///
 /// 呈现了画面（包括复用旧画面）时 [sampledFrame] 必须非空；停路未呈现时才允许为空。
-/// 活动切换或来源交接后，旧活动区间的画面必须失效；重新活动必须准备有效新帧，不能先显示
-/// 停用前缓存。`sampledFrame` 描述当前实际呈现的画面，不是准备帧的时间。
+/// 活动切换、来源交接、世界实例 / 文档快照 / 活动区间代际不匹配时，旧画面必须失效；
+/// 重新活动必须准备有效新帧，不能先显示停用前缓存。`sampledFrame` 描述当前实际呈现的
+/// 画面，不是准备帧的时间。
 ///
 /// @param rigId        机位
 /// @param rendered     本帧是否实际呈现（降级停路时为 false）
@@ -60,10 +61,24 @@ public record RigRenderStatus(
 
     /// 实际呈现画面的采样身份。
     ///
+    /// 除时间外还绑定世界实例、文档快照、机位活动区间代际与来源代际；任一不匹配时该画面
+    /// 必须失效，不能跨活动区间或来源交接复用。
+    ///
     /// @param renderFrameIndex 渲染帧序号，非负；区分同一游戏刻内的多个渲染帧
     /// @param animationTime    该画面的动画采样时间，秒；有限且非负
     /// @param gameTick         该画面的游戏刻，非负
-    public record SampleIdentity(long renderFrameIndex, float animationTime, long gameTick) {
+    /// @param worldInstanceId  世界实例身份，非负
+    /// @param snapshotId       文档快照身份，非负；候选使用独立身份
+    /// @param activityGeneration 机位活动区间代际，非负
+    /// @param sourceGeneration   相机来源代际，非负
+    public record SampleIdentity(
+            long renderFrameIndex,
+            float animationTime,
+            long gameTick,
+            long worldInstanceId,
+            long snapshotId,
+            long activityGeneration,
+            long sourceGeneration) {
 
         public SampleIdentity {
             if (renderFrameIndex < 0) {
@@ -76,8 +91,10 @@ public record RigRenderStatus(
                         "SampleIdentity animationTime must be finite and non-negative: " + animationTime);
             }
 
-            if (gameTick < 0) {
-                throw new IllegalArgumentException("SampleIdentity gameTick must be non-negative: " + gameTick);
+            if (gameTick < 0 || worldInstanceId < 0 || snapshotId < 0
+                    || activityGeneration < 0 || sourceGeneration < 0) {
+                throw new IllegalArgumentException(
+                        "SampleIdentity identities must be non-negative");
             }
         }
     }

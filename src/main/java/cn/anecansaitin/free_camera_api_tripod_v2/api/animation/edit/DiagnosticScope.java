@@ -1,6 +1,7 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit;
 
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.Revision;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.storage.ResourceId;
 import org.jspecify.annotations.NullMarked;
 
 import java.util.Objects;
@@ -28,12 +29,10 @@ public sealed interface DiagnosticScope permits DiagnosticScope.Document, Diagno
 
     /// 文件 / 解码资源作用域。
     ///
-    /// @param resource 资源身份（相对路径或存储资源标识）；非空白
-    record File(String resource) implements DiagnosticScope {
+    /// @param resource 相对资源身份，非空
+    record File(ResourceId resource) implements DiagnosticScope {
         public File {
-            if (resource.isBlank()) {
-                throw new IllegalArgumentException("DiagnosticScope.File resource must not be blank");
-            }
+            Objects.requireNonNull(resource, "resource");
         }
     }
 }
