@@ -26,6 +26,7 @@
 | [R5](#r5-修订性能证据缓存与无变化派生) | 修订 R2、A1–A5、withRig | 优先按快照绑定索引；性能清理分期；无变化派生须避免新根 | A1/A4 已落地（R7）；A2/A3 待后续批次 |
 | [R6](#r6-修订标记时长的判定与裁决边界) | 修订 R3、A6 | 默认保留标记时长贡献；注释措辞和覆盖测试可先补 | 注释与远端标记测试已补（R7）；产品语义未改 |
 | [R7](#r7-实施记录a0a1a4a5a7-落地与验证) | 实施记录：A0/A1/A4/A5/A7 | 代码与回归测试落地；A2/A3/A6 见正文 | 是（构建与测试通过） |
+| [R8](#r8-实施记录document--edit-契约批次) | 实施记录：document + edit 契约 | 快照/存储/历史/事务/预览/选择 + 纯编辑/诊断/校验/试算；EditTools 未做 | 契约已交付（测试通过） |
 
 ---
 
@@ -526,3 +527,45 @@ public float viewExtent() {
 - 结果：`BUILD SUCCESSFUL`；**14 个测试 suite / 105 个用例全绿**，其中 `_v2` 为 **8 个 suite / 39 个用例**（上一轮基线为 11 / 92，v2 5 / 26）。
 - 门禁：`_v2` 旧根引用 0、`net.minecraft.client` 引用 0、旧根已跟踪文件改动 0。
 - 其他：`git diff --check` 通过；本轮未修改 R1–R6 正文，仅更新 §0 / §3 状态并追加本节。
+
+---
+
+## R8. 实施记录：document + edit 契约批次
+
+**记录日期**：2026-10-18
+**类型**：实施记录（非新复核）；结论沿用 R4–R7，未执行项见正文。
+**核查位置**：
+[`document/`](../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/document/)、
+[`edit/`](../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/edit/)；测试：
+[`document/DocumentContractTest`](../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/document/DocumentContractTest.java)、
+[`edit/EditContractTest`](../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/edit/EditContractTest.java)。
+
+### R8.1 交付内容
+
+- `api.animation.document`（13 个文件）：`Revision`、`AnimationSnapshot`、`AnimationHandle`、
+  `AnimationDocumentStore`、`DocumentListener`、`UndoHistory`（含 `Entry`）、`SessionSwitch`、
+  `EditTarget`（sealed 稳定目标）、`EditTransaction`、`PreviewState`、`Selection`、
+  `KeySelection`、`package-info`。
+- `api.animation.edit`（12 个文件）：`EditOp`（sealed 操作全集，含 `Batch` 与关键帧移动）、
+  `EditOutcome`、`EditResult`、`Diagnostic`（含 `Location` / `Fix`）、`DiagnosticCode`、
+  `Severity`、`ValidationLayer`、`DocumentValidator`、`TrialStatus`、`TrialResult`、
+  `TrialRun`、`package-info`。
+- 位置按 Q13：顶层 `api.animation.edit`；`AnimationDocumentStore` 与 `EditResult` 形成
+  document ↔ edit 双向包引用，已记录在 P1 计划 §1.4。
+
+### R8.2 未执行
+
+- `EditTools`（缓动 / 批量 / 烘焙 / 注视姿态转旋转键）依赖 eval 的冻结事实、采样与复合
+  `EditOp`，留到 eval / editor 批次；本批不定义请求类型。
+- `AnimationDocumentStore` / `UndoHistory` 的实现（发布线程、通知队列、64 项 / 32 MiB 上限）
+  留到 `core`；本批只声明契约。
+- A2 / A3 仍未执行（eval / 宿主批次）；`AnimatedNumber` 与 `RigView.Rect` 改写按 Q14
+  随后续批次落地。
+
+### R8.3 验证结果
+
+- 命令：`.\gradlew.bat --offline compileJava test --console=plain`
+- 结果：`BUILD SUCCESSFUL`；**16 个测试 suite / 117 个用例全绿**，其中 `_v2` 为
+  **10 个 suite / 51 个用例**（上一轮为 14 / 105，v2 8 / 39）。
+- 门禁：`_v2` 旧根引用 0、`net.minecraft.client` 引用 0、旧根已跟踪文件改动 0。
+- 其他：`git diff --check` 通过；未修改 R1–R7 正文，仅更新 §0 状态并追加本节。

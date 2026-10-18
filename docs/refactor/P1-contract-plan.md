@@ -3,10 +3,10 @@
 > 本文是**施工约定**，不是设计文档。设计以 `docs/` 下三份设计为准；
 > 本文固定三件事：新契约放哪、叫什么、怎么写，以及本批交付了什么供审核。
 >
-> 状态：**P1 第二批契约已提交（含 Q4–Q7 裁决落地），待人工审核**。首批（包边界 + 不可变内核）
-> 已按最新设计补齐有类型状态轨道、相机来源轨道与采样读数；审核通过后再填充实现
-> （`core` / `editor`）。注视姿态捕获（§7.4）仍属后续 edit / editor 批次，不能据此认定
-> 源码已满足新设计（见 §1.4、§7.4）。
+> 状态：**P1 第三批契约已提交（`api.animation.document` + `api.animation.edit` 核心），待人工审核**。
+> 第二批已按最新设计补齐有类型状态轨道、相机来源轨道与采样读数；第三批落地快照 / 存储 /
+> 历史 / 事务 / 预览 / 选择与纯编辑操作 / 诊断 / 分层校验 / 试算。`EditTools`（烘焙、注视姿态捕获）
+> 与布局 `AnimatedNumber` 仍属后续批次，不能据此认定源码已满足新设计（见 §1.4、§4.7、§7.4）。
 > 设计文档中的包名一律按**最终形态**书写（`api.animation.block` 等），不写 `_v2`；
 > 临时差异只记在本文 §1.4。
 
@@ -50,12 +50,14 @@ cn/anecansaitin/free_camera_api_tripod_v2/
   api/animation/eval/        求值层最小查询面（TrackLookup；其余待下一批）
   api/animation/block/       不可变文档模型（文档根、有类型状态轨道、采样声明/参数/读数）
   api/animation/playback/    播放裁决类型（AimOverride；其余待下一批）
+  api/animation/document/    快照、句柄、存储、历史、事务、预览与选择
+  api/animation/edit/        纯编辑操作、诊断、分层校验与试算
   api/spatial/               空间、锚点、姿态值、注视状态
   editor/                    编辑器分区（本包 + spi + internal）
 ```
 
-最终形态还会增加（P1 余项）：`api/animation/edit`、`api.animation.document`、
-`api.storage`，以及 `core` 与业务 `editor`；`eval` / `playback` 补齐设计列出的其余契约。
+最终形态还会增加（P1 余项）：`api.storage`，以及 `core` 与业务 `editor`；
+`eval` / `playback` 补齐设计列出的其余契约，`edit` 补 `EditTools`。
 
 ### 1.4 与设计文档的差异清单
 
@@ -71,6 +73,9 @@ cn/anecansaitin/free_camera_api_tripod_v2/
 | 采样参数 Codec | 类型自身的 `MapCodec` + common 侧注册 | `SampleArgs` 名义接口已交付（Q7）；Codec 与注册表未写 | 随 S1 采样类型注册表批次补齐 |
 | 叠加元素内容 | O1–O3 阶段定义各类字段 | `OverlayElement.content` 仍是不透明 `Object` | 随 O1–O3 改为按种类拆分的封闭内容类型（Q7：不提前定型） |
 | `eval` / `playback` 包完整性 | 设计列出完整契约 | 只交付裁决所需最小类型：`eval.TrackLookup`（Q6）、`playback.AimOverride`（Q5） | 随 eval / playback 批次补齐其余类型 |
+| `edit` 与 `document` 包依赖 | 主设计 §2.1 只规定“纯编辑操作契约置于 `api.animation.document` 的子包” | 按 P1 计划采用顶层 `api.animation.edit`：`AnimationDocumentStore` 引用 `EditOp` / `EditResult`（document → edit），`EditResult.Applied` 持有 `AnimationSnapshot`（edit → document） | 已接受双向包引用（Q13）；若后续架构检查禁止，再拆结果类型或迁子包 |
+| 修订号类型 | §3.3 片段写 `long revision` | `document.Revision` 包装类型，事务 / 历史 / 快照统一使用 | 定稿前可改回 `long`；当前类型安全优先 |
+| `EditTools` 工具契约 | §4.6 / §4.7 要求缓动、批量、烘焙、注视姿态捕获 | 本批只交付 `EditOp` / 诊断 / 校验 / 试算核心，未定义工具请求 | 随 eval / editor 批次补（依赖冻结事实与采样） |
 | 注视姿态捕获 | 可按冻结事实一次写 XYZ 键与 Off（§4.7） | 仅交付 `AimState.Off` 与 Off 交还语义；无捕获结果/复合 `EditOp` | 后续 edit/editor 批次补齐，不宣称本次已实现 |
 
 本轮已补齐、**不再是差异**的项（保留在此便于追溯上一版计划）：
@@ -97,6 +102,7 @@ cn/anecansaitin/free_camera_api_tripod_v2/
 | 旧代码处置 | 旧实现**原样保留、不接线**；新契约只新增在 `_v2` 根下。工程随时可编译、可运行客户端 |
 | 首批范围 | P1：包边界 + 不可变内核契约 |
 | 第二批范围（本轮） | 按最新设计补齐 `block` / `spatial`：有类型状态轨道（aim / active / cameraSource）、`AimState`、`CameraSource`、世界采样读数；并落地 Q4–Q7 裁决：扩展轨道维持、`AimOverride` 入 playback、`TrackLookup` 迁 eval、采样参数用 `SampleArgs` 名义接口。布局 `AnimatedNumber` 与其余余项仍留后续批次（§1.4、§7.2） |
+| 第三批范围（本轮） | `api.animation.document` + `api.animation.edit` 核心契约：快照 / 句柄 / 存储 / 历史 / 事务 / 预览 / 选择，纯编辑操作 / 诊断 / L1–L4 校验 / 试算；edit 按 P1 计划放顶层，接受与 document 的双向包引用（Q13） |
 | 同名冲突 | 因新契约独立在 `_v2` 根下，**不需要**给旧类加 `Legacy` 后缀；新契约直接用设计里的名字 |
 
 ---
@@ -115,8 +121,9 @@ cn/anecansaitin/free_camera_api_tripod_v2/
 | 主设计 §6.3 / §7.1 注视覆盖 | `api.animation.playback.AimOverride`（`Inherit` / `Disabled` / `Replace`） | 部分交付（Q5；其余播放契约待下一批） |
 | 主设计 §3.4 / §6.1 求值最小查询面 | `api.animation.eval.TrackLookup` | 部分交付（Q6；帧事实与采样器待下一批） |
 | 主设计 §4.7 注视交还与捕获 | `AimState.Off` 已表达交还；捕获工具属 edit | 部分交付（见 §1.4） |
-| 主设计 §3.3 快照与只读句柄 | `api.animation.document` | 待下一批 |
-| 主设计 §4.1–4.2 编辑与校验 | `api.animation.edit` | 待下一批（**下一批首要**） |
+| 主设计 §3.3 快照、文档存储与历史 | `api.animation.document` | **已交付（契约）**（实现留 `core`） |
+| 主设计 §4.1–4.5 编辑、校验、历史、工具 | `api.animation.edit` + `document` | **已交付（核心契约）**（余 `EditTools`） |
+| 主设计 §4.3 试算 | `edit.TrialRun` / `TrialResult` / `TrialStatus` | **已交付（契约）** |
 | 主设计 §3.4 / I5–I7 求值与帧事实 | `api.animation.eval`（余项） | 部分交付 |
 | 主设计 §7.1–7.3 播放 | `api.animation.playback`（余项） | 部分交付 |
 | 主设计 §8.1–8.4 存储 | `api.storage` | 待下一批 |
@@ -197,17 +204,25 @@ cn/anecansaitin/free_camera_api_tripod_v2/
 **余项**：`AnchorTypeRegistry`（common 侧类型注册）、`AnchorResolver`（客户端解析器）、
 `WorldPose` / `DocumentPose`（姿态类型，主设计 §6.2）。
 
-### 4.7 `api.animation.edit` —— 编辑与诊断（主设计 §4）**待下一批**
+### 4.7 `api.animation.edit` —— 编辑与诊断（主设计 §4）**已交付（核心）**
 
-`EditOp`（sealed 操作全集）、`EditOutcome`、`EditResult`、`Diagnostic`、`DiagnosticCode`、
-`Severity`、`DocumentValidator`、`ValidationLayer`、`TrialRun`、`TrialResult`、
-`TrialStatus`、`EditTools`（缓动 / 批量 / 烘焙 / 注视姿态转旋转键并关闭注视）。
+`EditOp`（sealed 操作全集：文档 / 机位 / 布局 / 通道 / 轨道 / 关键帧 / 符号 / 路径 /
+标记 / 采样 / 音频 / 叠加 / 整份替换 / `Batch`）、`EditOutcome`、`EditResult`、
+`Diagnostic`（含 `Location` / `Fix`）、`DiagnosticCode`、`Severity`、`DocumentValidator`、
+`ValidationLayer`、`TrialRun`、`TrialResult`、`TrialStatus`。
 
-### 4.8 `api.animation.document` —— 快照、发布与历史（主设计 §3.3、§4.5）**待下一批**
+**余项**：`EditTools`（缓动 / 批量 / 烘焙 / 注视姿态转旋转键并关闭注视）。它依赖 eval 的
+采样结果与冻结世界事实契约，随 eval / editor 批次补齐；本批不宣称已实现。
+
+### 4.8 `api.animation.document` —— 快照、发布与历史（主设计 §3.3、§4.5）**已交付（契约）**
 
 `AnimationSnapshot`、`AnimationHandle`、`AnimationDocumentStore`、`DocumentListener`、
-`Revision`、`SessionSwitch`、`UndoHistory`、`EditTransaction`、`EditTarget`、
-`PreviewState`、`Selection`、`KeySelection`。
+`Revision`、`SessionSwitch`、`UndoHistory`（含 `Entry`）、`EditTransaction`、
+`EditTarget`（sealed 稳定目标）、`PreviewState`、`Selection`、`KeySelection`。
+
+存储实现（`volatile` 快照、通知队列、64 项 / 32 MiB 历史上限、发布线程）留到 `core`；
+本批只声明契约。`AnimationDocumentStore` 与 `EditResult.Applied` 形成 edit ↔ document
+双向包引用，按 Q13 接受。
 
 ### 4.9 `api.animation.eval` —— 求值与帧事实（主设计 §3.4、§6、I5–I7）**部分交付**
 
@@ -284,10 +299,10 @@ cn/anecansaitin/free_camera_api_tripod_v2/
 ### 6.1 本批交付文件
 
 首批 53 个文件中 1 个移出（`expression/TrackLookup` 迁到 `eval`）；第二批累计修订 13 个文件
-（含本轮 Q4–Q7 的少量补充与审核修正）；第二批累计新增 17 个主源码文件
-（11 个在有类型轨道 / 采样读数切片，6 个在 Q4–Q7 裁决切片）。
-`_v2` 现有 **69 个 Java 文件**：
-58 个公开顶层类型 + 10 个 `package-info.java` + 1 个包内工具 `KeyframeSequences`。
+（含 Q4–Q7 的少量补充与审核修正）；第二批累计新增 17 个主源码文件。
+第三批新增 25 个主源码文件（`document` 13 个 + `edit` 12 个）。
+`_v2` 现有 **95 个 Java 文件**：
+81 个公开顶层类型 + 13 个 `package-info.java` + 1 个包内工具 `KeyframeSequences`。
 
 第二批新增（有类型轨道 / 读数切片）：
 
@@ -302,6 +317,17 @@ Q4–Q7 裁决新增：
 - `playback/AimOverride`（Q5）与 `playback/package-info`
 - `block/SampleArgs`（Q7）
 - `expression/package-info`（迁移后保留包说明，预留编译器批次）
+
+第三批新增（document / edit）：
+
+- `document/`：`Revision`、`AnimationSnapshot`、`AnimationHandle`、`DocumentListener`、
+  `UndoHistory`（含 `Entry`）、`SessionSwitch`、`EditTarget`、`EditTransaction`、
+  `PreviewState`、`KeySelection`、`Selection`、`AnimationDocumentStore`、`package-info`
+- `edit/`：`EditOp`（sealed 操作全集）、`EditOutcome`、`EditResult`、`Diagnostic`
+  （含 `Location` / `Fix`）、`DiagnosticCode`、`Severity`、`ValidationLayer`、
+  `DocumentValidator`、`TrialStatus`、`TrialResult`、`TrialRun`、`package-info`
+
+第三批未交付：`EditTools`（缓动 / 批量 / 烘焙 / 注视姿态捕获）与文档存储实现。
 
 第二批修订：`CameraAnimation`（移除 `trackLookup()`）、`CameraRig`、`RigView`、
 `AnimationTrack`（扩展轨道保留 ID 约束）、`CurveTrack`（移除无 ID 便利工厂）、
@@ -318,16 +344,21 @@ Q4–Q7 裁决新增：
 | P2 | `OverlayElement.endTime()` 重写访问器，未启用时返回 0，创作数据被隐藏，访问器重建对象会得到非法区间 | 删除访问器重写，`endTime()` 恢复原始区间；新增派生查询 `durationContribution()`，`CameraAnimation.duration()` 改读它；新增 `OverlayElementContractTest` |
 | P2 | `CurveTrack.ofChannel(CameraChannel)` 用语义键当 `TrackId`，多机位同通道会重复身份 | 删除该便利工厂；通道轨道必须显式提供文档内唯一 `TrackId`（`ofChannel(TrackId, String, CameraChannel, Curve)`）；新增双机位同通道测试 |
 
-v2 契约测试类 5 个（26 个用例）；包含旧实现测试的全工程基线为 11 个 suite / 92 个用例：
+v2 契约测试类 10 个（51 个用例）；包含旧实现测试的全工程基线为 16 个 suite / 117 个用例：
 
 - `block/StateTrackContractTest`：STEP 语义、键时间唯一、时长口径、统一轨道目录、读数三分支、
   双机位同通道需不同 `TrackId`
 - `block/SampleArgsContractTest`：参数名义接口与 `kind == args.type()`（Q7）
 - `block/OverlayElementContractTest`：访问器保留原始区间、时长贡献、文档时长集成（P2）
-- `field/KeyframeContractTest`：`NumberSource` 类型边界、常量 / 公式键（P1）
+- `block/CameraAnimationDurationTest`：时长取最大、禁用机位不参与、远端标记（A1/A7）
+- `block/CameraAnimationReplacementTest`：`withRig` 无变化身份与保序替换（A4）
+- `field/KeyframeContractTest`：`NumberSource` 类型边界、时间边界、常量 / 公式键（P1/A0）
+- `field/CurveContractTest`：乱序整理、输入不变、`+0/-0` 重复（A0）
 - `playback/AimOverrideContractTest`：`Inherit` / `Disabled` / `Replace` 三态（Q5）
+- `edit/EditContractTest`：操作时间、`Batch` 复制、拒绝诊断、修复基版本（第三批）
+- `document/DocumentContractTest`：Revision、快照、选择、预览与事务（第三批）
 
-见 §4.1–4.6、§4.9–4.13 标 **已交付** / **部分交付** / **已建立** 的条目。
+见 §4.1–4.13 标 **已交付** / **部分交付** / **已建立** 的条目。
 
 ### 6.2 门禁验证
 
@@ -346,26 +377,24 @@ v2 契约测试类 5 个（26 个用例）；包含旧实现测试的全工程�
    文件无条目。本批修订的是 `_v2` 已跟踪文件，因此 `M` 条目应全部位于 `_v2` 下；
    新增文件为 `??`。
 
-验收标准：`BUILD SUCCESSFUL` + 上述三条门禁通过（本轮已通过：69 个主源码文件、11 个测试 suite / 92 个用例全绿；`_v2` 内无包循环）。
+验收标准：`BUILD SUCCESSFUL` + 上述三条门禁通过（本轮已通过：95 个主源码文件、16 个测试 suite / 117 个用例全绿；`_v2`：10 个 suite / 51 个用例）。
 
 ### 6.3 下一批（P1 余下契约）
 
 按依赖顺序：
 
-1. **`api.animation.edit`**：`EditOp`（sealed 操作全集，含状态轨道键的增删 / 移动与
-   跨轨粘贴值类型兼容，以及编辑目标不存在的明确拒绝）、`EditOutcome`、`EditResult`、`Diagnostic`、`DocumentValidator`、
-   `TrialRun`，以及 §4.7 的注视姿态捕获结果与复合操作。
-   **这是提交语义的核心，建议单独一批审核。**
-2. `api.animation.document`：快照、文档存储、历史、事务、预览与选择。
-3. `api.animation.eval`（补齐余项）：帧事实、求值上下文、采样状态与采样表版本、姿态类型、
-   依赖图、缓存（缓存身份须含有效 `AimState`、来源与活动集合）；`TrackLookup` 绑定由本包建立。
-4. `api.animation.playback`（补齐余项）：播放请求、每路覆盖（`RigPlaybackOverrides` 引用
+1. `api.animation.eval`（补齐余项）：帧事实、求值上下文、采样状态与采样表版本、姿态类型、
+   依赖图、缓存（缓存身份须含有效 `AimState`、来源与活动集合）；`TrackLookup` 绑定与 §6.4 A3
+   的 `TrackId` 索引由本包建立。
+2. `api.animation.playback`（补齐余项）：播放请求、每路覆盖（`RigPlaybackOverrides` 引用
    已交付的 `AimOverride`）、准备帧、合成与相机契约；覆盖在宿主层应用，求值层只收生效状态。
-5. `api.storage`：资源服务与恢复槽。
-6. `api.editor`：会话与后端契约（含基于稳定 ID 的选择、状态轨道时间轴与配置）。
-7. `block` / `spatial` 余项：`TrackTypeRegistry`、`AnchorTypeRegistry`、`AnchorResolver`、
+3. `api.storage`：资源服务与恢复槽。
+4. `api.editor`：会话与后端契约（含基于稳定 ID 的选择、状态轨道时间轴与配置）。
+5. `api.animation.edit` 余项：`EditTools`（缓动 / 批量 / 烘焙 / 注视姿态转旋转键并关闭注视）。
+   它依赖 eval 的采样、冻结世界事实与 `EditOp` 复合提交；不提前发明工具请求类型。
+6. `block` / `spatial` 余项：`TrackTypeRegistry`、`AnchorTypeRegistry`、`AnchorResolver`、
    `WorldPose` / `DocumentPose`；`field.AnimatedNumber` 与 `RigView.Rect` 的布局动画
-   （可与 UI / 编辑批次合并，见 §1.4）；采样参数 `MapCodec` 与注册表（S1）；叠加内容类型（O1–O3）。
+   （Q14：本轮随后落地）；采样参数 `MapCodec` 与注册表（S1）；叠加内容类型（O1–O3）。
 
 <a id="p1-follow-up"></a>
 ### 6.4 后续代码修复、验证与优化清单
@@ -384,7 +413,7 @@ v2 契约测试类 5 个（26 个用例）；包含旧实现测试的全工程�
 
 性能调整先确认调用位置和频率；不得把 v1 调用当成 v2 已有热点。需要量化结论时保留可复现源码、真实数据规模、JDK/GC 参数、多轮结果与分配依据；原替身微基准的绝对值和比值均不作门槛。不要仅因 Stream 写法改循环，也不永久禁止某种实现。
 
-本次文档同步前已复查 Keyframe 最新有限性检查，但尚未新增或重跑时间边界测试；§6.1.1、§6.2 的 92 用例是上一轮基线（含 v2 的 26 个用例），不能作为 A0 关闭依据。修复完成后按复核日志规则追加记录。
+本次文档同步前已复查 Keyframe 最新有限性检查，但尚未新增或重跑时间边界测试；§6.1.1、§6.2 的 117 用例是当前基线（含 v2 的 51 个用例），A0/A1/A4/A5/A7 已由复核日志 R7 关闭，A3/A2 仍待 eval / 宿主批次；新测试结果以 R8 为准。
 
 ---
 
@@ -430,6 +459,19 @@ v2 契约测试类 5 个（26 个用例）；包含旧实现测试的全工程�
 15. **`TrackLookup` 迁 eval 后的绑定**：按 Q6 迁入 `api.animation.eval`，文档根已移除
     `trackLookup()`。绑定工厂归属（`EvaluationContext` 或独立工厂）在 eval 批次确定；
     请确认文档不再提供“把快照包成查询器”的便捷方法这一取舍。
+16. **`EditOp` 粒度**：现为 sealed + 约 50 个嵌套 record（文档 / 机位 / 通道 / 轨道 /
+    关键帧 / 符号 / 路径 / 标记 / 采样 / 音频 / 叠加 + `Batch`）。请确认是否需要更少的
+    通用操作（如只留 `ReplaceTrack` / `ReplaceDocument` + 关键帧操作），或保持逐类可审。
+17. **`Revision` 包装与存储方法面**：设计 §3.3 片段用 `long revision`，本批用
+    `document.Revision` 包装；`AnimationDocumentStore` 提供 `submit` / `switchDocument` /
+    `undo` / `redo` / 监听 / 历史视图。请确认包装类型与 `switchDocument(..., SessionSwitch)` 的
+    换档入口是否合适。
+18. **edit ↔ document 双向包引用（Q13）**：`AnimationDocumentStore` 收 `EditOp` / 返回
+    `EditResult`，`EditResult.Applied` 持 `AnimationSnapshot`。若架构检查要求单向依赖，
+    需把 `EditResult` 拆到 document 或把存储入口迁到 edit。
+19. **`EditTarget` / `Selection` 覆盖面**：目标为稳定 ID 的 sealed 分支（文档 / 机位 / 轨道 /
+    键 / 标记 / 采样 / 音频 / 叠加 / 变量 / 函数 / 路径节点），选择含机位 / 轨道 / 键 / 标记。
+    请确认是否还需布局字段、预览锚点或世界采样参数的细粒度目标。
 
 ### 7.2 已裁决（用户）
 
@@ -447,11 +489,18 @@ v2 契约测试类 5 个（26 个用例）；包含旧实现测试的全工程�
 | Q10 | `sampledAt` 时间基准 | **游戏刻 `long`**，与 `resampleEveryTicks` 和 `FrameFacts` 同口径 |
 | Q11 | 布局 `AnimatedNumber` 是否本轮补 | **本轮只记录为已知差异**（§1.4），随布局 / 编辑批次补 `field.AnimatedNumber` 与 `RigView.Rect` 改写 |
 | Q12 | 本批范围 | **只补 aim / 来源 / 活动相关契约 + 世界采样读数**；`block` / `spatial` 其余余项与后续包留待下一批（§6.3） |
+| Q13 | `edit` 包位置与第三批节奏 | **按 P1 计划放顶层 `api.animation.edit`**（不采用设计 §2.1 的 `document` 子包建议）；先做 edit + document 一批，接受 `edit ↔ document` 双向包引用；`EditTools` 随后续批次补 |
+| Q14 | 布局 `AnimatedNumber` 落地时机 | **本轮随后落地**（block/spatial 余项批次）：新增 `field.AnimatedNumber` 并改写 `RigView.Rect`；不再只记录差异 |
 
 ### 7.3 后续批次仍需定型（非本轮裁决）
 
-Q4–Q7 已裁决关闭，以下属于实现批次内的形状问题，不影响本轮契约审核：
+Q4–Q7、Q13 已裁决关闭，以下属于实现批次内的形状问题，不影响本轮契约审核：
 
+- **edit ↔ document 依赖拆分**（若架构检查禁止双向引用）：拆 `EditResult` 或迁存储入口。
+- **`EditTools` 请求形状**（eval / editor 批次）：烘焙区间 / 步长 / 预算，以及注视捕获的
+  冻结事实、覆盖清理与复合 `EditOp`。
+- **文档存储实现细节**（`core`）：`volatile` 快照、发布线程、通知排队、64 项 / 32 MiB 历史上限。
+- **`EditOp` 与轨道能力分派**：数值 / 状态键、第三方轨道的值类型兼容与跨轨粘贴规则。
 - **采样类型注册表 / 参数 `MapCodec` 形状**（S1）：`SampleArgs` 已定，注册表如何返回
   `MapCodec<? extends SampleArgs>`、两阶段解码（先 `kind` 后参数）如何写。
 - **`TrackTypeRegistry` 形状与保留 ID 校验落点**（edit 批次 L2）：扩展轨道伪造内建
@@ -461,15 +510,17 @@ Q4–Q7 已裁决关闭，以下属于实现批次内的形状问题，不影响
   `StreamCodec`；以及“固定 `Replace` 覆盖”在捕获工具里的提示文案。
 - **`TrackLookup` 绑定工厂**（eval 批次）：由 `EvaluationContext` 还是独立工厂提供，
   缓存身份如何包含快照身份，并按 §6.4 A3 携带轨道所属机位；重复 ID 不得被索引静默覆盖。
-- **布局 `AnimatedNumber`**（布局 / 编辑批次）：`field.AnimatedNumber` 分支与
+- **布局 `AnimatedNumber`**（Q14，block/spatial 余项批次）：`field.AnimatedNumber` 分支与
   `RigView.Rect` 的改写。
 
 ### 7.4 已确认：有类型时间轴关键帧与注视交还
 
 本节替代旧版“本轮不做注视目标随时间变化”的结论。以主设计 §3.1.1、§4.7、§6.4 为准。
-**本批已把该设计落为契约**（`KeyframeTrack`、`AimTrack`、`ActiveTrack`、`CameraSourceTrack`、
-`AimState`、`ValueKeyframe`、`CameraSource`、`playback.AimOverride`）并有契约测试；
-`core` / `editor` 实现与注视姿态捕获工具仍未开始。
+**第二批已把该设计落为契约**（`KeyframeTrack`、`AimTrack`、`ActiveTrack`、`CameraSourceTrack`、
+`AimState`、`ValueKeyframe`、`CameraSource`、`playback.AimOverride`）；
+**第三批已补齐编辑 / 文档链路**（`EditOp`、`EditOutcome`、`EditResult`、`Diagnostic`、
+`DocumentValidator`、`TrialRun`、`AnimationSnapshot` / `AnimationDocumentStore` / 历史 / 事务 /
+预览 / 选择）；`core` / `editor` 实现与注视姿态捕获工具仍未开始。
 
 - 注视、机位活动与玩家相机来源均为正式 AnimationTrack 的有类型关键帧轨道，共用稳定 ID、时间排序、编辑操作、选择、吸附、复制、历史与 Codec/校验。`KeyframeTrack<T>` 为契约名，不另建 StepProperty 存储或第二套状态键编辑器。
 - 值类型分别为 Off / Target(AimTarget)、boolean、Player / Rig(RigId)，只允许 STEP；数值 Curve/Keyframe/KeyField 不必容纳这些原生值，不以数字伪装对象。TrackRef 只接受受支持数值通道。轨道只持久化一次，通用目录从各所有者派生。
@@ -478,4 +529,4 @@ Q4–Q7 已裁决关闭，以下属于实现批次内的形状问题，不影响
 - 显式姿态捕获工具冻结基版本与 t 的事实，按关闭前有效目标求姿态、逆变换到文档参考系，一次写入 t 的完整 XYZ 常量键和 Off。若 t 已有 Off，可显式选左侧有效目标配置，但姿态仍求 t 时刻；覆盖/公式替换须确认，固定 Target 请求覆盖（`AimOverride.Replace`）先清除再重算。任何失败不部分提交，一次撤销完整恢复。
 - 该工具固化编辑时世界事实，不保证动态目标重播时连续；不引入运行期上一帧姿态继承、平滑注视或镜头混合。
 
-契约补齐顺序：field/block 的有类型轨道和值 → 编辑能力与冲突/Codec → eval/playback 无历史状态采样 → 捕获结果及复合 EditOp → editor 命令与诊断。**第一段已完成**（本批：有类型轨道、状态值、文档形状、采样读数，以及 Q4–Q7 落地的扩展轨道约束、`AimOverride`、`TrackLookup` 归位与 `SampleArgs` 名义接口）；后续切片不得与已交付字段并存两套模型，也不能在新旧两套模型中分别维护状态。
+契约补齐顺序：field/block 的有类型轨道和值 → 编辑能力与冲突/Codec → eval/playback 无历史状态采样 → 捕获结果及复合 EditOp → editor 命令与诊断。**第一段（有类型轨道 / 值 / 文档形状 / 采样读数 / Q4–Q7 裁决）与第二段（`document` + `edit` 核心契约）已完成**；下一段为 eval / playback 契约与 A3 索引，之后是 `EditTools` 捕获/烘焙与 editor 命令。
