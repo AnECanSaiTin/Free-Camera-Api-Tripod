@@ -1,25 +1,32 @@
 /**
- * 时间推进、播放请求、帧准备与播放服务契约（主设计 §7.1–7.3）。
+ * 时间推进、播放请求、帧准备、事件执行与多路合成契约（主设计 §7.1–§7.6）。
  *
- * <h2>当前状态（部分交付）</h2>
+ * <h2>内容</h2>
  *
- * <p>本批只交付 Q5 裁决所需的最小类型
- * {@link cn.anecansaitin.free_camera_api_tripod_v2.api.animation.playback.AimOverride}
- * （注视覆盖的继承 / 禁用 / 替换三态）。它证明并固定了“请求策略属于播放层、
- * 求值层只消费已解析状态”的分层。
+ * <ul>
+ *   <li>{@link cn.anecansaitin.free_camera_api_tripod_v2.api.animation.playback.PlaybackRequest} /
+ *       {@link cn.anecansaitin.free_camera_api_tripod_v2.api.animation.playback.RigPlaybackOverrides}：
+ *       请求与每路覆盖；未知 `RigId` 拒绝。</li>
+ *   <li>{@link cn.anecansaitin.free_camera_api_tripod_v2.api.animation.playback.PlaybackService} /
+ *       {@code PlaybackState} / {@code PlaybackClock} / {@code PreparedFrame} / {@code RigPose}：
+ *       生命周期、共享时钟与帧准备。</li>
+ *   <li>{@link cn.anecansaitin.free_camera_api_tripod_v2.api.animation.playback.EventBudget} /
+ *       {@code EventDispatcher}：每帧事件与区间预算；执行器异常终止后续分发。</li>
+ *   <li>{@code CameraProbe} / {@code CameraControlClaims}：宿主基础姿态与编辑器接管仲裁。</li>
+ *   <li>{@link cn.anecansaitin.free_camera_api_tripod_v2.api.animation.playback.CameraCompositionService} /
+ *       {@code CompositionRequest} / {@code CompositionResult} / {@code RigRenderStatus} /
+ *       {@code DegradeReason}：多路合成与可见降级状态。</li>
+ *   <li>{@code PlaybackFailure}：按一次汇总的失败原因与时间。</li>
+ * </ul>
  *
- * <p>以下契约待下一批：{@code PlaybackRequest}、{@code RigPlaybackOverrides}、
- * {@code PlaybackService}、{@code PlaybackState}、{@code PreparedFrame}、
- * {@code RigPose}、{@code PlaybackFailure}、{@code PlaybackClock}、
- * {@code EventBudget}、{@code EventDispatcher}、{@code CameraControlClaims}、
- * {@code CameraProbe}、{@code CameraCompositionService}、{@code CompositionRequest}、
- * {@code CompositionResult}、{@code RigRenderStatus}、{@code DegradeReason}。
+ * <h2>边界</h2>
  *
- * <h2>依赖方向</h2>
+ * <p>内核不读取世界、不写相机、不执行指令；宿主负责环境数据、锚点解析、参考系合成、相机应用
+ * 与事件执行。准备阶段只使用同一份 `FrameFacts` 快照；任一路失败时整帧不执行，也不应用部分
+ * 新姿态。降级是可见、可恢复的运行状态，不改写文档。
  *
- * <p>本包可依赖动画、求值与空间契约（主设计 §2.1）；不得依赖 {@code storage}、
- * {@code editor} 或客户端渲染实现。求值层不得反向依赖本包：覆盖在宿主层应用，
- * 求值只接收生效的 {@code AimState} 与来源 / 活动集合。
+ * <p>本包可依赖动画、求值与空间契约（含 `document.Revision`）；不得依赖 `storage`、
+ * `editor` 或客户端渲染实现。求值层不得反向依赖本包：覆盖在宿主层应用，求值只接收生效状态。
  */
 @NullMarked
 package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.playback;

@@ -106,6 +106,18 @@ class EditContractTest {
     }
 
     @Test
+    void documentScopeRequiresRevisionAndAllowsObjectLocationWithoutFix() {
+        assertThrows(NullPointerException.class, () -> new DiagnosticScope.Document(null));
+
+        DiagnosticScope.Document scope = new DiagnosticScope.Document(new Revision(2));
+        Diagnostic diagnostic = new Diagnostic(
+                DiagnosticCode.BROKEN_REFERENCE, Severity.ERROR, LocalizedMessage.literal("x"),
+                scope, new Diagnostic.Location(new RigId("rig"), ""), null);
+
+        assertEquals(scope, diagnostic.scope());
+    }
+
+    @Test
     void editTargetRejectsBlankSymbolNames() {
         assertThrows(IllegalArgumentException.class, () -> new EditTarget.Variable(" "));
         assertThrows(IllegalArgumentException.class, () -> new EditTarget.Function(""));

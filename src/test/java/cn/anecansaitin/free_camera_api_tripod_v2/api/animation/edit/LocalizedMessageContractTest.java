@@ -46,6 +46,28 @@ class LocalizedMessageContractTest {
     }
 
     @Test
+    void argumentListsAreImmutableAndNestedMessagesKeepTheirOwnState() {
+        List<LocalizedMessage.Argument> nestedArguments = new ArrayList<>(List.of(
+                new LocalizedMessage.Argument.Text("nested")));
+        LocalizedMessage.Translatable nested = new LocalizedMessage.Translatable(
+                "nested.key", null, nestedArguments, LocalizedMessage.Formatting.NONE);
+
+        List<LocalizedMessage.Argument> outerArguments = new ArrayList<>(List.of(
+                new LocalizedMessage.Argument.Message(nested)));
+        LocalizedMessage.Translatable outer = new LocalizedMessage.Translatable(
+                "outer.key", null, outerArguments, LocalizedMessage.Formatting.NONE);
+
+        nestedArguments.clear();
+        outerArguments.clear();
+
+        LocalizedMessage.Translatable nestedCopy = (LocalizedMessage.Translatable)
+                ((LocalizedMessage.Argument.Message) outer.arguments().get(0)).value();
+        assertEquals(1, nestedCopy.arguments().size());
+        assertThrows(UnsupportedOperationException.class,
+                () -> outer.arguments().add(new LocalizedMessage.Argument.Text("x")));
+    }
+
+    @Test
     void argumentsRejectInvalidValues() {
         assertThrows(IllegalArgumentException.class,
                 () -> new LocalizedMessage.Argument.Number(Double.NaN));
