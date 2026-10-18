@@ -31,7 +31,8 @@
 | [R10](#r10-实施记录p1-计划-65-的-c1c4-修正) | 实施记录：§6.5 C1–C4 | C1/C2 已修正；C3/C4 由 R11 重做（浅拷贝与可空版本问题） | 部分（C3/C4 见 R11） |
 | [R11](#r11-实施记录c3c4-深层修正) | 实施记录：C3/C4 深层修正 | 不可变 LocalizedMessage + 受限样式；显式 DiagnosticScope | 已修正，复核结论见 R12 |
 | [R12](#r12-复核关闭c1c4-契约修复与运行边界) | 复核关闭 C1–C4 | 四项修复在当前契约范围成立；无新增确定缺陷 | 契约已复核；运行实现另验 |
-| [R13](#r13-实施记录playback-契约批次) | 实施记录：playback 契约 | 请求/覆盖/服务/帧/事件/接管/合成 + WorldPose | 契约已交付（测试通过） |
+| [R13](#r13-实施记录playback-契约批次) | 实施记录：playback 契约 | 请求/覆盖/服务/帧/事件/接管/合成 + WorldPose | 契约已交付；5 项修正见 R14 |
+| [R14](#r14-实施记录playback-审核修正) | 实施记录：playback 审核修正 | 接管姿态、合成层级/质量、事件顺序/快照、旧帧采样身份 | 已修正（待人工复核） |
 
 ---
 
@@ -761,3 +762,39 @@ public float viewExtent() {
 - 时间推进、事件执行器、多路合成、探针与接管仲裁的实现均在 `core`；
 - `PreparedFrame.Event` 仅含 `TrackId + time`，事件载荷解析与第三方轨道执行协议仍需审核；
 - 播放契约与 §7.5 的求值绑定 / 世界身份 / 空间错误传递仍未闭环，不宣称播放链路可用。
+
+---
+
+## R14. 实施记录：playback 审核修正
+
+**记录日期**：2026-10-18
+**类型**：实施记录；响应 playback 审核的 2 项 P1 / 3 项 P2，待人工复核。
+**核查位置**：
+[`CameraControlClaims.java`](../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/playback/CameraControlClaims.java)、
+[`RigPose.java`](../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/playback/RigPose.java)、
+[`PreparedFrame.java`](../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/playback/PreparedFrame.java)、
+[`EventDispatcher.java`](../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/playback/EventDispatcher.java)、
+[`RigRenderStatus.java`](../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/playback/RigRenderStatus.java)。
+
+| # | 级别 | 问题 | 修正 |
+| --- | --- | --- | --- |
+| 1 | P1 | 接管声明没有自由视角姿态入口，宿主只知“谁获胜” | 登记增加 `PoseProvider`；新增 `winningPose()` 同帧捕获 `Claim + WorldPose`；释放后 provider 失效，禁止复用缓存姿态 |
+| 2 | P1 | `RigPose` 缺层级与作者质量请求，合成器只能重新读 store | `RigPose` 增加 `zOrder` / `resolutionScale` / `updateEveryFrames`，在准备阶段冻结；合成器不得重新读取当前文档 |
+| 3 | P2 | 事件被要求“按文档轨道顺序”，破坏跨区间时间顺序 | 固定为“跨区间 / 周期 → 区间内时间递增 → 同一时刻按文档轨道顺序”；执行器原样消费 |
+| 4 | P2 | 事件解析未绑定捕获快照，可能用 S2 解析 S1 事件 | `PreparedFrame` 携带 `AnimationSnapshot`；`EventDispatcher.dispatch(PreparedFrame, EventBudget)` 必须用帧快照，禁止读当前 store |
+| 5 | P2 | 复用旧画面允许缺少采样时间；游戏刻不足以区分同 tick 多帧 | `RigRenderStatus` 改带 `SampleIdentity`（渲染帧序号 + 动画时间 + 游戏刻）；已呈现必须携带；`FRAME_SKIPPED` 必须呈现、`RIG_PAUSED` 必须未呈现 |
+
+### R14.1 验证结果
+
+- 命令：`.\gradlew.bat --offline compileJava test --console=plain`
+- 结果：`BUILD SUCCESSFUL`；**19 个测试 suite / 142 个用例全绿**，其中 `_v2` 为
+  **13 个 suite / 76 个用例**（R13 为 19 / 140，v2 13 / 74）。
+- 新增测试：`RigPose` 层级/质量校验、`PreparedFrame.snapshot`、`RigRenderStatus` 旧帧
+  采样身份与降级一致性。
+- 门禁：`_v2` 旧根引用 0、`net.minecraft.client` 引用 0、旧根已跟踪文件改动 0。
+
+### R14.2 未完成
+
+- 接管仲裁、事件执行器、合成与采样身份的宿主实现仍在 `core`；
+- provider 异常转准备失败、活动切换 / 来源交接的旧帧失效仍需运行级验证；
+- 本记录不宣称审核通过；R13 的“事件仅 trackId/time”条目已被本记录第 4 项取代。

@@ -3,7 +3,7 @@
 > 本文是**施工约定**，不是设计文档。设计以 `docs/` 下三份设计为准；
 > 本文固定三件事：新契约放哪、叫什么、怎么写，以及本批交付了什么供审核。
 >
-> 状态：**P1 第三批 document/edit、第四批 eval 与第五批 playback 契约已交付；C1–C4 修复已通过契约层复核，其他定型事项仍见 §7.5**。
+> 状态：**P1 第三批 document/edit、第四批 eval 与第五批 playback 契约已交付；C1–C4 已通过契约层复核，playback 审核修正（§6.6）待复核；其他定型事项见 §7.5**。
 > 第三批声明快照 / 存储 / 历史 / 事务 / 预览 / 选择、纯编辑操作 / 诊断 / 校验 / 试算；
 > 第四批声明索引 / 帧事实 / 求值上下文 / 缓存键 / 采样与姿态等契约。这里只交付契约，
 > 不代表存储、校验器、采样器、依赖图或缓存实现已完成；2026-10-18 审查四项的最终方案及关闭范围见 §6.5、复核日志 R12。
@@ -242,10 +242,12 @@ cn/anecansaitin/free_camera_api_tripod_v2/
 ### 4.10 `api.animation.playback` —— 播放（主设计 §7.1–7.6）**已交付（契约）**
 
 `PlaybackRequest`、`RigPlaybackOverrides`、`AimOverride`（Q5）、`PlaybackService`（含 `StartResult`）、
-`PlaybackState`、`PlaybackClock`、`PreparedFrame`（含 `Event`）、`RigPose`、`PlaybackFailure`
-（含 `Reason`）、`EventBudget`、`EventDispatcher`（含 `Result`）、`CameraControlClaims`（含 `Claim`）、
-`CameraProbe`、`CameraCompositionService`、`CompositionRequest`、`CompositionResult`、
-`RigRenderStatus`、`DegradeReason`。
+`PlaybackState`、`PlaybackClock`、`PreparedFrame`（含 `Event`，并携带捕获 `AnimationSnapshot`）、
+`RigPose`（姿态 + 矩形 + `zOrder` / `resolutionScale` / `updateEveryFrames`）、`PlaybackFailure`
+（含 `Reason`）、`EventBudget`、`EventDispatcher`（`dispatch(PreparedFrame, EventBudget)`，含 `Result`）、
+`CameraControlClaims`（含 `PoseProvider` / `ClaimedPose` / `Claim`）、`CameraProbe`、
+`CameraCompositionService`、`CompositionRequest`、`CompositionResult`、
+`RigRenderStatus`（含 `SampleIdentity`）、`DegradeReason`。
 
 实现（时间推进、事件执行、多路合成、探针与接管仲裁）留到 `core`；本批只声明契约，
 不宣称播放链路、渲染或事件执行可用。
@@ -374,7 +376,7 @@ Q4–Q7 裁决新增：
 | P2 | `OverlayElement.endTime()` 重写访问器，未启用时返回 0，创作数据被隐藏，访问器重建对象会得到非法区间 | 删除访问器重写，`endTime()` 恢复原始区间；新增派生查询 `durationContribution()`，`CameraAnimation.duration()` 改读它；新增 `OverlayElementContractTest` |
 | P2 | `CurveTrack.ofChannel(CameraChannel)` 用语义键当 `TrackId`，多机位同通道会重复身份 | 删除该便利工厂；通道轨道必须显式提供文档内唯一 `TrackId`（`ofChannel(TrackId, String, CameraChannel, Curve)`）；新增双机位同通道测试 |
 
-v2 契约测试类 13 个（74 个用例）；包含旧实现测试的全工程基线为 19 个 suite / 140 个用例：
+v2 契约测试类 13 个（76 个用例）；包含旧实现测试的全工程基线为 19 个 suite / 142 个用例：
 
 - `block/StateTrackContractTest`：STEP 语义、键时间唯一、时长口径、统一轨道目录、读数三分支、
   双机位同通道需不同 `TrackId`
@@ -412,7 +414,7 @@ v2 契约测试类 13 个（74 个用例）；包含旧实现测试的全工程�
    文件无条目。本批修订的是 `_v2` 已跟踪文件，因此 `M` 条目应全部位于 `_v2` 下；
    新增文件为 `??`。
 
-验收标准为编译、测试及依赖边界检查通过，并关闭对应审查项。第五批 playback 契约后实际运行 `compileJava test`：19 个 suite / 140 个用例通过，其中 v2 为 13 / 74；C1–C4 契约层复核关闭见 R12，playback 契约待人工审核。该基线不代表 time 推进、事件执行器、合成或 core 存储已验证。
+验收标准为编译、测试及依赖边界检查通过，并关闭对应审查项。第五批 playback 审核修正后实际运行 `compileJava test`：19 个 suite / 142 个用例通过，其中 v2 为 13 / 76；C1–C4 契约层复核关闭见 R12，playback 修正见 §6.6 / R14，仍待人工审核。该基线不代表时间推进、事件执行器、合成或 core 存储已验证。
 
 ### 6.3 下一批（P1 余下契约）
 
@@ -443,7 +445,7 @@ v2 契约测试类 13 个（74 个用例）；包含旧实现测试的全工程�
 
 性能调整先确认调用位置和频率；不得把 v1 调用当成 v2 已有热点。需要量化结论时保留可复现源码、真实数据规模、JDK/GC 参数、多轮结果与分配依据；原替身微基准的绝对值和比值均不作门槛。不要仅因 Stream 写法改循环，也不永久禁止某种实现。
 
-当前状态：A0/A1/A4/A5 的模型修正与回归测试已随 R7 落地；A7 的注释和时长测试已完成，事件执行副作用验证仍待执行器。A3 已随 R9 交付 TrackIndex 契约，但索引构建、绑定与运行验证尚未完成；A2 仍等待宿主重复查询证据。R13 记录 140 个全工程用例（v2 74），R11 为 131（v2 65），不再沿用旧数字。
+当前状态：A0/A1/A4/A5 的模型修正与回归测试已随 R7 落地；A7 的注释和时长测试已完成，事件执行副作用验证仍待执行器。A3 已随 R9 交付 TrackIndex 契约，但索引构建、绑定与运行验证尚未完成；A2 仍等待宿主重复查询证据。R14 记录 142 个全工程用例（v2 76），R13 为 140（v2 74），不再沿用旧数字。
 
 ### 6.5 2026-10-18 第三/四批审查：历史问题与最终修复
 
@@ -469,13 +471,25 @@ v2 契约测试类 13 个（74 个用例）；包含旧实现测试的全工程�
 
 复核结论：C1/C2 在首轮复核中通过，C3/C4 在二次修改后通过；本次只关闭这四项契约问题，不宣称整个 P1 或运行实现完成。C3 最终采用封闭不可变消息树，C4 最终采用非空显式作用域；R10 的双向 Component.copy 与可空版本方案已由 R11/R12 取代，不得回退。
 
-仍待后续验证：同 store 换档旧请求拒绝；消息描述到 Component 的渲染；异步诊断/预览的作用域绑定；缓存和跨机位查询实现。非阻断测试补强：参数输出列表不可修改、多层嵌套消息输入隔离、Document(null) 拒绝、无 Fix 的文档对象诊断合法分支。以上尚未新增用例，不改变 131/65 基线。
+仍待后续验证：同 store 换档旧请求拒绝；消息描述到 Component 的渲染；异步诊断/预览的作用域绑定；缓存和跨机位查询实现。非阻断测试已在 R13 补齐（参数输出列表不可修改、多层嵌套消息输入隔离、`Document(null)` 拒绝、无 Fix 的文档对象诊断合法分支），当前基线见 §6.2。
+
+### 6.6 2026-10-18 playback 契约审核修正（P1/P2）
+
+| # | 级别 | 问题 | 修正 |
+| --- | --- | --- | --- |
+| 1 | P1 | `CameraControlClaims` 只能登记优先级 / 声明者 / 获胜令牌，没有自由视角姿态入口，宿主无法取得覆盖姿态 | 登记增加 `PoseProvider`；新增 `winningPose()` 一次性捕获获胜声明 + 姿态；释放后 provider 失效，不得复用缓存姿态 |
+| 2 | P1 | `RigPose` 缺 `zOrder` / 作者 `resolutionScale` / `updateEveryFrames`，合成器无法仅凭冻结输入排序与分配质量 | `RigPose` 增加三字段并在准备阶段从文档快照冻结；合成器不得重新读取 store |
+| 3 | P2 | 事件列表被写成“按文档轨道顺序”，会破坏跨区间时间顺序 | 明确为“跨区间 / 周期 → 区间内时间递增 → 同一时刻按文档轨道顺序”；执行器原样消费 |
+| 4 | P2 | `PreparedFrame.Event` 只有 `TrackId + time`，且分发接口未绑定捕获文档；执行时读当前 store 可能用 S2 解析 S1 事件 | `PreparedFrame` 携带捕获 `AnimationSnapshot`；`EventDispatcher.dispatch(PreparedFrame, EventBudget)` 必须用帧快照解析，禁止读当前 store |
+| 5 | P2 | `RigRenderStatus` 允许“已呈现复用画面但没有采样时间”；游戏刻不足以区分同 tick 多帧 | 新增 `SampleIdentity`（渲染帧序号 + 动画时间 + 游戏刻）；`rendered=true` 必须携带；`FRAME_SKIPPED` 必须呈现，`RIG_PAUSED` 必须未呈现；活动切换 / 来源交接后旧画面失效 |
+
+验证：`PlaybackContractTest` 增加 `RigPose` 层级/质量校验、`PreparedFrame.snapshot`、`SampleIdentity` 与降级一致性测试。上述修正仍待人工复核，不宣称 `core` 的仲裁、事件执行或合成实现已完成。
 
 ---
 
 ## 7. 审核要点与待决
 
-本计划的审核要点须结合复核日志 R4–R12、§6.4 实施状态与 §6.5 最终修复阅读；第三/四批相较上次的其余人工审核范围汇总于 §7.5。C1–C4 已关闭不代表其他协议或后续代码自动通过。
+本计划的审核要点须结合复核日志 R4–R14、§6.4 实施状态、§6.5 最终修复与 §6.6 playback 修正阅读；第三/四批相较上次的其余人工审核范围汇总于 §7.5。C1–C4 已关闭不代表其他协议或后续代码自动通过。
 
 ### 7.1 审核要点（请重点看这几处）
 
@@ -543,12 +557,17 @@ v2 契约测试类 13 个（74 个用例）；包含旧实现测试的全工程�
 25. **`PlaybackRequest` 与 `PlaybackService`**：请求持有 `CameraAnimation` 而非快照，`start`
     接收 `Revision` 并由同一 store 换档；`StartResult` 强制 accepted / failure 一致。请确认
     请求载入与文档切换的原子边界，以及未知 `RigId` 覆盖的拒绝位置。
-26. **`PreparedFrame.Event` 仅含 `TrackId + time`**：事件载荷留在轨道，执行器按轨道类型解析；
-    `EventDispatcher.Result` 报告已分发数与失败。请确认这是否足够支撑第三方 Tick 轨道，
-    以及执行器异常时“部分执行”的报告口径。
-27. **`WorldPose` / `CompositionResult` / `RigRenderStatus`**：`WorldPose.fov` 用度且必须为正；
-    合成结果强制 presented / failure 一致；降级状态带 `sampledAtGameTick`。请确认 FOV 单位、
-    渲染目标身份与旧帧时间标识是否足够。
+26. **`PreparedFrame` 的捕获快照与事件顺序**：帧携带 `AnimationSnapshot`，事件顺序固定为
+    “跨区间 / 周期 → 区间内时间递增 → 同一时刻按文档轨道顺序”；`EventDispatcher.dispatch`
+    接收整帧，必须用帧快照解析载荷，禁止读当前 store。请确认事件载荷协议与第三方轨道执行器
+    绑定方式，以及执行器异常时“部分执行”的报告口径。
+27. **`WorldPose` / `RigPose` / `CompositionResult` / `RigRenderStatus`**：`WorldPose.fov` 用度
+    且必须为正；`RigPose` 冻结 `zOrder` / `resolutionScale` / `updateEveryFrames`；合成结果强制
+    presented / failure 一致；呈现的旧帧必须携带 `SampleIdentity`（渲染帧序号 + 动画时间 +
+    游戏刻）。请确认 FOV 单位、层级/质量冻结与旧帧失效规则。
+28. **`CameraControlClaims` 姿态协议**：登记时提供 `PoseProvider`，宿主每帧用 `winningPose()`
+    一次性取得获胜声明与姿态；释放后 provider 失效，不得复用缓存姿态。请确认“同帧读取”
+    是否足够，以及 provider 异常是否统一转为准备失败。
 
 ### 7.2 已裁决（用户）
 
@@ -607,7 +626,7 @@ Q4–Q7、Q13 已裁决关闭，以下仍需在后续批次定型；若涉及 §
 - 显式姿态捕获工具冻结基版本与 t 的事实，按关闭前有效目标求姿态、逆变换到文档参考系，一次写入 t 的完整 XYZ 常量键和 Off。若 t 已有 Off，可显式选左侧有效目标配置，但姿态仍求 t 时刻；覆盖/公式替换须确认，固定 Target 请求覆盖（`AimOverride.Replace`）先清除再重算。任何失败不部分提交，一次撤销完整恢复。
 - 该工具固化编辑时世界事实，不保证动态目标重播时连续；不引入运行期上一帧姿态继承、平滑注视或镜头混合。
 
-契约进度：field/block 第二批、document/edit 第三批、eval 第四批及 playback 第五批类型均已交付；第三/四批的 §6.5 C1–C4 已通过契约复核；§7.5 其余定型事项仍待审核。A3 仅完成索引契约，core 绑定实现未交付。第五批 playback 也只交付契约，时间推进、事件执行、合成与探针实现仍在 `core`；后续补 storage / editor、按 Q14 补布局动画，再推进 EditTools。不得将契约交付写成算法、发布或播放链路已实现。
+契约进度：field/block 第二批、document/edit 第三批、eval 第四批及 playback 第五批类型均已交付；第三/四批的 §6.5 C1–C4 已通过契约复核；playback 的 §6.6 修正待复核；§7.5 其余定型事项仍待审核。A3 仅完成索引契约，core 绑定实现未交付。第五批 playback 也只交付契约，时间推进、事件执行、合成与探针实现仍在 `core`；后续补 storage / editor、按 Q14 补布局动画，再推进 EditTools。不得将契约交付写成算法、发布或播放链路已实现。
 
 
 ### 7.5 相较上一轮新增的人工审核清单
@@ -623,6 +642,6 @@ Q4–Q7、Q13 已裁决关闭，以下仍需在后续批次定型；若涉及 §
 | 上下文与世界身份 | 同维度重进世界、撤销/候选变化时，快照/上下文/帧/事实/采样表身份由谁生成 | 统一绑定/身份分配规则；TrackLookup、TrackIndex 与缓存键同源，时间身份采用 C2 已加入的 sampleTime，生成/绑定协议仍待实现 |
 | 空间与姿态错误 | FrameFacts 的合法空值与解析失败、失败原因传递；DocumentPose 轴 ERROR 与 ABSENT、FOV 错误汇总 | 准备结果诊断通道及合成阻断规则，不能把缺失二值掩码当作错误兜底 |
 | 轨道索引 | 唯一 ID 拒绝、TrackLookup 不能绕过冲突、TrackRef 在被引用机位求值 | A3 实现批次的跨机位/换档/候选一致性验收 |
-| playback 帧准备与执行 | `PlaybackRequest` 的文档切换边界、`PreparedFrame.Event` 仅 trackId/time、`StartResult`/`CompositionResult` 一致性、`WorldPose` FOV 单位与降级状态 | 事件载荷解析协议、执行器异常的部分执行报告、合成失败与降级区分 |
+| playback 帧准备与执行 | `PlaybackRequest` 的文档切换边界、`PreparedFrame` 捕获快照与事件顺序、`StartResult`/`CompositionResult` 一致性、`RigPose` 层级/质量、`RigRenderStatus.SampleIdentity`、`winningPose` 同帧读取 | §6.6 已修正，仍待复核；事件载荷解析与执行器异常的部分执行报告仍待 core |
 
 Q13 已接受的双向包引用无需重新请求确认；store、校验器、采样器、依赖图、缓存和 EditTools 的实现延期仍保持。Q11 是早期暂缓记录，Q14 已更新后续实施安排；本次更正不将任何新增审核项写为 Q15 等“用户已裁决”。
