@@ -5,6 +5,7 @@ import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.Revision
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.KeyId;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.RigId;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.TrackId;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field.Curve;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.spatial.AimState;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.storage.ResourceId;
 import org.junit.jupiter.api.Test;
@@ -178,5 +179,29 @@ class EditContractTest {
                 LocalizedMessage.literal("budget exhausted"));
         TrialResult incomplete = new TrialResult(TrialStatus.INCOMPLETE, incompleteReport, List.of());
         assertEquals(TrialStatus.INCOMPLETE, incomplete.status());
+    }
+
+    @Test
+    void editToolsValidatePresetBatchAndResults() {
+        EasingPreset preset = new EasingPreset(
+                "smooth", Curve.Interpolation.HERMITE, 0f, 0f, 0.2f, 0.2f);
+        List<KeyId> keys = new ArrayList<>(List.of(key("k")));
+        EasingRequest request = new EasingRequest(track("t"), keys, preset);
+        keys.clear();
+
+        assertEquals(1, request.keyIds().size());
+        assertThrows(IllegalArgumentException.class,
+                () -> new EasingPreset(" ", Curve.Interpolation.LINEAR, 0f, 0f, 0f, 0f));
+        assertThrows(IllegalArgumentException.class,
+                () -> new EasingPreset("bad", Curve.Interpolation.LINEAR, 0f, 0f, -1f, 0f));
+        assertThrows(IllegalArgumentException.class,
+                () -> new BatchTransform(Float.NaN, 1f, 0f, false));
+
+        Diagnostic error = new Diagnostic(DiagnosticCode.BROKEN_REFERENCE, Severity.ERROR,
+                LocalizedMessage.literal("error"), new DiagnosticScope.File(new ResourceId("test")), null, null);
+        assertThrows(IllegalArgumentException.class,
+                () -> new ToolResult.Ready(new EditOp.RenameDocument("x"), List.of(error)));
+        assertThrows(IllegalArgumentException.class,
+                () -> new ToolResult.Rejected(List.of()));
     }
 }

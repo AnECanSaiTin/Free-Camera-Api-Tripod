@@ -18,6 +18,9 @@
  *   <li>{@code DocumentValidator} / {@code ValidationLayer}：L1–L4 分层只读校验。</li>
  *   <li>{@code TrialRun} / {@code TrialResult} / {@code TrialStatus}：有预算的试算，不是安全证明；
  *       结果报告检查区间、采样策略、实际检查量、固定事实与未完成原因。</li>
+ *   <li>{@code EditTools} / {@code EasingPreset} / {@code BatchTransformRequest} /
+ *       {@code BakeRequest} / {@code AimCaptureRequest} / {@code ToolResult}：缓动、批量、烘焙
+ *       与注视姿态捕获，只生成原子候选。</li>
  * </ul>
  *
  * <h2>约束</h2>
