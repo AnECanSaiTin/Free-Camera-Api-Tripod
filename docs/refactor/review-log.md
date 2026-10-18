@@ -1,7 +1,7 @@
 # 契约复核日志（凝练版）
 
 > 更新：2026-10-18。当前施工边界见[P1 计划](<P1-contract-plan.md>)；设计规则见[主设计](<../design-animation-editor-framework.md>)。本日志只保存结论、证据与复核范围。
-> 最新复核见 R25：R24 的 E1/E2 已补（会话草稿/候选入口、第三方后端 open 钩子），待复核。**不宣称 core 存储、播放、事件、仲裁、渲染或编辑器 UI 已实现**。
+> 最新复核见 R27：`EditTools`（缓动 / 批量 / 烘焙 / 注视捕获）契约已交付，R26.1 的后端 open 前置条件文案已统一。**不宣称 core 存储、播放、事件、仲裁、渲染、编辑器 UI 或工具算法已实现**。
 > 原始 R1–R14 正文、微基准表及历史被推翻论证保存在[历史归档](<archive/review-log-R1-R14-2026-10-18.md>)。历史不作施工指令，编号保留可追溯；后续新发现追加编号，实施记录不自动等于复核通过。
 
 ## 1. 当前结论
@@ -45,7 +45,9 @@
 | R22 | 10-18 | R21 修复复核 | S1–S3 在当前契约范围关闭；无新增确定缺陷，运行实现仍另验 |
 | R23 | 10-18 | editor 契约 | 实施记录；会话/视图/交互/后端类型交付，审查见 R24 |
 | R24 | 10-18 | R23 editor 复核 | 2 项公开契约缺口：草稿/预览输入链路与后端打开钩子；待修正 |
-| R25 | 10-18 | R24 E1/E2 修正 | EditDraftState、草稿更新入口、后端 open 钩子；待复核 |
+| R25 | 10-18 | R24 E1/E2 修正 | 实施记录；EditDraftState、草稿更新入口、后端 open 钩子，复核见 R26 |
+| R26 | 10-18 | R25 修复复核 | E1/E2 原入口缺口在契约范围关闭；保留后端打开前置条件的非阻断澄清 |
+| R27 | 10-18 | EditTools 契约 | 缓动/批量/烘焙/注视捕获请求、ToolResult；后端 open 文案统一；算法待 core |
 
 ### 2.1 C1–C4 最终方案（R12）
 
@@ -154,6 +156,8 @@ R12 的非阻断测试空白已在 R13 补充：消息输出列表不可修改�
 | R23 | 21 / 156 | 15 / 90 |
 | R24 | 21 / 156 | 15 / 90 |
 | R25 | 21 / 157 | 15 / 91 |
+| R26 | 21 / 157 | 15 / 91 |
+| R27 | 21 / 158 | 15 / 92 |
 
 早期记录中的命令、依赖门禁及原始位置保留归档；本轮未重新宣称运行级门禁/客户端效果已验证。后续记录应保存实际执行命令与结果，不沿用旧数字证明新代码。
 
@@ -301,3 +305,46 @@ S1/S2 是已确认残留；S3 是本批报告协议的定型项，不直接断�
 
 - `.\gradlew.bat --offline compileJava test --console=plain`：BUILD SUCCESSFUL；21 个 suite / 157 个用例，v2 15 / 91；157 个主源码 Java 文件。
 - `EditorContractTest` 新增草稿原文复制与候选就绪断言；stub 后端 open 派发、真实 begin→预览→commit 与后端注册排序仍待实现 / 测试。
+
+## R26. R25 E1/E2 修复复核
+
+**日期**：2026-10-18。**范围**：提交 `f9ade98`；核对 EditorSession、EditDraftState、EditorUiBackend、EditorUiHost、EditorBackendSelector 及 EditorContractTest。只复核公开契约和现有测试，不宣称会话/UI 运行完成。
+
+**结论**：R24 的 E1/E2 原始入口缺口已消除，在契约范围可关闭；本轮未发现新增确定阻断缺陷。另有后端打开前置条件的非阻断文案澄清，见下。
+
+| 项目 | 复核证据 | 关闭边界 |
+| --- | --- | --- |
+| E1：草稿与候选通路 | [EditorSession:34–59](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/editor/EditorSession.java#L34-L59>)提供 beginEdit、draft、updateDraftText、updateDraftOperation、preview、commit/cancel；[EditDraftState](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/editor/EditDraftState.java>)保存事务、原文、操作候选和诊断并复制容器。commit 明确使用保存的候选，无候选或 ERROR 拒绝 | 第三方面板已有传递输入/操作、恢复原文与提交/取消的公开数据通路。解析策略、候选更新、过期事务拒绝、跨后端恢复和一次撤销仍需会话实现验证 |
+| E2：后端派发入口 | [EditorUiBackend:22–26](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/editor/EditorUiBackend.java#L22-L26>)新增 open(session)，[EditorUiHost:14–19](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/editor/EditorUiHost.java#L14-L19>)要求选中可接管后端后调用；指定拒绝/失败不回退，未注册 ID 才回内置 | 原先只有探测、没有实际行为入口的缺口关闭。注册、排序、打开失败报告、包装转发与生命周期运行仍延期 |
+
+### R26.1 非阻断澄清
+
+[EditorUiBackend:24](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/editor/EditorUiBackend.java#L24>)写“canOpen 为真或明确指定该后端后调用”，可能使显式指定被理解为绕过接管探测；Host 与 Selector 同时保留指定后端拒绝接管的规则。建议统一为“自动/指定均仅在 canOpen 为真后调用；指定拒绝不自动回退”。当前文字没有强制 Host 绕过拒绝，且无实际派发实现，不据此报告确定运行错误或重新打开 E2 原入口缺陷。本次仅记录，未修改该注释。
+
+### R26.2 实际验证与未覆盖项
+
+实际执行 `./gradlew.bat --offline compileJava test --rerun --console=plain`，BUILD SUCCESSFUL：21 个 suite / 157 个用例通过，v2 为 15 / 91，无失败、错误、跳过；`git diff --check` 通过。
+
+[EditorContractTest:114–132](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/editor/EditorContractTest.java#L114-L132>)新增输入原文容器隔离、候选就绪和 ERROR 阻止可提交候选的断言；没有真实会话或后端宿主实现，因此 begin→更新→预览→commit/cancel、不可解析文本重建恢复、过期事务拒绝、后端打开派发/排序/转发及失败清理仍待后续行为测试。不把已明确延期的运行验证当作本批缺陷。
+
+本轮仅更新审核日志，未修改源码或其他设计文档。
+
+## R27. EditTools 契约
+
+**日期**：2026-10-18。**类型**：实施记录，待复核；同时落实 R26.1 的文案澄清。
+
+### R27.1 交付
+
+- `EditTools`：`applyEasing`、`applyBatchTransform`、`bake`、`captureAim`，只返回完整候选或整体拒绝。
+- `EasingPreset` / `EasingRequest`：显式插值与曲柄，不新增隐式缓动。
+- `BatchTransform` / `BatchTransformRequest`：时间偏移、值域缩放/偏移/取反分开表达。
+- `BakeRequest`：机位/轨道、区间、步长、插值、最大键数与冻结 `EvaluationContext`。
+- `AimCaptureRequest`：机位、时间、基版本与冻结上下文；覆盖为 Target 时须先清除。
+- `ToolResult`：`Ready(EditOp, warnings)` 不得含 ERROR；`Rejected` 至少一条诊断。
+- `EditorUiBackend.open` 文案统一为：自动 / 指定均仅在 `canOpen` 为真后调用，指定拒绝不回退。
+
+### R27.2 验证
+
+- `.\gradlew.bat --offline compileJava test --console=plain`：BUILD SUCCESSFUL；21 个 suite / 158 个用例，v2 15 / 92；165 个主源码 Java 文件。
+- `EditContractTest` 增加预设/批量参数校验与 ToolResult 一致性断言。
+- 门禁 0/0/0；未验证采样、烘焙展开、注视转换、覆盖清理、原子提交与 `ToolResult` 的消费流程。
