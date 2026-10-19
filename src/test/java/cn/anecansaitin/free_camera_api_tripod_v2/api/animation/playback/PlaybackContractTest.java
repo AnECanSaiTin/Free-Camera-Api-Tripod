@@ -54,7 +54,7 @@ class PlaybackContractTest {
 
     private static RigQualityStatus offscreenQuality() {
         return new RigQualityStatus(
-                new OutputPixelRect(-200, 0, 100, 100), null, 100, 100, 0, 0, 1.0, false);
+                new OutputPixelRect(-200, 0, 100, 100), null, 100, 100, 0, 0, 0.0, false);
     }
 
     private static AnimationSnapshot snapshot() {
@@ -202,6 +202,13 @@ class PlaybackContractTest {
         assertThrows(IllegalArgumentException.class,
                 () -> new RigQualityStatus(full, new OutputPixelRect(90, 90, 20, 20),
                         100, 100, 100, 100, 1.0, false));
+
+        RigQualityStatus visiblePaused = new RigQualityStatus(
+                full, full, 100, 100, 0, 0, 0.0, false);
+        RigRenderStatus pausedWithGeometry = new RigRenderStatus(
+                new RigId("rig"), false, 0, 0, DegradeReason.RIG_PAUSED, null, visiblePaused);
+        assertFalse(pausedWithGeometry.quality().offscreen());
+        assertEquals(0.0, pausedWithGeometry.quality().density());
     }
 
     @Test

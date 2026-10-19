@@ -14,9 +14,9 @@ import java.util.Objects;
 /// @param visibleRect      与画布相交后的可见矩形；空表示完全出屏
 /// @param requestedWidth   作者基准请求宽度，正整数
 /// @param requestedHeight  作者基准请求高度，正整数
-/// @param actualWidth      实际内部渲染宽度，非负；有可见矩形时必须为正
-/// @param actualHeight     实际内部渲染高度，非负；有可见矩形时必须为正
-/// @param density          实际 / 请求密度，有限且为正
+/// @param actualWidth      实际内部渲染宽度，非负；停路 / 目标已释放且未呈现时可为 0
+/// @param actualHeight     实际内部渲染高度，非负；停路 / 目标已释放且未呈现时可为 0
+/// @param density          实际 / 请求密度；未呈现且有可见矩形时必须为 0
 /// @param clippedDownsample 是否按可见面积执行裁剪降采样
 @NullMarked
 public record RigQualityStatus(
@@ -38,14 +38,26 @@ public record RigQualityStatus(
                     "RigQualityStatus requested dimensions must be positive and actual non-negative");
         }
 
-        if (visibleRect != null && (actualWidth == 0 || actualHeight == 0)) {
+        boolean releasedTarget = actualWidth == 0 || actualHeight == 0;
+
+        if (releasedTarget && (actualWidth != 0 || actualHeight != 0)) {
             throw new IllegalArgumentException(
-                    "Visible RigQualityStatus must have positive actual dimensions");
+                    "RigQualityStatus actual dimensions must both be zero when target is released");
         }
 
-        if (!Double.isFinite(density) || density <= 0.0) {
+        if (!Double.isFinite(density) || density < 0.0) {
             throw new IllegalArgumentException(
-                    "RigQualityStatus density must be finite and positive: " + density);
+                    "RigQualityStatus density must be finite and non-negative: " + density);
+        }
+
+        if (releasedTarget && density != 0.0) {
+            throw new IllegalArgumentException(
+                    "RigQualityStatus density must be zero when actual target is released");
+        }
+
+        if (!releasedTarget && density == 0.0) {
+            throw new IllegalArgumentException(
+                    "RigQualityStatus density must be positive when actual target exists");
         }
 
         if (visibleRect != null && !fullRect.contains(visibleRect)) {

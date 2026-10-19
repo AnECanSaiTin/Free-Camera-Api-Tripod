@@ -5,6 +5,7 @@ import io.netty.handler.codec.DecoderException;
 import io.netty.handler.codec.EncoderException;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.util.Unit;
 import org.jspecify.annotations.NullMarked;
 
 import java.util.Objects;
@@ -37,8 +38,9 @@ public interface PlaybackProtocolCodec {
     /// @param buffer 目标缓冲区
     /// @param action 要编码的动作
     /// @param limits 规模上限
-    /// @return 成功或可报告的失败；失败时缓冲区内容不保证可回滚，调用方应丢弃该缓冲
-    DataResult<Void> encode(RegistryFriendlyByteBuf buffer, PlaybackAction action, PlaybackLimits limits);
+    /// @return 成功时携带非空 [Unit#INSTANCE]，或可报告的失败；失败时缓冲区内容不保证可回滚，
+    ///         调用方应丢弃该缓冲
+    DataResult<Unit> encode(RegistryFriendlyByteBuf buffer, PlaybackAction action, PlaybackLimits limits);
 
     /// 从缓冲区解码一个动作。
     ///
@@ -70,9 +72,10 @@ public interface PlaybackProtocolCodec {
 
             @Override
             public void encode(RegistryFriendlyByteBuf buffer, PlaybackAction action) {
-                DataResult<Void> result = PlaybackProtocolCodec.this.encode(buffer, action, limits);
+                DataResult<Unit> result = PlaybackProtocolCodec.this.encode(buffer, action, limits);
 
-                if (result.isError()) {
+                // 成功也必须走标准 result() 访问；不能只判断 isError，避免空成功值再次出现。
+                if (result.result().isEmpty()) {
                     throw new EncoderException(result.error()
                             .map(DataResult.Error::message)
                             .orElse("Playback request encode failed"));

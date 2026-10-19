@@ -5,6 +5,8 @@ import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.CameraRig;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.RigId;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.TrackId;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.storage.ResourceId;
+import com.mojang.serialization.DataResult;
+import net.minecraft.util.Unit;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -92,6 +94,29 @@ class PlaybackProtocolContractTest {
         assertThrows(IllegalArgumentException.class, () -> new PlaybackLimits(0, 8, 4096));
         assertThrows(IllegalArgumentException.class, () -> new PlaybackLimits(1024, -1, 4096));
         assertThrows(IllegalArgumentException.class, () -> new PlaybackLimits(4096, 8, 1024));
+    }
+
+    @Test
+    void encodeSuccessCarriesNonNullUnitThroughStandardResult() {
+        PlaybackProtocolCodec codec = new PlaybackProtocolCodec() {
+            @Override
+            public DataResult<Unit> encode(
+                    net.minecraft.network.RegistryFriendlyByteBuf buffer,
+                    PlaybackAction action, PlaybackLimits limits) {
+                return DataResult.success(Unit.INSTANCE);
+            }
+
+            @Override
+            public DataResult<PlaybackAction> decode(
+                    net.minecraft.network.RegistryFriendlyByteBuf buffer, PlaybackLimits limits) {
+                return DataResult.error(() -> "decode not used");
+            }
+        };
+
+        DataResult<Unit> result = codec.encode(
+                null, new PlaybackAction.Stop(), new PlaybackLimits(1024, 8, 4096));
+
+        assertEquals(Unit.INSTANCE, result.result().orElseThrow());
     }
 
     // region 辅助

@@ -57,6 +57,11 @@ public record RigRenderStatus(
                     "Rendered RigRenderStatus must carry visible-pixel quality status");
         }
 
+        if (rendered && quality != null && (quality.actualWidth() == 0 || quality.actualHeight() == 0)) {
+            throw new IllegalArgumentException(
+                    "Rendered RigRenderStatus requires a positive actual target");
+        }
+
         if (rendered && quality != null && quality.offscreen()) {
             throw new IllegalArgumentException(
                     "Rendered RigRenderStatus must not report an offscreen quality status");
