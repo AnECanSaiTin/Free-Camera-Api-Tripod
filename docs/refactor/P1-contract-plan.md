@@ -1,8 +1,8 @@
 # P1 契约施工计划（`_v2`）
 
 > 更新：2026-10-19。本文记录施工边界与状态，不替代[动画主设计](<../design-animation-editor-framework.md>)、[UI 设计](<../design-editor-ui-framework.md>)和[音频设计](<../design-spatial-audio-api.md>)。
-> 当前：第一至第十批已交付；提交 C2/C3 补齐 R6/R7/R8 与事实来源绑定；**提交 C4 补齐剩余契约 R9–R12**（类型级校验钩子、字段级结构路径、按 RigId 预览覆盖、可见像素质量切片）。新增“按可见像素需求自适应分辨率”的契约已落，renderer 实现仍未做。其余运行实现仍为调用方 / core 责任，见 §7。**core 算法、存储发布、事件执行、仲裁、多机位渲染与 codec 的 NBT/网络实测尚未实现**。
-> 最近实际验证：33 个 suite / 218 个用例通过，其中 v2 为 27 / 152；220 个 v2 主源码 Java 文件。详情见[复核日志](<review-log.md>) 提交 C4。
+> 当前：第一至第十批已交付；C2/C3 补齐 R6–R8 与事实来源绑定；C4 补齐 R9–R12；**C5 修正 R12 停路零目标质量状态与 R50 编码非空成功值**。renderer 实现仍未做，其余运行实现仍为调用方 / core 责任，见 §7。**core 算法、存储发布、事件执行、仲裁、多机位渲染与 codec 的 NBT/网络实测尚未实现**。
+> 最近实际验证：33 个 suite / 219 个用例通过，其中 v2 为 27 / 153；220 个 v2 主源码 Java 文件。详情见[复核日志](<review-log.md>) 提交 C5。
 
 ## 1. 目录与迁移约定
 
@@ -138,7 +138,7 @@ Revision 包装、顶层 edit 及 edit ↔ document 例外已与主设计对齐�
 .\gradlew.bat --offline compileJava test --rerun --console=plain
 ```
 
-2026-10-19 提交 C4 实际执行成功：33 个 suite / 218 个用例，v2 为 27 / 152，无失败/错误/跳过；220 个 v2 主源码 Java 文件。测试集中在 record 结构、不变量、容器隔离与 Codec 往返，不能替代 core 的时序、仲裁、事件/渲染运行验证，也不覆盖 NBT / 网络 Ops。第十批新增 [DocumentCodecTest](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/document/DocumentCodecTest.java>) 5 个用例（完整往返、版本拒绝、未知类型拒绝、校验拒绝与警告、叠加编码拒绝）；第九批新增 [布局连续属性](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/block/LayoutAnimationContractTest.java>) 9 个用例、`ResolvedRect` 1 个用例。
+2026-10-19 提交 C5 实际执行成功：33 个 suite / 219 个用例，v2 为 27 / 153，无失败/错误/跳过；220 个 v2 主源码 Java 文件。测试集中在 record 结构、不变量、容器隔离与 Codec 往返，不能替代 core 的时序、仲裁、事件/渲染运行验证，也不覆盖 NBT / 网络 Ops。第十批新增 [DocumentCodecTest](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/document/DocumentCodecTest.java>) 5 个用例（完整往返、版本拒绝、未知类型拒绝、校验拒绝与警告、叠加编码拒绝）；第九批新增 [布局连续属性](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/block/LayoutAnimationContractTest.java>) 9 个用例、`ResolvedRect` 1 个用例。
 
 必查：api 不依赖旧根、net.minecraft.client、core/editor；editor.spi 不依赖 internal。文本扫描仅辅助，正式依赖门禁检查编译产物。旧根不接线批次不应修改旧实现。按 Q13 允许 edit ↔ document 包引用，不能将此误报为禁止依赖。补丁格式检查使用 git diff --check。
 
@@ -163,6 +163,7 @@ Revision 包装、顶层 edit 及 edit ↔ document 例外已与主设计对齐�
 | R6/R7/R8 | 提交 C2 已交付扩展时间轴、事件执行器注册、通道描述注册表 | 时间轴编辑、执行器分派、通道显示派生待 core / editor |
 | R51-N1 | 提交 C3 已改为 `FrameFacts.sourceSnapshot` 引用绑定 | 同版本异源拒绝已加测试；provider 实际传递仍待 core |
 | C4 剩余契约 | R9–R12 已交付（类型校验钩子、结构路径、预览覆盖、质量切片） | 校验分派、Codec 路径填充、预览实现与 renderer 待 core / editor |
+| C5 修正 | R12 停路零实际尺寸质量状态、R50 编码 `DataResult<Unit>` | 运行质量状态与真实编码待 core / 渲染 / 网络验证 |
 | 布局连续属性（Q14） | **第九批已交付**：`AnimatedNumber` 两分支、矩形四分量可动画、`ResolvedRect` 冻结已求值矩形；布局曲线计入时长 | 求值（分量→数值）、逐帧有限性/正尺寸检查、静态校验器接入与映射到输出像素待 eval / core |
 | 类型注册表（轨道/锚点/采样） | 第九批交付契约；第十批交付 `DocumentRegistries` 与锚点分派 Codec；C4 交付 `TypeValidator` / `TypeValidationContext` | 能力描述（B，客户端批次）、统一校验分派、`core` 注册表实现与冻结时序 |
 | 编解码与两阶段解码 | **第十批交付**：各数据类型自身 Codec、文档根 `CameraAnimation.mapCodec(registries)`、`DocumentCodec`（结构 → 校验 → Accepted/StructureFailed/ValidationFailed）；C4 允许 `StructureFailed` 携带字段路径 | 叠加内容（O1–O3）、Codec 实际填充路径、NBT/网络 Ops 往返实测、规模上限与深度限制 |
@@ -189,7 +190,7 @@ R9–R12 已由提交 C4 交付；当前**没有未交付的 P1 契约类型**�
 | R9 | 类型级校验钩子（`TypeValidator<T>`） | §2.2、§4.2 | **C4 已交付**：`TypeValidator` / `TypeValidationContext`，Track/Anchor/SampleType 可选 `validator()`；统一校验分派待实现 | 第三方类型可在统一校验中报告类型自身约束 |
 | R10 | 结构解码的**字段级诊断** | §4.2、§8.2 | **C4 已交付**：`StructureFailed(message, fieldPath)`；Codec/存储填充路径待实现 | 解码错误可带字段定位进入诊断面板 |
 | R11 | 会话按 RigId 的**预览锚点/目标/避障** | §6.3、§9.1 | **C4 已交付**：`SessionViewState.rigOverrides` + `previewOverrides(RigId)` | 预览覆盖保留、每个后端切换恢复待实现 |
-| R12 | 可见像素自适应质量的**契约切片** | §7.6.1（R30 新需求） | **C4 已交付**：`OutputPixelRect` / `RigQualityStatus`、`RigRenderStatus.quality`、`CANVAS_OFFSCREEN` | 质量策略、裁剪映射、目标池与实际 renderer 待 R0/core |
+| R12 | 可见像素自适应质量的**契约切片** | §7.6.1（R30 新需求） | **C4 已交付 / C5 修正停路**：`OutputPixelRect` / `RigQualityStatus`、`RigRenderStatus.quality`、`CANVAS_OFFSCREEN`；停路可见机位允许 0×0 实际目标与 0 密度 | 质量策略、裁剪映射、目标池与实际 renderer 待 R0/core |
 
 按设计/用户裁决**明确延期**、不计入本轮缺口：叠加内容封闭类型（O1–O3，等设计补字段）、音频 `ReferenceAudioService` 与音频数据（A0–A2）、编辑器 SPI（`PanelRegistry`、公开组件，U1/U2）、采样实时读数/洋葱皮/构图辅助等面板模型（S1/S2、E1）。
 
@@ -215,7 +216,7 @@ Q15 的推荐方向已定，不再重复裁决；R18/R20 指出的可落契约�
 | 类型级校验 | `TypeValidator` 由统一 `DocumentValidator` 按类型分派；上下文版本/定位真实传递，校验器不修改候选 |
 | 结构路径 | `StructureFailed.fieldPath` 由 Codec/存储实际填充；空路径只表示解析器未提供，不吞掉已知字段 |
 | 预览覆盖 | `SessionViewState.rigOverrides` / `previewOverrides(RigId)` 在后端切换、草稿恢复与逐帧预览中保持一致，不写文档 |
-| 可见像素质量 | `OutputPixelRect` / `RigQualityStatus` 的完整/可见/请求/实际几何、密度、裁剪降采样与 `CANVAS_OFFSCREEN` 在 renderer 中实际计算；不改 FOV/构图 |
+| 可见像素质量 | `OutputPixelRect` / `RigQualityStatus` 的完整/可见/请求/实际几何、密度、裁剪降采样与 `CANVAS_OFFSCREEN` 在 renderer 中实际计算；停路可见机位允许 0×0 目标与 0 密度，不得伪装 offscreen；不改 FOV/构图 |
 | 扩展轨道/事件/通道描述 | `ExtensionTimelineTrack`、`EventExecutorRegistry`、`ChannelDescriptionRegistry` 已交付；时间轴编辑、按类型执行器分派与通道显示派生待 core / editor |
 | 消息显示 | LocalizedMessageRenderer 的翻译/参数/嵌套样式、语言切换与显示缓存边界 |
 
