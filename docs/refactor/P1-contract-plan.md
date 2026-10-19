@@ -1,8 +1,8 @@
 # P1 契约施工计划（`_v2`）
 
 > 更新：2026-10-19。本文记录施工边界与状态，不替代[动画主设计](<../design-animation-editor-framework.md>)、[UI 设计](<../design-editor-ui-framework.md>)和[音频设计](<../design-spatial-audio-api.md>)。
-> 当前：第一至第九批已交付；第十批交付**具体类型 Codec 与两阶段解码**（各数据类型自身 Codec、`DocumentRegistries`、`Codecs`、`DocumentCodec`），注册表机制已裁决维持自有 `TypeRegistry`（O）、能力描述走客户端服务（B）。新增“按可见像素需求自适应分辨率”仅进入设计，尚未实现。其余保证仍为调用方 / core 责任，见 §7。**core 算法、存储发布、事件执行、仲裁、多机位渲染与 codec 的 NBT/网络实测尚未实现**。
-> 最近实际验证：28 个 suite / 209 个用例通过，其中 v2 为 22 / 143；211 个 v2 主源码 Java 文件。详情见[复核日志](<review-log.md>) 提交 C1；该基线不覆盖新质量需求。
+> 当前：第一至第九批已交付；第十批交付**具体类型 Codec 与两阶段解码**（各数据类型自身 Codec、`DocumentRegistries`、`Codecs`、`DocumentCodec`），注册表机制已裁决维持自有 `TypeRegistry`（O）、能力描述走客户端服务（B）；提交 **C2** 补齐 R6/R7/R8（扩展时间轴、事件执行器注册、通道描述）。新增“按可见像素需求自适应分辨率”仅进入设计，尚未实现。其余保证仍为调用方 / core 责任，见 §7。**core 算法、存储发布、事件执行、仲裁、多机位渲染与 codec 的 NBT/网络实测尚未实现**。
+> 最近实际验证：31 个 suite / 214 个用例通过，其中 v2 为 25 / 148；216 个 v2 主源码 Java 文件。详情见[复核日志](<review-log.md>) 提交 C2；该基线不覆盖新质量需求。
 
 ## 1. 目录与迁移约定
 
@@ -11,16 +11,16 @@
 | 包 | 当前职责 / 交付 |
 | --- | --- |
 | api.animation.id | Rig / Track / Key / PathNode / Marker / Sample / AudioRef / Overlay 稳定 ID，IdGenerator |
-| api.animation.field | sealed ValueSource / NumberSource、Constant / Formula / TrackRef、数值 Keyframe / Curve、CameraChannel、Variable / CustomFunction、**AnimatedNumber（常量值源 / 数值曲线封闭分支）** |
+| api.animation.field | sealed ValueSource / NumberSource、Constant / Formula / TrackRef、数值 Keyframe / Curve、CameraChannel、Variable / CustomFunction、**AnimatedNumber（常量值源 / 数值曲线封闭分支）**、ChannelDescription / Registry |
 | api.animation.path | Path / PathNode / PathMode；几何算法不在数据对象中 |
-| api.animation.block | 文档、机位、布局（**矩形分量可动画**）、轨道、符号、标记、采样声明/读数、音频边界与叠加 |
+| api.animation.block | 文档、机位、布局（**矩形分量可动画**）、轨道（含 ExtensionTimelineTrack）、符号、标记、采样声明/读数、音频边界与叠加 |
 | api.spatial | Vec3 / Rotation / 掩码 / Space / Anchor / ResolvedAnchor / AimTarget / AimState / ObstacleSettings / WorldPose |
 | api.animation.registry | TypeRegistry 冻结语义、TrackType / AnchorType / SampleType 描述（ID + MapCodec，锚点另含 StreamCodec）、三个 common 注册表接口，**DocumentRegistries**；**R47**：客户端 `AnchorResolver` / `SampleCollector`（+注册表与上下文）与 `TypeCapabilityService` / `TypeCapability` |
 | api.animation.codec | **第十批新增**：编解码公共工具（枚举按名、有限/非负数值、非空串、构造器异常转 `DataResult`） |
 | api.animation.edit | EditOp（含 SetStateKey）/ 结果 / LocalizedMessage / LocalizedMessageRenderer / DiagnosticScope / Diagnostic / 分层校验 / 试算 / EditTools |
 | api.animation.document | Revision / 快照 / 句柄 / store / EditSubmission / 监听 / 历史 / 事务 / 预览 / 稳定选择，**DocumentCodec（两阶段解码）+ DocumentDecodeResult** |
 | api.animation.eval | 查询/索引、FrameFacts（含世界实例身份）、显式采样请求、AxisSample / SpatialResolution、DocumentPose / SpatialReadings、依赖图与缓存接口；**R47**：`FrameFactsProvider` / `FrameFactsRequest` |
-| api.animation.playback | 请求/覆盖/服务/时钟/准备帧、事件预算/分发、接管/探针、合成请求/结果/状态（含旧帧采样身份）、**ResolvedRect（已求值矩形）**；**R48**：`PlaybackAction` / `PlaybackSource` / `PlaybackLimits` / `PlaybackProtocolCodec` |
+| api.animation.playback | 请求/覆盖/服务/时钟/准备帧、事件预算/分发/**EventExecutorRegistry**、接管/探针、合成请求/结果/状态（含旧帧采样身份）、**ResolvedRect（已求值矩形）**；**R48**：`PlaybackAction` / `PlaybackSource` / `PlaybackLimits` / `PlaybackProtocolCodec` |
 | api.storage | ResourceId、资源条目/服务、Load/SaveResult、DiagnosticReport、RecoverySlot/Service/Decision |
 | api.animation.expression | **第十一批**：`ExpressionCompiler` / `CompilationResult` / `CompiledExpression`（不透明）/ `ExpressionReferences` / `ExpressionDiagnostic`；不公开语法树，依赖仅为 JDK |
 | api.editor | 会话 / 草稿 EditDraftState / 视图状态 / 交互请求 / 后端与宿主契约；客户端 UI 与实现未交付 |
@@ -36,6 +36,7 @@
 | 存储资源身份 | `storage.ResourceId`、资源服务、载入/保存结果、恢复槽契约已交付 | 资源根/路径安全、原子替换、Codec 与恢复调度仍待实现 |
 | 叠加内容 | OverlayElement.content 暂为 Object | O1–O3 改封闭内容类型；不提前认定深不可变验收完成 |
 | 音频 | AudioRef / AudioRefId 仅身份与边界 | 全部非音频阶段完成后实施独立音频 API、可选接入、波形与同步 |
+| R6/R7/R8 扩展能力 | **C2 已交付**：`ExtensionTimelineTrack`、`EventExecutor`/`EventExecutorRegistry`、`ChannelDescription`/`ChannelDescriptionRegistry` | 时间轴编辑、事件执行器调用与通道显示派生待 core / editor |
 | EditTools / 注视捕获 | 工具请求 / 结果契约已交付；R29 补输入快照与捕获配置 | 缓动、批量、烘焙与注视捕获实现待 core / editor |
 | 可见像素自适应质量（新） | 仅设计，当前RigRenderStatus缺请求/可见几何与密度状态，原因枚举无专用出屏状态 | 先补输出像素需求/质量计划/结果状态契约，再做R0 renderer验证；不缩小视锥、不改FOV |
 | 算法与服务实现 | 已交付类型/接口不等于运行实现 | core 补 store / validator / eval / playback / renderer；不得记成已运行 |
@@ -137,7 +138,7 @@ Revision 包装、顶层 edit 及 edit ↔ document 例外已与主设计对齐�
 .\gradlew.bat --offline compileJava test --rerun --console=plain
 ```
 
-2026-10-19 提交 C1 实际执行成功：28 个 suite / 209 个用例，v2 为 22 / 143，无失败/错误/跳过；211 个 v2 主源码 Java 文件。测试集中在 record 结构、不变量、容器隔离与 Codec 往返，不能替代 core 的时序、仲裁、事件/渲染运行验证，也不覆盖 NBT / 网络 Ops。第十批新增 [DocumentCodecTest](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/document/DocumentCodecTest.java>) 5 个用例（完整往返、版本拒绝、未知类型拒绝、校验拒绝与警告、叠加编码拒绝）；第九批新增 [布局连续属性](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/block/LayoutAnimationContractTest.java>) 9 个用例、`ResolvedRect` 1 个用例。
+2026-10-19 提交 C2 实际执行成功：31 个 suite / 214 个用例，v2 为 25 / 148，无失败/错误/跳过；216 个 v2 主源码 Java 文件。测试集中在 record 结构、不变量、容器隔离与 Codec 往返，不能替代 core 的时序、仲裁、事件/渲染运行验证，也不覆盖 NBT / 网络 Ops。第十批新增 [DocumentCodecTest](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/document/DocumentCodecTest.java>) 5 个用例（完整往返、版本拒绝、未知类型拒绝、校验拒绝与警告、叠加编码拒绝）；第九批新增 [布局连续属性](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/block/LayoutAnimationContractTest.java>) 9 个用例、`ResolvedRect` 1 个用例。
 
 必查：api 不依赖旧根、net.minecraft.client、core/editor；editor.spi 不依赖 internal。文本扫描仅辅助，正式依赖门禁检查编译产物。旧根不接线批次不应修改旧实现。按 Q13 允许 edit ↔ document 包引用，不能将此误报为禁止依赖。补丁格式检查使用 git diff --check。
 
@@ -159,6 +160,7 @@ Revision 包装、顶层 edit 及 edit ↔ document 例外已与主设计对齐�
 | storage 契约 | 第六批已交付（R19） | 路径安全、Codec、原子写入与恢复调度实现 |
 | editor 契约 | 第七批已交付；R25 补齐 E1/E2 | 会话实现、草稿持久化、后端注册/选择与 open 派发运行验证 |
 | EditTools | 第八批已交付，R30已关闭T1/T2契约问题 | 缓动/批量/烘焙/注视捕获算法、冻结求值、覆盖清理与原子提交待 core |
+| R6/R7/R8 | 提交 C2 已交付扩展时间轴、事件执行器注册、通道描述注册表 | 时间轴编辑、执行器分派、通道显示派生待 core / editor |
 | 布局连续属性（Q14） | **第九批已交付**：`AnimatedNumber` 两分支、矩形四分量可动画、`ResolvedRect` 冻结已求值矩形；布局曲线计入时长 | 求值（分量→数值）、逐帧有限性/正尺寸检查、静态校验器接入与映射到输出像素待 eval / core |
 | 类型注册表（轨道/锚点/采样） | 第九批交付契约；第十批交付 `DocumentRegistries` 与锚点分派 Codec | 能力描述（B，客户端批次）、类型级校验钩子、`core` 侧的注册表实现与冻结时序 |
 | 编解码与两阶段解码 | **第十批交付**：各数据类型自身 Codec、文档根 `CameraAnimation.mapCodec(registries)`、`DocumentCodec`（结构 → 校验 → Accepted/StructureFailed/ValidationFailed） | 叠加内容（O1–O3）、字段级结构诊断（当前为 DFU 文本）、NBT/网络 Ops 往返实测、规模上限与深度限制 |
@@ -177,9 +179,9 @@ Revision 包装、顶层 edit 及 edit ↔ document 例外已与主设计对齐�
 | R3 | 客户端执行部件注册：`AnchorResolver`（+注册表）、`SampleCollector`（+注册表）（**R47 交付接口，提交 C1 补齐 H2**） | §2.2、§6.3、§7.7 | R47 交付解析/采集契约与上下文；C1 补 `AnchorResolutionContext#diagnosticScope` 与 `SpatialResolution.failed(...)`；客户端实现待后续批次 | 阻塞第三方锚点解析与采样采集；阻塞 S1/S2 |
 | R4 | 能力服务契约（B 裁决）：按类型查询解析/采集能力（**R47 已交付接口**） | §2.2、§7.7、§7.2 | R47 交付 `TypeCapabilityService` / `TypeCapability`；实现待宿主装配 | 解码错误与运行能力缺失已分三态；实现批次验证编辑器/播放宿主的接入口径 |
 | R5 | 播放请求 **`StreamCodec` / 协议契约**（**R48 已交付接口**）：动作与来源、按 RigId 的覆盖（含锚点完整参数与三态）、速度/循环/开始时间、协议版本与规模上限、可报告失败 | §8.2、§8.3 | R48 交付 `PlaybackAction` / `PlaybackSource` / `PlaybackLimits` / `PlaybackProtocolCodec`；具体编解码与收包校验待实现 | 阻塞多人播放与请求失败诊断；实现批次验证字节往返与超限拒绝 |
-| R6 | 扩展轨道的**纯派生时间轴能力接口** | §4.1 | 仅内建 `KeyframeTrack`；扩展轨道没有通用时间轴编辑能力契约 | 阻塞第三方轨道接入时间轴编辑 |
-| R7 | 第三方**事件执行器注册**契约 | §7.4 | `EventDispatcher` 只是执行入口，无执行器注册 | 阻塞第三方 Tick 轨道执行 |
-| R8 | **通道描述注册表**（标签/颜色/默认信息） | §8.1 | `CameraChannel` 只有 key/group | 阻塞编辑器从注册表派生通道显示信息 |
+| R6 | 扩展轨道的**纯派生时间轴能力接口**（**C2 已交付**） | §4.1 | `ExtensionTimelineTrack` / `TimelineKey` 已交付；扩展轨道可选择实现 | 时间轴编辑实现待 editor / core |
+| R7 | 第三方**事件执行器注册**契约（**C2 已交付**） | §7.4 | `EventExecutor` / `EventExecutorRegistry` 已交付；重复类型与内建类型拒绝 | 执行器分派、异常与部分执行待 core |
+| R8 | **通道描述注册表**（标签/颜色/默认信息）（**C2 已交付**） | §8.1 | `ChannelDescription` / `ChannelDescriptionRegistry` 已交付；注册表要求完整且一致 | 编辑器显示派生待 editor |
 | R9 | 类型级校验钩子（`TypeValidator<T>` vs 复用 `DocumentValidator`） | §2.2、§4.2 | 未定形；文档校验只走 `DocumentValidator` | 阻塞第三方轨道/采样类型的类型级校验 |
 | R10 | 结构解码的**字段级诊断**：`StructureFailed` 目前只有文本 | §4.2、§8.2 | `DocumentDecodeResult.StructureFailed(String)` | 解码错误无法定位对象/字段，不能进诊断面板 |
 | R11 | 会话按 RigId 的**预览锚点/目标/避障**契约 | §6.3、§9.1 | `SessionViewState` 有选择/时间轴/吸附/区间/显隐/`activeRigId`，无预览覆盖 | 阻塞多机位草稿恢复与预览一致性 |
@@ -206,6 +208,7 @@ Q15 的推荐方向已定，不再重复裁决；R18/R20 指出的可落契约�
 | EditTools | 缓动/批量请求绑定冻结快照，捕获携带 mode/override/baseRevision；`ToolResult` 已交付。算法、冻结事实消费、覆盖清理与原子提交待 core / editor |
 | 布局连续属性 | `AnimatedNumber` 两分支求值（常量/公式/曲线、空曲线默认值、端点保持）、逐帧有限性与正尺寸检查、静态可判定部分的校验接入、`ResolvedRect` 映射到输出像素 |
 | 类型注册表 | 冻结后注册被拒、重复 ID 拒绝、未知类型解码报错、锚点存档 Codec 与网络 Codec 由同一类型同时就位、客户端执行部件缺失与解码错误的诊断分离 |
+| 扩展轨道/事件/通道描述 | `ExtensionTimelineTrack`、`EventExecutorRegistry`、`ChannelDescriptionRegistry` 已交付；时间轴编辑、按类型执行器分派与通道显示派生待 core / editor |
 | 消息显示 | LocalizedMessageRenderer 的翻译/参数/嵌套样式、语言切换与显示缓存边界 |
 
 这些是实现验证项，不计作已知运行缺陷；已关闭修复不代表 core 已实现。

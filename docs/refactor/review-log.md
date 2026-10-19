@@ -1,7 +1,7 @@
 # 契约复核日志（当前摘要）
 
-> 更新：2026-10-19。最新**审核 R50**针对**提交 R48**：发现编码 DataResult<Void> 成功值使用 null 的 P2，标准 result() 会抛空指针；其余来源转换、限制不变量与已实现适配分流未发现确定问题。正式测试 28 suite / 209 用例通过。审核 R49 对提交 R47 的两项 P2 已由**提交 C1** 补齐（帧准备计划与动画时间、解析诊断作用域），待审核；具体编解码、宿主与客户端端到端尚未验收。施工见[P1 计划](<P1-contract-plan.md>)，规范见[主设计](<../design-animation-editor-framework.md>)。
-> 本文按“审核 / 提交”两章独立编号：**审核**继续 R 序列（最新 R50，下一条 R51），**提交**历史保留拆分前的 R 编号（R7–R48），新提交改用 **C 序列（自 C1 起）**。两章编号互不相关，跨章引用须注明“审核”或“提交”；历史编号不重排，归档不作为当前指令。
+> 更新：2026-10-19。**提交 C2** 已交付 R6/R7/R8（扩展时间轴、事件执行器注册、通道描述），正式测试 31 suite / 214 用例通过。最新**审核 R51**针对**提交 C1**：帧准备计划/动画时间输入及解析诊断作用域缺口关闭；新增事实绑定只检查 revision，仍允许同版本异源快照混用，记录 R51-N1（P2）。**审核 R50**对**提交 R48**的编码 DataResult<Void> null 成功值问题仍待修；具体编解码、宿主与客户端端到端尚未验收。施工见[P1 计划](<P1-contract-plan.md>)，规范见[主设计](<../design-animation-editor-framework.md>)。
+> 本文按“审核 / 提交”两章独立编号：**审核**继续 R 序列（最新 R51，下一条 R52），**提交**历史保留拆分前的 R 编号（R7–R48），新提交改用 **C 序列（自 C1 起）**。两章编号互不相关，跨章引用须注明“审核”或“提交”；历史编号不重排，归档不作为当前指令。
 
 ## 1. 当前结论
 
@@ -17,16 +17,17 @@
 | 表达式契约（R1） | R46 复核关闭 R45 对 R44-N1/N2 的契约修复，未发现新增确定缺陷；整树缓存过滤、命中重包装及编译器/解释器端到端仍待实现验收，R1 未关闭 |
 | editor | R24两项公开通路已由R25/R26关闭，后端open前置条件文案已统一；真实草稿恢复、派发与生命周期延期 |
 | EditTools | R29已补快照及捕获信息，R30复核关闭；实际采样/转换/确认/原子提交未实现 |
+| 扩展能力（R6–R8） | 提交 C2 交付扩展时间轴、事件执行器注册、通道描述注册表；时间轴编辑/执行器分派/显示派生未实现 |
 | 性能与标记 | 不据Stream写法判断热点；A1/A4等已清理，A2条件优化，A3索引实现待后续；标记仍贡献时长，A6改规则需裁决 |
 | 新质量需求 | 用户确认按最终可见像素需求自适应分辨率；保持原构图/FOV，不缩小视锥，状态/策略契约与renderer尚未实现 |
-| P1 剩余契约 | 2026-10-19 对账见[计划 §6.1](<P1-contract-plan.md>)：R1 表达式编译/求值（最大缺口）、R2 `FrameFactsProvider`、R3/R4 客户端执行与能力、R5 网络请求、R6–R8 轨道能力/执行器/通道描述、R9–R12 校验钩子/字段诊断/预览覆盖/质量切片 |
+| P1 剩余契约 | 2026-10-19 对账见[计划 §6.1](<P1-contract-plan.md>)：R1 表达式编译/求值（最大缺口）、R2 `FrameFactsProvider`、R3/R4 客户端执行与能力、R5 网络请求、R9–R12 校验钩子/字段诊断/预览覆盖/质量切片；R6–R8 已由提交 C2 交付 |
 
 当前待办仅在[计划§6](<P1-contract-plan.md#p1-follow-up>)维护。
 
 ## 2. 审核
 
 > **范围**：只读轮次——契约复核、协议核对、选型调研与裁决；结论可以是修订或关闭，但本轮不改源码。
-> **编号**：审核使用 R 序列（下一条 R51）；R1–R49 是拆分前的共用编号，拆分后只用于审核，提交新记录用 C 序列（§3）。跨章引用须注明“审核”或“提交”。
+> **编号**：审核使用 R 序列（下一条 R52）；R1–R49 是拆分前的共用编号，拆分后只用于审核，提交新记录用 C 序列（§3）。跨章引用须注明“审核”或“提交”。
 > R1–R6 是早期设计与口径判定，代码落地从提交 R7 起；原 R1–R29 正文及证据见[凝练前归档](<archive/review-log-R1-R29-before-2026-10-18.md>)，早期 R1–R14 的初次归档亦保留，历史不作当前指令。
 
 | 编号 | 日期 | 审核对象 | 结论 / 关闭状态 |
@@ -56,6 +57,7 @@
 | R46 | 10-19 | R45 契约修复复核 | R44-N1/N2 在原契约范围关闭，未发现新增确定缺陷；正式 26/196，R1 未关闭 |
 | R49 | 10-19 | R47 宿主服务契约复核 | 两项 P2：有效空间计划/逐项需求、解析失败诊断作用域；实测 28/203 含 R48，未审核 R48 |
 | R50 | 10-19 | 提交 R48：网络播放请求契约 | 1 项 P2：编码 DataResult<Void> 的 null 成功值无法安全使用标准 result()；正式 28/203，隔离探针 3 例 |
+| R51 | 10-19 | 提交 C1：R49-H1/H2 修复 | 原有效输入/逐项需求和诊断版本入口关闭；新增事实同版本异源绑定残留 R51-N1（P2）；正式 28/209 |
 
 ### R50. 提交 R48 网络播放请求契约审核
 
@@ -83,6 +85,34 @@
 - 执行 `./gradlew.bat --offline test --rerun --console=plain`，BUILD SUCCESSFUL；按 UTF-8 核对：**28 suite / 203 用例**，v2 为 **22 / 137**，失败、错误、跳过均为 0。首次统计请求因工具服务 524 超时未执行，重试后核对成功；这不是测试失败。
 - 在构建目录创建[隔离探针](<../../build/review-submit-r48/probe-src/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/playback/SubmissionR48ProbeTest.java>)及临时 init 配置，执行 `./gradlew.bat --offline --no-configuration-cache -I build/review-submit-r48/probe.init.gradle test --tests '*SubmissionR48ProbeTest' --console=plain`，BUILD SUCCESSFUL，**3 个探针通过**。Void 探针断言缺陷现状，不能视为修复通过，不计入正式 203 用例。
 - 未修改项目源码、正式测试或构建脚本；本轮仅修改评审日志并产生临时构建验证文件，未启动客户端或执行真实网络往返。
+
+### R51. 提交 C1 宿主准备契约修复审核
+
+**日期**：2026-10-19。属于**审核**，对象为**提交 C1**（代码基线 `4dead79`）。核对 FrameFactsPlan / FrameFactsRequest / FrameFactsProvider、FrameFacts / EvaluationContext、AnchorResolutionContext / AnchorResolver / SpatialResolution 及正式测试。未审核并行新增的提交 C2，不将其交付视为本轮通过。
+
+#### R51.1 原问题关闭范围
+
+| 原问题 | 证据 | 结论 |
+| --- | --- | --- |
+| 审核 R49-H1：提供者拿不到生效覆盖及逐项空间需求 | [FrameFactsPlan](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/eval/FrameFactsPlan.java#L69>)逐机位携带有效 anchor/target 的 Required/NotRequired 与 AimState；所需目标必须等于生效目标。[FrameFactsRequest](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/eval/FrameFactsRequest.java#L38>)有 animationTime，并拒绝快照中不存在的机位 | 原请求输入表达能力缺口关闭；只读锚点不强制解析目标，同游戏刻不同动画时间可区分；计划生成及 provider 执行仍待宿主 |
+| 审核 R49-H2：解析器没有诊断版本入口 | [AnchorResolutionContext:47–51](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/registry/AnchorResolutionContext.java#L47-L51>)提供本次 Document 作用域，[SpatialResolution.failed](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/eval/SpatialResolution.java#L58>)固定 ERROR、接受可选定位；Provider/Resolver 明确不得读当前 store 或伪造 File | 原版本来源入口缺口关闭；同一 resolver 的正式替身测试验证版本7/8随上下文变化，实际客户端接线未验收 |
+
+#### R51.2 发现
+
+**R51-N1（P2）：新增事实绑定只比较 sourceRevision，仍允许同版本但异源快照的事实混入上下文。**
+
+[EvaluationContext:50–55](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/eval/EvaluationContext.java#L50-L55>)只检查 `facts.sourceRevision().equals(snapshot.revision())`；[FrameFacts:24–26](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/eval/FrameFacts.java#L24-L26>)将其描述为来源绑定，但结果只保存 Revision，没有原始快照或请求身份。不同 store 的相同版本数值不能证明同源。
+
+触发：两个合法快照 A、B 均为 Revision(1)，provider 正确根据 request(A) 产生 factsA；创建 B 上下文时传入 factsA、lookupB、indexB。索引引用检查 `indexB.snapshot() == B` 成立，事实版本检查也成立，B 接受了 A 的空间计划/目标或采样读数。不要求 provider 违反其准备契约。不同动画时间/计划的同版本事实混用是同一绑定问题的延伸，不另报第二项。
+
+建议事实保留原来源快照引用或不可混淆的准备绑定身份，并与上下文绑定做一致性检查；sourceRevision 可保留作诊断，不能替代来源身份。补“同版本不同快照/不同准备绑定的事实被拒绝”和正确来源成功测试。当前[EvalContractTest:191–194](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/eval/EvalContractTest.java#L191-L194>)只覆盖版本不一致，未覆盖此同版本反例。本项为新加来源检查的契约残留，不是要求提前完成延期 core。
+
+#### R51.3 实际验证与边界
+
+- 实际执行 `./gradlew.bat --offline test --rerun --console=plain`，BUILD SUCCESSFUL；按 UTF-8 报告统计：**28 suite / 209 用例**，v2 为 **22 / 143**，失败、错误、跳过均为 0。未新增隔离探针；R51-N1 依据 record 字段与构造检查分支直接核对，不声称已有正式用例覆盖。
+- [HostServiceContractTest](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/registry/HostServiceContractTest.java>)覆盖逐项需求、容器隔离、时间/未知机位拒绝、同刻9/10秒、覆盖结果承载及上下文作用域失败工厂。它不证明真实覆盖映射、世界采样节奏或 provider 已运行。
+- 不将无默认局部锚点的启动校验、注册客户端实现、真实世界加载/插值或能力查询实现延期报作本轮缺陷；没有修改源码、正式测试或构建配置，只记录审核。
+- 正式测试统计在提交 C2 的并行新增被观察到之前完成；C2 的条目及其 31/214 交付数字保留为提交者记录，不混入本次 C1 的 28/209 复核基线。审核 R50 对提交 R48 的问题仍维持原状态，不在本轮重审。
 
 ## 3. 提交
 
@@ -117,7 +147,8 @@
 | R45 | 10-19 | R44 两项缺口补齐 | 资源失败缓存边界 + ExpressionInputs.source 与字段/KeyId 粒度；正式 26/196 |
 | R47 | 10-19 | R2/R3/R4 契约交付 | FrameFactsProvider/FrameFactsRequest、客户端解析/采集注册、TypeCapabilityService；正式 27/199；审核 R49 的两项 P2 已由提交 C1 补齐 |
 | R48 | 10-19 | R5 网络播放请求契约 | 审核 R50：1 项 P2（DataResult<Void> 成功模型）待修；其余已审契约未发现确定问题，具体编解码仍延期；正式 28/203 |
-| C1 | 10-19 | R49-H1/H2 两项 P2 契约补齐 | 帧准备计划与动画时间、事实-快照版本绑定、解析诊断作用域；正式 28/209；待审核 |
+| C1 | 10-19 | R49-H1/H2 两项 P2 契约补齐 | 审核 R51：原输入/逐项需求与诊断入口关闭；事实同版本异源绑定残留 R51-N1（P2）；正式 28/209 |
+| C2 | 10-19 | R6/R7/R8 契约交付 | ExtensionTimelineTrack、EventExecutorRegistry、ChannelDescriptionRegistry；正式 31/214；待审核 |
 
 ### C1. R49 两项 P2 契约补齐
 
@@ -143,6 +174,30 @@
 - 请求只校验“计划机位存在于快照”；“局部空间没有有效锚点必须拒绝开始播放”仍归播放启动 / 预览初始化（主设计 §6.3），本轮不新增宿主契约。
 - `diagnosticScope()` 保证解析器拿到的版本来源正确；provider 是否原样使用、是否拒绝跨快照诊断仍待实现批次验证。
 - 未启动客户端，未验证真实世界查询、采样节奏、渲染或网络；正式用例仍只覆盖结构不变量。
+
+### C2. R6/R7/R8 扩展能力契约
+
+**日期**：2026-10-19。本条属于**提交**，对象为 P1 计划的 R6/R7/R8；只改 `api` 契约与测试，不含时间轴编辑、事件执行器或通道显示实现。
+
+#### C2.1 交付
+
+| 项 | 交付 | 关键约束 |
+| --- | --- | --- |
+| R6 扩展时间轴 | [ExtensionTimelineTrack](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/block/ExtensionTimelineTrack.java>) / `TimelineKey` | 只派生稳定 KeyId 与时间，不发放原地修改；列表按时间严格递增、时间有限非负 |
+| R7 事件执行器注册 | [EventExecutor](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/playback/EventExecutor.java>) / [EventExecutorRegistry](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/playback/EventExecutorRegistry.java>) | 按轨道类型分派；重复类型拒绝；内建 curve/aim/active/camera_source 不可注册为事件执行器 |
+| R8 通道描述 | [ChannelDescription](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/field/ChannelDescription.java>) / [ChannelDescriptionRegistry](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/field/ChannelDescriptionRegistry.java>) | 完整不可变映射；标签用翻译键、颜色 RGB、默认单位/说明；作者覆盖显式存储 |
+
+#### C2.2 实际验证
+
+`./gradlew.bat --offline test --rerun --console=plain` → `BUILD SUCCESSFUL`：**31 suite / 214 用例**，v2 为 **25 / 148**，失败、错误、跳过均为 0；v2 主源码 **216** 个 Java 文件。
+
+新增 `ExtensionTimelineContractTest`、`ChannelDescriptionRegistryContractTest`、`EventExecutorRegistryContractTest`；覆盖 KeyId/时间边界、完整注册表与重复/内建类型拒绝。
+
+#### C2.3 边界与风险
+
+- `ExtensionTimelineTrack` 只提供派生键视图；把编辑请求转换成 `EditOp`、冲突检查与原子提交仍待 editor / core。
+- `EventExecutorRegistry` 只固定注册形状与内建类型拒绝；按类型分派、执行顺序、异常终止与部分执行报告仍待 `EventDispatcher` / core。
+- 通道描述是 common 显示默认值；实际翻译、颜色主题与作者外观覆盖的持久化仍待 editor / storage。
 
 ## R30. R29 复核关闭及尺寸自适应需求
 
@@ -745,5 +800,6 @@ R36-N1 是 R34-C2 的修复残留，不重新报告原 `1.9` 或整数溢出用�
 | R49 | 28/203 | 22/137（仅复核 R47；测试含 R48，无新增探针） |
 | 审核 R50（提交 R48） | 28/203 | 22/137（另有 3 个隔离探针，不计正式基线） |
 | 提交 C1（R49-H1/H2） | 28/209 | 22/143 |
+| 提交 C2（R6/R7/R8） | 31/214 | 25/148 |
 
 其余历次命令、测试数与原始论据留归档。本次凝练保留R编号和证据，不把历史错误论证回填为当前规则，也不重开已关闭缺陷；新需求另行分期。
