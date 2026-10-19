@@ -1,6 +1,6 @@
 # 契约复核日志（当前摘要）
 
-> 更新：2026-10-19。**提交 C2** 已交付 R6/R7/R8（扩展时间轴、事件执行器注册、通道描述），正式测试 31 suite / 214 用例通过。最新**审核 R51**针对**提交 C1**：帧准备计划/动画时间输入及解析诊断作用域缺口关闭；新增事实绑定只检查 revision，仍允许同版本异源快照混用，记录 R51-N1（P2）。**审核 R50**对**提交 R48**的编码 DataResult<Void> null 成功值问题仍待修；具体编解码、宿主与客户端端到端尚未验收。施工见[P1 计划](<P1-contract-plan.md>)，规范见[主设计](<../design-animation-editor-framework.md>)。
+> 更新：2026-10-19。**提交 C3** 已修 R51-N1：`FrameFacts` 持有原快照引用，同版本异源被拒绝。**提交 C2** 已交付 R6/R7/R8（扩展时间轴、事件执行器注册、通道描述），正式测试 31 suite / 214 用例通过。最新**审核 R51**针对**提交 C1**：帧准备计划/动画时间输入及解析诊断作用域缺口关闭；事实同版本异源残留已由 C3 补齐，待审核。**审核 R50**对**提交 R48**的编码 DataResult<Void> null 成功值问题仍待修；具体编解码、宿主与客户端端到端尚未验收。施工见[P1 计划](<P1-contract-plan.md>)，规范见[主设计](<../design-animation-editor-framework.md>)。
 > 本文按“审核 / 提交”两章独立编号：**审核**继续 R 序列（最新 R51，下一条 R52），**提交**历史保留拆分前的 R 编号（R7–R48），新提交改用 **C 序列（自 C1 起）**。两章编号互不相关，跨章引用须注明“审核”或“提交”；历史编号不重排，归档不作为当前指令。
 
 ## 1. 当前结论
@@ -18,6 +18,7 @@
 | editor | R24两项公开通路已由R25/R26关闭，后端open前置条件文案已统一；真实草稿恢复、派发与生命周期延期 |
 | EditTools | R29已补快照及捕获信息，R30复核关闭；实际采样/转换/确认/原子提交未实现 |
 | 扩展能力（R6–R8） | 提交 C2 交付扩展时间轴、事件执行器注册、通道描述注册表；时间轴编辑/执行器分派/显示派生未实现 |
+| 事实来源绑定（R51-N1） | 提交 C3 已改为原快照引用绑定；同版本异源拒绝测试通过，provider 实际传递待 core |
 | 性能与标记 | 不据Stream写法判断热点；A1/A4等已清理，A2条件优化，A3索引实现待后续；标记仍贡献时长，A6改规则需裁决 |
 | 新质量需求 | 用户确认按最终可见像素需求自适应分辨率；保持原构图/FOV，不缩小视锥，状态/策略契约与renderer尚未实现 |
 | P1 剩余契约 | 2026-10-19 对账见[计划 §6.1](<P1-contract-plan.md>)：R1 表达式编译/求值（最大缺口）、R2 `FrameFactsProvider`、R3/R4 客户端执行与能力、R5 网络请求、R9–R12 校验钩子/字段诊断/预览覆盖/质量切片；R6–R8 已由提交 C2 交付 |
@@ -149,6 +150,7 @@
 | R48 | 10-19 | R5 网络播放请求契约 | 审核 R50：1 项 P2（DataResult<Void> 成功模型）待修；其余已审契约未发现确定问题，具体编解码仍延期；正式 28/203 |
 | C1 | 10-19 | R49-H1/H2 两项 P2 契约补齐 | 审核 R51：原输入/逐项需求与诊断入口关闭；事实同版本异源绑定残留 R51-N1（P2）；正式 28/209 |
 | C2 | 10-19 | R6/R7/R8 契约交付 | ExtensionTimelineTrack、EventExecutorRegistry、ChannelDescriptionRegistry；正式 31/214；待审核 |
+| C3 | 10-19 | R51-N1 事实来源绑定 | FrameFacts 持有 sourceSnapshot；EvaluationContext 按引用拒绝同版本异源；正式 31/214；待审核 |
 
 ### C1. R49 两项 P2 契约补齐
 
@@ -198,6 +200,30 @@
 - `ExtensionTimelineTrack` 只提供派生键视图；把编辑请求转换成 `EditOp`、冲突检查与原子提交仍待 editor / core。
 - `EventExecutorRegistry` 只固定注册形状与内建类型拒绝；按类型分派、执行顺序、异常终止与部分执行报告仍待 `EventDispatcher` / core。
 - 通道描述是 common 显示默认值；实际翻译、颜色主题与作者外观覆盖的持久化仍待 editor / storage。
+
+### C3. R51-N1 事实来源绑定
+
+**日期**：2026-10-19。本条属于**提交**，对象为**审核 R51** 的 N1；只改 `api` 契约与测试。
+
+#### C3.1 交付
+
+| 项 | 交付 | 关键约束 |
+| --- | --- | --- |
+| 事实来源 | [FrameFacts](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/eval/FrameFacts.java>) 用 `AnimationSnapshot sourceSnapshot` 替换 `sourceRevision` 组件；`sourceRevision()` 仅作诊断派生 | 事实保留生成它的原快照引用 |
+| 上下文校验 | [EvaluationContext](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/eval/EvaluationContext.java>) 按 `facts.sourceSnapshot() != snapshot` 拒绝 | 同 revision / 同内容的新快照不再通过 |
+| Provider 契约 | [FrameFactsProvider](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/eval/FrameFactsProvider.java>) 要求返回事实持有请求快照的同一引用 | 不要求 provider 违反准备规则 |
+
+#### C3.2 实际验证
+
+`./gradlew.bat --offline test --rerun --console=plain` → `BUILD SUCCESSFUL`：**31 suite / 214 用例**，v2 为 **25 / 148**，失败、错误、跳过均为 0；v2 主源码 **216** 个 Java 文件。
+
+[EvalContractTest](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/eval/EvalContractTest.java>) 增加同版本、不同快照引用的事实拒绝；正确来源成功路径继续由既有上下文测试覆盖。
+
+#### C3.3 边界与风险
+
+- provider 实现尚未存在；实际是否把 `request.snapshot()` 原样写入 facts 仍待 `core.playback` 验证。
+- 事实持有快照引用会增加运行期生命周期引用；未进入文档 / 历史 / 网络，释放时机随帧上下文。
+- 不同动画时间 / 计划的同版本事实混用仍按同一来源绑定规则处理，不另开第二套身份。
 
 ## R30. R29 复核关闭及尺寸自适应需求
 
@@ -801,5 +827,6 @@ R36-N1 是 R34-C2 的修复残留，不重新报告原 `1.9` 或整数溢出用�
 | 审核 R50（提交 R48） | 28/203 | 22/137（另有 3 个隔离探针，不计正式基线） |
 | 提交 C1（R49-H1/H2） | 28/209 | 22/143 |
 | 提交 C2（R6/R7/R8） | 31/214 | 25/148 |
+| 提交 C3（R51-N1） | 31/214 | 25/148 |
 
 其余历次命令、测试数与原始论据留归档。本次凝练保留R编号和证据，不把历史错误论证回填为当前规则，也不重开已关闭缺陷；新需求另行分期。

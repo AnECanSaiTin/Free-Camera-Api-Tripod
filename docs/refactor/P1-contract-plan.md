@@ -1,8 +1,8 @@
 # P1 契约施工计划（`_v2`）
 
 > 更新：2026-10-19。本文记录施工边界与状态，不替代[动画主设计](<../design-animation-editor-framework.md>)、[UI 设计](<../design-editor-ui-framework.md>)和[音频设计](<../design-spatial-audio-api.md>)。
-> 当前：第一至第九批已交付；第十批交付**具体类型 Codec 与两阶段解码**（各数据类型自身 Codec、`DocumentRegistries`、`Codecs`、`DocumentCodec`），注册表机制已裁决维持自有 `TypeRegistry`（O）、能力描述走客户端服务（B）；提交 **C2** 补齐 R6/R7/R8（扩展时间轴、事件执行器注册、通道描述）。新增“按可见像素需求自适应分辨率”仅进入设计，尚未实现。其余保证仍为调用方 / core 责任，见 §7。**core 算法、存储发布、事件执行、仲裁、多机位渲染与 codec 的 NBT/网络实测尚未实现**。
-> 最近实际验证：31 个 suite / 214 个用例通过，其中 v2 为 25 / 148；216 个 v2 主源码 Java 文件。详情见[复核日志](<review-log.md>) 提交 C2；该基线不覆盖新质量需求。
+> 当前：第一至第九批已交付；第十批交付**具体类型 Codec 与两阶段解码**（各数据类型自身 Codec、`DocumentRegistries`、`Codecs`、`DocumentCodec`），注册表机制已裁决维持自有 `TypeRegistry`（O）、能力描述走客户端服务（B）；提交 **C2** 补齐 R6/R7/R8（扩展时间轴、事件执行器注册、通道描述），提交 **C3** 补齐 R51-N1 事实来源引用绑定。新增“按可见像素需求自适应分辨率”仅进入设计，尚未实现。其余保证仍为调用方 / core 责任，见 §7。**core 算法、存储发布、事件执行、仲裁、多机位渲染与 codec 的 NBT/网络实测尚未实现**。
+> 最近实际验证：31 个 suite / 214 个用例通过，其中 v2 为 25 / 148；216 个 v2 主源码 Java 文件。详情见[复核日志](<review-log.md>) 提交 C3；该基线不覆盖新质量需求。
 
 ## 1. 目录与迁移约定
 
@@ -138,7 +138,7 @@ Revision 包装、顶层 edit 及 edit ↔ document 例外已与主设计对齐�
 .\gradlew.bat --offline compileJava test --rerun --console=plain
 ```
 
-2026-10-19 提交 C2 实际执行成功：31 个 suite / 214 个用例，v2 为 25 / 148，无失败/错误/跳过；216 个 v2 主源码 Java 文件。测试集中在 record 结构、不变量、容器隔离与 Codec 往返，不能替代 core 的时序、仲裁、事件/渲染运行验证，也不覆盖 NBT / 网络 Ops。第十批新增 [DocumentCodecTest](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/document/DocumentCodecTest.java>) 5 个用例（完整往返、版本拒绝、未知类型拒绝、校验拒绝与警告、叠加编码拒绝）；第九批新增 [布局连续属性](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/block/LayoutAnimationContractTest.java>) 9 个用例、`ResolvedRect` 1 个用例。
+2026-10-19 提交 C3 实际执行成功：31 个 suite / 214 个用例，v2 为 25 / 148，无失败/错误/跳过；216 个 v2 主源码 Java 文件。测试集中在 record 结构、不变量、容器隔离与 Codec 往返，不能替代 core 的时序、仲裁、事件/渲染运行验证，也不覆盖 NBT / 网络 Ops。第十批新增 [DocumentCodecTest](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/document/DocumentCodecTest.java>) 5 个用例（完整往返、版本拒绝、未知类型拒绝、校验拒绝与警告、叠加编码拒绝）；第九批新增 [布局连续属性](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/block/LayoutAnimationContractTest.java>) 9 个用例、`ResolvedRect` 1 个用例。
 
 必查：api 不依赖旧根、net.minecraft.client、core/editor；editor.spi 不依赖 internal。文本扫描仅辅助，正式依赖门禁检查编译产物。旧根不接线批次不应修改旧实现。按 Q13 允许 edit ↔ document 包引用，不能将此误报为禁止依赖。补丁格式检查使用 git diff --check。
 
@@ -161,6 +161,7 @@ Revision 包装、顶层 edit 及 edit ↔ document 例外已与主设计对齐�
 | editor 契约 | 第七批已交付；R25 补齐 E1/E2 | 会话实现、草稿持久化、后端注册/选择与 open 派发运行验证 |
 | EditTools | 第八批已交付，R30已关闭T1/T2契约问题 | 缓动/批量/烘焙/注视捕获算法、冻结求值、覆盖清理与原子提交待 core |
 | R6/R7/R8 | 提交 C2 已交付扩展时间轴、事件执行器注册、通道描述注册表 | 时间轴编辑、执行器分派、通道显示派生待 core / editor |
+| R51-N1 | 提交 C3 已改为 `FrameFacts.sourceSnapshot` 引用绑定 | 同版本异源拒绝已加测试；provider 实际传递仍待 core |
 | 布局连续属性（Q14） | **第九批已交付**：`AnimatedNumber` 两分支、矩形四分量可动画、`ResolvedRect` 冻结已求值矩形；布局曲线计入时长 | 求值（分量→数值）、逐帧有限性/正尺寸检查、静态校验器接入与映射到输出像素待 eval / core |
 | 类型注册表（轨道/锚点/采样） | 第九批交付契约；第十批交付 `DocumentRegistries` 与锚点分派 Codec | 能力描述（B，客户端批次）、类型级校验钩子、`core` 侧的注册表实现与冻结时序 |
 | 编解码与两阶段解码 | **第十批交付**：各数据类型自身 Codec、文档根 `CameraAnimation.mapCodec(registries)`、`DocumentCodec`（结构 → 校验 → Accepted/StructureFailed/ValidationFailed） | 叠加内容（O1–O3）、字段级结构诊断（当前为 DFU 文本）、NBT/网络 Ops 往返实测、规模上限与深度限制 |
@@ -175,7 +176,7 @@ Revision 包装、顶层 edit 及 edit ↔ document 例外已与主设计对齐�
 | # | 剩余契约 | 设计依据 | 现状 | 阻塞关系 |
 | --- | --- | --- | --- | --- |
 | R1 | **表达式编译 / 求值契约（R41 交付接口，R43 补齐共享预算/深度与失败来源，R45 补齐缓存边界与字段级来源；实现待 core）**：编译入口与结果、结构化诊断、编译缓存；求值环境（内置量 `t/p/wt`、空间读数、`sample(name[,fallback])`、`TrackRef` 机位上下文）；内置函数（`step`、惰性 `select`、`noise(seed,t)`）、arity/作用域静态校验、深度/工作量上限 | §2.1、§4.2、§4.3、§6.1、§7.7 | `api.animation.expression` **只有 package-info**；只有 `Formula`（文本）与 `TrackLookup` | **最大缺口**：`CurveSampler`、`TrialRun`、`DependencyGraph` 都假设“有编译后的表达式与求值环境”，现在无法真正求值公式 |
-| R2 | `FrameFactsProvider` 服务契约（**R47 交付接口，提交 C1 补齐 H1**） | §2.2、§7.2 | R47 交付 `FrameFactsProvider` / `FrameFactsRequest`；C1 新增 `FrameFactsPlan`（逐机位锚点/目标需求）、请求 `animationTime`、`FrameFacts.sourceRevision` 与 `EvaluationContext` 版本校验；实现待 `core.playback` | 阻塞 `core.playback` 的帧准备；实现批次验证采样节奏、表版本与失败编码 |
+| R2 | `FrameFactsProvider` 服务契约（**R47 交付接口，C1 补 H1，C3 补来源绑定**） | §2.2、§7.2 | R47 交付 `FrameFactsProvider` / `FrameFactsRequest`；C1 新增 `FrameFactsPlan`、`animationTime`、`FrameFacts.sourceSnapshot` 与 `EvaluationContext` 校验；C3 改为按快照引用身份拒绝同版本异源，`sourceRevision()` 仅诊断 | 阻塞 `core.playback` 的帧准备；实现批次验证采样节奏、表版本与失败编码 |
 | R3 | 客户端执行部件注册：`AnchorResolver`（+注册表）、`SampleCollector`（+注册表）（**R47 交付接口，提交 C1 补齐 H2**） | §2.2、§6.3、§7.7 | R47 交付解析/采集契约与上下文；C1 补 `AnchorResolutionContext#diagnosticScope` 与 `SpatialResolution.failed(...)`；客户端实现待后续批次 | 阻塞第三方锚点解析与采样采集；阻塞 S1/S2 |
 | R4 | 能力服务契约（B 裁决）：按类型查询解析/采集能力（**R47 已交付接口**） | §2.2、§7.7、§7.2 | R47 交付 `TypeCapabilityService` / `TypeCapability`；实现待宿主装配 | 解码错误与运行能力缺失已分三态；实现批次验证编辑器/播放宿主的接入口径 |
 | R5 | 播放请求 **`StreamCodec` / 协议契约**（**R48 已交付接口**）：动作与来源、按 RigId 的覆盖（含锚点完整参数与三态）、速度/循环/开始时间、协议版本与规模上限、可报告失败 | §8.2、§8.3 | R48 交付 `PlaybackAction` / `PlaybackSource` / `PlaybackLimits` / `PlaybackProtocolCodec`；具体编解码与收包校验待实现 | 阻塞多人播放与请求失败诊断；实现批次验证字节往返与超限拒绝 |
@@ -200,7 +201,7 @@ Q15 的推荐方向已定，不再重复裁决；R18/R20 指出的可落契约�
 | document 提交 | 通知期间 `REENTRANT_SUBMIT`、延迟队列重查基版本、标签进历史且拒绝不入历史 |
 | 编辑能力 | `SetStateKey` 的轨道能力分派、`EditTarget.Field` 的字段定位、跨轨类型兼容 |
 | 试算 | FAILED/PASSED/INCOMPLETE 与诊断一致性的运行路径、报告实际覆盖量与固定事实 |
-| eval 绑定 | `EvaluationContext` 用快照引用身份校验 TrackIndex 同源；`Key.from` 从 facts 取表版本。统一生成快照/事实身份、验证 TrackLookup 同源与候选隔离仍需实现 |
+| eval 绑定 | `EvaluationContext` 用快照引用身份校验 TrackIndex 与 FrameFacts 同源；`Key.from` 从 facts 取表版本。统一生成快照/事实身份、验证 TrackLookup 同源与候选隔离仍需实现 |
 | 空间与姿态错误 | AxisSample / SpatialResolution 三态在求值与合成中的消费，FOV 错误汇总与阻断 |
 | playback 启动/执行 | start 原子切换、prepareFrame 已接收 EventBudget 并要求展开时限制；CameraControlClaims 已声明主线程与 provider 同线程约束。事件/部分执行、运行线程检查、捕获边界与旧帧失效仍待 core |
 | 存储/序列化 | storage 契约已交付；DiagnosticReport 限定同一资源的 File 作用域。ResourceId 资源服务、参数 MapCodec/两阶段解码、未知类型与规模限制待实现 |
