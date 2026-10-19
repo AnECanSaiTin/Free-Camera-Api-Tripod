@@ -1,6 +1,7 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.eval;
 
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.SampleReading;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.AnimationSnapshot;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.Revision;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.RigId;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.SampleId;
@@ -21,11 +22,11 @@ import java.util.Optional;
 /// 不能由维度 ID、游戏刻或 revision 推导。缓存身份同时包含本类型的有效 `AimState`、来源、
 /// 活动集合与采样表版本，不能只比较 `RigId`（主设计 §3.4）。
 ///
-/// [sourceRevision] 把事实绑到生成本帧请求的快照发布版本：准备阶段用的是哪个快照，结果就必须
-/// 报同一个版本。[EvaluationContext] 据此拒绝“快照与事实来自不同发布”的混用，不能只凭内容相等
-/// 认定同源（复核 R49-H1）。
+/// [sourceSnapshot] 把事实绑到生成本帧请求的**原快照引用**：准备阶段用的是哪个快照，结果就必须
+/// 持有同一个快照对象。[EvaluationContext] 按引用身份而不是 revision 拒绝“同版本、异源快照”
+/// 的混用；`sourceRevision()` 仅作为诊断派生值，不能替代来源身份（复核 R51-N1）。
 ///
-/// @param sourceRevision     事实所属快照的发布版本
+/// @param sourceSnapshot     生成事实的原快照引用
 /// @param dimension          维度身份
 /// @param worldInstanceId    世界实例身份，非负；同维度重进世界也会变化
 /// @param gameTick           采集时的游戏刻，非负
@@ -36,7 +37,7 @@ import java.util.Optional;
 /// @param valid              本帧事实是否完整有效；无效时依赖它的求值必须报错而非兜底
 @NullMarked
 public record FrameFacts(
-        Revision sourceRevision,
+        AnimationSnapshot sourceSnapshot,
         Identifier dimension,
         long worldInstanceId,
         long gameTick,
@@ -47,7 +48,7 @@ public record FrameFacts(
         boolean valid) {
 
     public FrameFacts {
-        Objects.requireNonNull(sourceRevision, "sourceRevision");
+        Objects.requireNonNull(sourceSnapshot, "sourceSnapshot");
         Objects.requireNonNull(dimension, "dimension");
 
         if (worldInstanceId < 0) {
@@ -77,6 +78,11 @@ public record FrameFacts(
     /// 某机位本帧的空间事实；未捕获时为空。
     public Optional<RigFacts> rig(RigId rigId) {
         return Optional.ofNullable(rigs.get(rigId));
+    }
+
+    /// 来源快照的发布版本；只用于诊断 / 日志，不能替代 [sourceSnapshot] 的同源校验。
+    public Revision sourceRevision() {
+        return sourceSnapshot.revision();
     }
 
     /// 某样本本帧的读数；未声明或未采集时为空。

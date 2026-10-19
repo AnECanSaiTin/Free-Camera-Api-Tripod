@@ -24,7 +24,8 @@ import java.util.Objects;
 ///
 /// ## 不进入文档
 ///
-/// 本请求与返回的 [FrameFacts] 都是一次运行期绑定，不进入文档、历史、网络或撤销。
+/// 本请求与返回的 [FrameFacts] 都是一次运行期绑定，不进入文档、历史、网络或撤销。返回的
+/// 事实必须保留本请求 `snapshot` 的原引用；同 revision 的新快照不能冒充来源（R51-N1）。
 ///
 /// @param snapshot        本帧快照
 /// @param animationTime   动画播放时间（秒），有限且非负

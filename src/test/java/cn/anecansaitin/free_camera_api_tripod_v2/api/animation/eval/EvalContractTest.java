@@ -38,8 +38,19 @@ class EvalContractTest {
     private static final Identifier ANCHOR_TYPE =
             Identifier.fromNamespaceAndPath("free_camera_api_tripod", "test_anchor");
 
+    private static AnimationSnapshot snapshot() {
+        CameraRig rig = CameraRig.create(new RigId("rig"), "rig", List.of(),
+                new TrackId("aim"), new TrackId("active"));
+        return new AnimationSnapshot(new Revision(1),
+                CameraAnimation.create("doc", rig, new TrackId("source")));
+    }
+
+    private static FrameFacts emptyFacts(AnimationSnapshot source) {
+        return new FrameFacts(source, DIMENSION, 7L, 1L, 0.5f, 1L, Map.of(), Map.of(), true);
+    }
+
     private static FrameFacts emptyFacts() {
-        return new FrameFacts(new Revision(1), DIMENSION, 7L, 1L, 0.5f, 1L, Map.of(), Map.of(), true);
+        return emptyFacts(snapshot());
     }
 
     private static Diagnostic errorDiagnostic() {
@@ -69,17 +80,17 @@ class EvalContractTest {
                 new SpatialResolution.Resolved(ResolvedAnchor.at(() -> ANCHOR_TYPE, Vec3.ZERO)),
                 new SpatialResolution.NotRequired(), AimState.off()));
 
-        FrameFacts facts = new FrameFacts(new Revision(1), DIMENSION, 7L, 10L, 0.25f, 3L, rigs, Map.of(), true);
+        FrameFacts facts = new FrameFacts(snapshot(), DIMENSION, 7L, 10L, 0.25f, 3L, rigs, Map.of(), true);
         rigs.clear();
 
         assertTrue(facts.rig(new RigId("rig")).isPresent());
         assertEquals(0.25f, facts.partialTick());
         assertThrows(IllegalArgumentException.class,
-                () -> new FrameFacts(new Revision(1), DIMENSION, 7L, 0L, 1f, 0L, Map.of(), Map.of(), true));
+                () -> new FrameFacts(snapshot(), DIMENSION, 7L, 0L, 1f, 0L, Map.of(), Map.of(), true));
         assertThrows(IllegalArgumentException.class,
-                () -> new FrameFacts(new Revision(1), DIMENSION, 7L, -1L, 0f, 0L, Map.of(), Map.of(), true));
+                () -> new FrameFacts(snapshot(), DIMENSION, 7L, -1L, 0f, 0L, Map.of(), Map.of(), true));
         assertThrows(IllegalArgumentException.class,
-                () -> new FrameFacts(new Revision(1), DIMENSION, -1L, 0L, 0f, 0L, Map.of(), Map.of(), true));
+                () -> new FrameFacts(snapshot(), DIMENSION, -1L, 0L, 0f, 0L, Map.of(), Map.of(), true));
         assertThrows(NullPointerException.class,
                 () -> new FrameFacts(null, DIMENSION, 7L, 0L, 0f, 0L, Map.of(), Map.of(), true));
     }
@@ -181,17 +192,20 @@ class EvalContractTest {
             }
         };
 
-        EvaluationContext context = EvaluationContext.bind(1, snapshot, emptyFacts(), lookup, index);
+        EvaluationContext context = EvaluationContext.bind(1, snapshot, emptyFacts(snapshot), lookup, index);
         assertEquals(1, context.contextId());
 
         AnimationSnapshot equalValueCopy = new AnimationSnapshot(snapshot.revision(), snapshot.document());
         assertThrows(IllegalArgumentException.class,
-                () -> EvaluationContext.bind(2, equalValueCopy, emptyFacts(), lookup, index));
+                () -> EvaluationContext.bind(2, equalValueCopy, emptyFacts(snapshot), lookup, index));
 
-        FrameFacts wrongRevision = new FrameFacts(new Revision(2), DIMENSION, 7L, 1L, 0.5f, 1L,
-                Map.of(), Map.of(), true);
+        FrameFacts sameRevisionOtherSource = emptyFacts(equalValueCopy);
         assertThrows(IllegalArgumentException.class,
-                () -> EvaluationContext.bind(3, snapshot, wrongRevision, lookup, index));
+                () -> EvaluationContext.bind(3, snapshot, sameRevisionOtherSource, lookup, index));
+
+        FrameFacts wrongRevision = emptyFacts(new AnimationSnapshot(new Revision(2), snapshot.document()));
+        assertThrows(IllegalArgumentException.class,
+                () -> EvaluationContext.bind(4, snapshot, wrongRevision, lookup, index));
 
         EvaluationSession session = EvaluationSession.create(256L, 32);
         CurveSampleRequest request = new CurveSampleRequest(
@@ -207,6 +221,6 @@ class EvalContractTest {
                 () -> new CurveSampleRequest(context, session, new TrackId("track"), null, Float.NaN));
 
         assertThrows(NullPointerException.class, () -> new AnimationSnapshot(new Revision(1), null));
-        assertThrows(NullPointerException.class, () -> new EvaluationContext(0, null, emptyFacts(), lookup, index));
+        assertThrows(NullPointerException.class, () -> new EvaluationContext(0, null, emptyFacts(snapshot), lookup, index));
     }
 }

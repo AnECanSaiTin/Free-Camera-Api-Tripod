@@ -39,9 +39,9 @@ import org.jspecify.annotations.NullMarked;
 ///    不代表没有 `Unknown` 采样。
 /// 10. **预算**：解析与采集消耗 [FrameFactsRequest#session] 的工作量；不足时按资源失败报告，
 ///    允许下一帧用新会话重试，不能写入会话无关缓存（复核 R44-N1）。
-/// 11. **结果绑定**：返回事实的 [FrameFacts#sourceRevision] 必须等于
-///    `request.snapshot().revision()`；事实只对请求的快照与计划有效，不得跨帧复用或混用
-///    （复核 R49-H1）。
+/// 11. **结果绑定**：返回事实的 [FrameFacts#sourceSnapshot] 必须是 `request.snapshot()` 的
+///    同一个对象引用，而不是同 revision / 同内容的新快照；事实只对请求的快照与计划有效，
+///    不得跨帧复用或混用（复核 R49-H1、R51-N1）。
 /// 12. **线程**：在宿主主线程调用；实现不得自行切换线程访问世界。
 @NullMarked
 @FunctionalInterface

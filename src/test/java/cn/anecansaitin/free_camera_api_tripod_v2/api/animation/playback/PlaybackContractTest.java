@@ -44,7 +44,7 @@ class PlaybackContractTest {
     }
 
     private static FrameFacts facts() {
-        return new FrameFacts(new Revision(1), DIMENSION, 7L, 1L, 0f, 1L, Map.of(), Map.of(), true);
+        return new FrameFacts(snapshot(), DIMENSION, 7L, 1L, 0f, 1L, Map.of(), Map.of(), true);
     }
 
     private static AnimationSnapshot snapshot() {

@@ -12,9 +12,9 @@ import java.util.Objects;
 /// 区分帧、机位与事实版本。
 ///
 /// 推荐通过 [bind] 统一创建，确保快照、事实、轨道查询与索引来自同一次绑定；公开构造器
-/// 只保留给无法使用工厂的宿主。`TrackIndex` 必须由同一快照构建，不能与快照 / 查询混用；
-/// 同源校验按**快照引用身份**比较，不使用 record 的 `equals`（内容相等不能证明来自同一 store /
-/// 候选绑定）。索引必须保留原快照引用。
+/// 只保留给无法使用工厂的宿主。`TrackIndex` 与 [FrameFacts] 都必须保留原快照引用，不能与
+/// 快照 / 查询混用；同源校验按**快照引用身份**比较，不使用 record 的 `equals`（同版本、同内容
+/// 也不能证明来自同一 store / 候选绑定）。
 ///
 /// 预览候选使用独立上下文身份，不能与正式播放共享缓存。
 ///
@@ -47,11 +47,11 @@ public record EvaluationContext(
                     "EvaluationContext trackIndex must hold the exact bound snapshot reference");
         }
 
-        // 事实必须由同一快照的准备请求生成；内容相等不等于同源（复核 R49-H1）。
-        if (!facts.sourceRevision().equals(snapshot.revision())) {
+        // 事实必须由同一快照引用生成；同 version / 同内容都不等于同源（复核 R51-N1）。
+        if (facts.sourceSnapshot() != snapshot) {
             throw new IllegalArgumentException(
                     "EvaluationContext facts were prepared for revision " + facts.sourceRevision()
-                            + " but the bound snapshot is " + snapshot.revision());
+                            + " from a different snapshot object");
         }
     }
 

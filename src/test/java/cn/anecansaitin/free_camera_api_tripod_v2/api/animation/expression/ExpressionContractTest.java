@@ -247,7 +247,7 @@ class ExpressionContractTest {
         AnimationSnapshot snapshot = new AnimationSnapshot(new Revision(1), document);
 
         FrameFacts facts = new FrameFacts(
-                new Revision(1),
+                snapshot,
                 Identifier.fromNamespaceAndPath("minecraft", "overworld"),
                 1L, 0L, 0.5f, 0L, Map.of(), Map.of(), true);
 
