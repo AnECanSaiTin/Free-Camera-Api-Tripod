@@ -27,6 +27,9 @@
  * <p>时间<b>始终以秒存储</b>，不量化。曲线只描述数据，<b>不含插值算法</b>：
  * 求值由 {@code api.animation.eval} 的采样器按显式求值上下文完成，
  * 保证曲线、数值列与姿态共用同一求值规则（不变量 I6）。
+ *
+ * <p>{@code ChannelDescriptionRegistry} 提供每个通道的翻译键、颜色与默认单位 / 说明；
+ * 作者覆盖的轨道名称或外观不属于注册表，须显式存储。
  */
 @NullMarked
 package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field;

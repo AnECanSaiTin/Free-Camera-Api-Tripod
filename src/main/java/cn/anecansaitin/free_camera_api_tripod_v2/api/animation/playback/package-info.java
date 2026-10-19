@@ -11,7 +11,8 @@
  *       {@code PlaybackState} / {@code PlaybackClock} / {@code PreparedFrame} / {@code RigPose}：
  *       生命周期、共享时钟与帧准备。</li>
  *   <li>{@link cn.anecansaitin.free_camera_api_tripod_v2.api.animation.playback.EventBudget} /
- *       {@code EventDispatcher}：每帧事件与区间预算；执行器异常终止后续分发。</li>
+ *       {@code EventDispatcher} / {@code EventExecutorRegistry} / {@code EventExecutor}：每帧
+ *       事件与区间预算、按轨道类型注册执行器；执行器异常终止后续分发。</li>
  *   <li>{@code CameraProbe} / {@code CameraControlClaims}：宿主基础姿态与编辑器接管仲裁。</li>
  *   <li>{@link cn.anecansaitin.free_camera_api_tripod_v2.api.animation.playback.CameraCompositionService} /
  *       {@code CompositionRequest} / {@code CompositionResult} / {@code RigRenderStatus} /
