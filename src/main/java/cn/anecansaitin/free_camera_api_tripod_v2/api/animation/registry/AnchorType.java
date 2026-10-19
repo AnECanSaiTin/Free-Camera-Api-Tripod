@@ -50,4 +50,9 @@ public interface AnchorType<T extends Anchor> {
     /// 未知类型与缺失实现必须在编解码边界转成**可报告的请求失败**
     /// （主设计 §8.3），不得静默构造默认锚点。
     StreamCodec<? super RegistryFriendlyByteBuf, T> streamCodec();
+
+    /// 可选的类型级校验钩子；默认无类型专属校验。
+    default java.util.Optional<TypeValidator<T>> validator() {
+        return java.util.Optional.empty();
+    }
 }

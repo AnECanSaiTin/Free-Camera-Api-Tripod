@@ -16,7 +16,8 @@
  *   <li>{@code CameraProbe} / {@code CameraControlClaims}：宿主基础姿态与编辑器接管仲裁。</li>
  *   <li>{@link cn.anecansaitin.free_camera_api_tripod_v2.api.animation.playback.CameraCompositionService} /
  *       {@code CompositionRequest} / {@code CompositionResult} / {@code RigRenderStatus} /
- *       {@code DegradeReason}：多路合成与可见降级状态。</li>
+ *       {@code RigQualityStatus} / {@code OutputPixelRect} / {@code DegradeReason}：
+ *       多路合成、可见像素质量与降级状态。</li>
  *   <li>{@code PlaybackFailure}：按一次汇总的失败原因与时间。</li>
  * </ul>
  *

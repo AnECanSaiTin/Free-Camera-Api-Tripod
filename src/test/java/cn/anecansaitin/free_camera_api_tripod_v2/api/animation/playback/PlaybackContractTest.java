@@ -47,6 +47,16 @@ class PlaybackContractTest {
         return new FrameFacts(snapshot(), DIMENSION, 7L, 1L, 0f, 1L, Map.of(), Map.of(), true);
     }
 
+    private static RigQualityStatus quality() {
+        OutputPixelRect full = new OutputPixelRect(0, 0, 100, 100);
+        return new RigQualityStatus(full, full, 100, 100, 100, 100, 1.0, false);
+    }
+
+    private static RigQualityStatus offscreenQuality() {
+        return new RigQualityStatus(
+                new OutputPixelRect(-200, 0, 100, 100), null, 100, 100, 0, 0, 1.0, false);
+    }
+
     private static AnimationSnapshot snapshot() {
         return new AnimationSnapshot(new Revision(1), document());
     }
@@ -166,11 +176,32 @@ class PlaybackContractTest {
 
         RigRenderStatus.SampleIdentity sample = new RigRenderStatus.SampleIdentity(1, 0f, 1, 7, 1, 0, 0);
         assertThrows(IllegalArgumentException.class, () -> new RigRenderStatus(
-                new RigId("rig"), true, 0, 100, null, sample));
+                new RigId("rig"), true, 0, 100, null, sample, quality()));
 
         RigRenderStatus stopped = new RigRenderStatus(
-                new RigId("rig"), false, 0, 0, DegradeReason.RIG_PAUSED, null);
+                new RigId("rig"), false, 0, 0, DegradeReason.RIG_PAUSED, null, null);
         assertFalse(stopped.rendered());
+    }
+
+    @Test
+    void visibleQualityDistinguishesOffscreenAndChecksGeometry() {
+        RigRenderStatus offscreen = new RigRenderStatus(
+                new RigId("rig"), false, 0, 0, DegradeReason.CANVAS_OFFSCREEN, null, offscreenQuality());
+        assertTrue(offscreen.quality().offscreen());
+
+        assertThrows(IllegalArgumentException.class, () -> new RigRenderStatus(
+                new RigId("rig"), true, 0, 0, DegradeReason.CANVAS_OFFSCREEN, null, offscreenQuality()));
+        assertThrows(IllegalArgumentException.class, () -> new RigRenderStatus(
+                new RigId("rig"), true, 100, 100, null,
+                new RigRenderStatus.SampleIdentity(1, 0f, 1, 7, 1, 0, 0), offscreenQuality()));
+
+        OutputPixelRect full = new OutputPixelRect(0, 0, 100, 100);
+        assertTrue(full.intersection(new OutputPixelRect(150, 0, 10, 10)).isEmpty());
+        assertEquals(10L * 10L,
+                full.intersection(new OutputPixelRect(90, 90, 20, 20)).orElseThrow().area());
+        assertThrows(IllegalArgumentException.class,
+                () -> new RigQualityStatus(full, new OutputPixelRect(90, 90, 20, 20),
+                        100, 100, 100, 100, 1.0, false));
     }
 
     @Test
@@ -178,18 +209,18 @@ class PlaybackContractTest {
         RigRenderStatus.SampleIdentity sample = new RigRenderStatus.SampleIdentity(
                 42, 1.5f, 20, 7, 1, 2, 3);
         RigRenderStatus reused = new RigRenderStatus(
-                new RigId("rig"), true, 100, 100, DegradeReason.FRAME_SKIPPED, sample);
+                new RigId("rig"), true, 100, 100, DegradeReason.FRAME_SKIPPED, sample, quality());
 
         assertEquals(sample, reused.sampledFrame());
         assertEquals(7, sample.worldInstanceId());
         assertEquals(2, sample.activityGeneration());
 
         assertThrows(IllegalArgumentException.class, () -> new RigRenderStatus(
-                new RigId("rig"), true, 100, 100, null, null));
+                new RigId("rig"), true, 100, 100, null, null, quality()));
         assertThrows(IllegalArgumentException.class, () -> new RigRenderStatus(
-                new RigId("rig"), false, 0, 0, DegradeReason.FRAME_SKIPPED, null));
+                new RigId("rig"), false, 0, 0, DegradeReason.FRAME_SKIPPED, null, null));
         assertThrows(IllegalArgumentException.class, () -> new RigRenderStatus(
-                new RigId("rig"), true, 100, 100, DegradeReason.RIG_PAUSED, sample));
+                new RigId("rig"), true, 100, 100, DegradeReason.RIG_PAUSED, sample, quality()));
         assertThrows(IllegalArgumentException.class,
                 () -> new RigRenderStatus.SampleIdentity(-1, 0f, 0, 0, 0, 0, 0));
     }

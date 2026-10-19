@@ -4,8 +4,10 @@ import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.CameraAnima
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.Diagnostic;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.Severity;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 /// 文档解码的两阶段结果（主设计 §4.2、§8.1、§8.2）。
@@ -16,7 +18,7 @@ import java.util.Optional;
 /// §8.1 要求“不得将部分解码结果作为合法文档发布”。对应到解码：
 ///
 /// 1. **结构阶段**：Codec 是否能把字节读成对象。失败时**没有候选文档**，
-///    因此只能给出文本错误（文件 / 字段路径由存储层补充）。
+///    因此只能给出文本错误与可选字段路径（文件路径由存储层补充）。
 /// 2. **校验阶段**：结构已成立，候选文档交由统一校验器检查。
 ///    失败时**有结构化诊断**（错误码、层级、对象定位、可选修复），可以展示给作者。
 ///
@@ -53,11 +55,25 @@ public sealed interface DocumentDecodeResult
 
     /// 结构阶段失败：Codec 无法把输入读成文档。
     ///
-    /// 没有候选文档可校验，因此只有消息。消息来自 DFU 的错误（通常含字段路径），
-    /// 存储层可以把它包装成文件诊断。
+    /// 没有候选文档可校验，因此不能生成完整 `Diagnostic`；但必须尽量保留解析器给出的字段路径，
+    /// 供存储层转成文件诊断定位。`fieldPath` 为空只表示解析器未提供，不表示结构错误没有位置。
     ///
-    /// @param message 结构错误消息
-    record StructureFailed(String message) implements DocumentDecodeResult {
+    /// @param message   结构错误消息
+    /// @param fieldPath 字段路径，例如 `rigs[0].channels[1].keys[0].time`；未知时为空
+    record StructureFailed(String message, @Nullable String fieldPath) implements DocumentDecodeResult {
+
+        public StructureFailed {
+            Objects.requireNonNull(message, "message");
+
+            if (fieldPath != null && fieldPath.isBlank()) {
+                throw new IllegalArgumentException("StructureFailed fieldPath must not be blank");
+            }
+        }
+
+        /// 兼容仅有消息的旧入口；已知字段路径时应使用两参数构造器。
+        public StructureFailed(String message) {
+            this(message, null);
+        }
     }
 
     /// 校验阶段失败：结构已成立，但统一校验报告了至少一条 `ERROR`。
@@ -89,7 +105,7 @@ public sealed interface DocumentDecodeResult
     }
 
     /// 诊断列表：`Accepted` 给出非错误级诊断，`ValidationFailed` 给出全部校验诊断，
-    /// `StructureFailed` 没有结构化诊断（返回空列表）。
+    /// `StructureFailed` 没有结构化 `Diagnostic`（返回空列表），但可携带字段路径供存储层定位。
     default List<Diagnostic> diagnostics() {
         return switch (this) {
             case Accepted accepted -> accepted.diagnostics();

@@ -33,10 +33,10 @@
  *
  * <h2>本批边界</h2>
  *
- * <p>轨道 / 采样类型级结构校验钩子仍未定型：校验需要携带发布版本作用域
- * （{@code Diagnostic} 必须绑定 {@code DiagnosticScope.Document}），接口形状需单独裁决。
- * 在此之前，解码器仍按类型 ID 查 Codec，文档级校验仍走 {@code DocumentValidator}。
- * 客户端解析器 / 采集器的<b>实现</b>与具体世界查询也留给客户端批次。
+ * <p>类型级校验钩子已交付：{@code TypeValidator} 与 {@code TypeValidationContext} 由类型描述的
+ * 可选 {@code validator()} 暴露，统一文档校验负责分派。校验器只处理已解码实例，跨对象引用、
+ * 区间与文档级规则仍归 {@code DocumentValidator}。解码器仍按类型 ID 查 Codec；
+ * 客户端解析器 / 采集器的<b>实现</b>与具体世界查询留给客户端批次。
  */
 @NullMarked
 package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.registry;

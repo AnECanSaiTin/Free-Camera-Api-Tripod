@@ -18,5 +18,8 @@ public enum DegradeReason {
     RIG_PAUSED,
 
     /// 兼容性问题退回单路显示。
-    SINGLE_RIG_FALLBACK
+    SINGLE_RIG_FALLBACK,
+
+    /// 按可见像素判断完全出屏，跳过该路离屏世界绘制；不改变来源 / 活动状态。
+    CANVAS_OFFSCREEN
 }

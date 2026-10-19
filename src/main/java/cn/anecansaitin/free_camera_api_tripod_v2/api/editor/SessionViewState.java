@@ -8,6 +8,7 @@ import org.jspecify.annotations.Nullable;
 
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 /// 会话视图状态：播放头、选择、时间轴、吸附、预览区间、轨道显隐、工具与每路覆盖
 /// （主设计 §9.1、UI §6）。
@@ -65,5 +66,13 @@ public record SessionViewState(
                 EditorToolState.SELECT,
                 null,
                 Map.of());
+    }
+
+    /// 某机位的预览覆盖（锚点 / 跟随掩码 / 注视 / 避障）；未设置时为空。
+    ///
+    /// 该覆盖只影响编辑预览，不写文档、不进撤销历史，也不能替代正式播放请求。
+    public Optional<RigPlaybackOverrides> previewOverrides(RigId rigId) {
+        Objects.requireNonNull(rigId, "rigId");
+        return Optional.ofNullable(rigOverrides.get(rigId));
     }
 }

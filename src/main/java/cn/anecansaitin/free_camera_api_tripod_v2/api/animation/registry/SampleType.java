@@ -41,4 +41,9 @@ public interface SampleType<T extends SampleArgs> {
 
     /// 参数值的结构编解码。实现必须拒绝非法参数（非有限坐标、未知枚举等）。
     MapCodec<T> codec();
+
+    /// 可选的类型级校验钩子；默认无类型专属校验。
+    default java.util.Optional<TypeValidator<T>> validator() {
+        return java.util.Optional.empty();
+    }
 }

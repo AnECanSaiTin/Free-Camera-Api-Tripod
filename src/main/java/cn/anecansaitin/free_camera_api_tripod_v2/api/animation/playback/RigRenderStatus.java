@@ -24,6 +24,7 @@ import java.util.Objects;
 /// @param height       实际渲染高度；未呈现可为 0
 /// @param degradeReason 降级原因；正常时为 null
 /// @param sampledFrame 实际呈现画面的采样身份；未呈现时可为 null
+/// @param quality      完整 / 可见几何、请求与实际尺寸、密度；呈现时必须提供
 @NullMarked
 public record RigRenderStatus(
         RigId rigId,
@@ -31,7 +32,8 @@ public record RigRenderStatus(
         int width,
         int height,
         @Nullable DegradeReason degradeReason,
-        @Nullable SampleIdentity sampledFrame) {
+        @Nullable SampleIdentity sampledFrame,
+        @Nullable RigQualityStatus quality) {
 
     public RigRenderStatus {
         Objects.requireNonNull(rigId, "rigId");
@@ -50,12 +52,33 @@ public record RigRenderStatus(
                     "Rendered RigRenderStatus must carry the displayed sample identity");
         }
 
+        if (rendered && quality == null) {
+            throw new IllegalArgumentException(
+                    "Rendered RigRenderStatus must carry visible-pixel quality status");
+        }
+
+        if (rendered && quality != null && quality.offscreen()) {
+            throw new IllegalArgumentException(
+                    "Rendered RigRenderStatus must not report an offscreen quality status");
+        }
+
+        if (quality != null && (quality.actualWidth() != width || quality.actualHeight() != height)) {
+            throw new IllegalArgumentException(
+                    "RigRenderStatus dimensions must match quality actual dimensions");
+        }
+
         if (degradeReason == DegradeReason.FRAME_SKIPPED && !rendered) {
             throw new IllegalArgumentException("FRAME_SKIPPED means a reused frame is displayed");
         }
 
         if (degradeReason == DegradeReason.RIG_PAUSED && rendered) {
             throw new IllegalArgumentException("RIG_PAUSED means the rig is not submitted");
+        }
+
+        if (degradeReason == DegradeReason.CANVAS_OFFSCREEN
+                && (rendered || quality == null || !quality.offscreen())) {
+            throw new IllegalArgumentException(
+                    "CANVAS_OFFSCREEN requires an unrendered offscreen quality status");
         }
     }
 

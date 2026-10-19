@@ -104,6 +104,8 @@ class EditorContractTest {
         assertEquals(1, state.rigOverrides().size());
         assertEquals(1, state.trackVisibility().hidden().size());
         assertEquals(EditorToolState.MOVE, state.tool());
+        assertEquals(RigPlaybackOverrides.INHERIT,
+                state.previewOverrides(new RigId("rig")).orElseThrow());
         assertThrows(IllegalArgumentException.class,
                 () -> new SessionViewState(-1f, Selection.EMPTY, TimelineView.defaults(),
                         SnappingSettings.disabled(), null, TrackVisibility.allVisible(),

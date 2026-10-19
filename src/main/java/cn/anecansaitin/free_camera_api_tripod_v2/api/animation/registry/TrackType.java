@@ -48,4 +48,9 @@ public interface TrackType<T extends AnimationTrack.ExtensionTrack> {
     /// 负责自身字段的读写与**局部约束**（例如键时间有限非负、键时间唯一）；
     /// 跨对象的引用完整性、作用域与领域约束仍由统一文档校验负责（主设计 §8.1）。
     MapCodec<T> codec();
+
+    /// 可选的类型级校验钩子；默认无类型专属校验。
+    default java.util.Optional<TypeValidator<T>> validator() {
+        return java.util.Optional.empty();
+    }
 }
