@@ -1,8 +1,8 @@
 # P1 契约施工计划（`_v2`）
 
 > 更新：2026-10-19。本文记录施工边界与状态，不替代[动画主设计](<../design-animation-editor-framework.md>)、[UI 设计](<../design-editor-ui-framework.md>)和[音频设计](<../design-spatial-audio-api.md>)。
-> 当前：第一至第九批已交付；第十批交付**具体类型 Codec 与两阶段解码**（各数据类型自身 Codec、`DocumentRegistries`、`Codecs`、`DocumentCodec`），注册表机制已裁决维持自有 `TypeRegistry`（O）、能力描述走客户端服务（B）；提交 **C2** 补齐 R6/R7/R8（扩展时间轴、事件执行器注册、通道描述），提交 **C3** 补齐 R51-N1 事实来源引用绑定。新增“按可见像素需求自适应分辨率”仅进入设计，尚未实现。其余保证仍为调用方 / core 责任，见 §7。**core 算法、存储发布、事件执行、仲裁、多机位渲染与 codec 的 NBT/网络实测尚未实现**。
-> 最近实际验证：31 个 suite / 214 个用例通过，其中 v2 为 25 / 148；216 个 v2 主源码 Java 文件。详情见[复核日志](<review-log.md>) 提交 C3；该基线不覆盖新质量需求。
+> 当前：第一至第十批已交付；提交 C2/C3 补齐 R6/R7/R8 与事实来源绑定；**提交 C4 补齐剩余契约 R9–R12**（类型级校验钩子、字段级结构路径、按 RigId 预览覆盖、可见像素质量切片）。新增“按可见像素需求自适应分辨率”的契约已落，renderer 实现仍未做。其余运行实现仍为调用方 / core 责任，见 §7。**core 算法、存储发布、事件执行、仲裁、多机位渲染与 codec 的 NBT/网络实测尚未实现**。
+> 最近实际验证：33 个 suite / 218 个用例通过，其中 v2 为 27 / 152；220 个 v2 主源码 Java 文件。详情见[复核日志](<review-log.md>) 提交 C4。
 
 ## 1. 目录与迁移约定
 
@@ -15,15 +15,15 @@
 | api.animation.path | Path / PathNode / PathMode；几何算法不在数据对象中 |
 | api.animation.block | 文档、机位、布局（**矩形分量可动画**）、轨道（含 ExtensionTimelineTrack）、符号、标记、采样声明/读数、音频边界与叠加 |
 | api.spatial | Vec3 / Rotation / 掩码 / Space / Anchor / ResolvedAnchor / AimTarget / AimState / ObstacleSettings / WorldPose |
-| api.animation.registry | TypeRegistry 冻结语义、TrackType / AnchorType / SampleType 描述（ID + MapCodec，锚点另含 StreamCodec）、三个 common 注册表接口，**DocumentRegistries**；**R47**：客户端 `AnchorResolver` / `SampleCollector`（+注册表与上下文）与 `TypeCapabilityService` / `TypeCapability` |
+| api.animation.registry | TypeRegistry 冻结语义、TrackType / AnchorType / SampleType 描述（ID + MapCodec、锚点另含 StreamCodec、可选 TypeValidator）、三个 common 注册表接口，**DocumentRegistries**；**R47**：客户端 `AnchorResolver` / `SampleCollector`（+注册表与上下文）与 `TypeCapabilityService` / `TypeCapability` |
 | api.animation.codec | **第十批新增**：编解码公共工具（枚举按名、有限/非负数值、非空串、构造器异常转 `DataResult`） |
 | api.animation.edit | EditOp（含 SetStateKey）/ 结果 / LocalizedMessage / LocalizedMessageRenderer / DiagnosticScope / Diagnostic / 分层校验 / 试算 / EditTools |
-| api.animation.document | Revision / 快照 / 句柄 / store / EditSubmission / 监听 / 历史 / 事务 / 预览 / 稳定选择，**DocumentCodec（两阶段解码）+ DocumentDecodeResult** |
+| api.animation.document | Revision / 快照 / 句柄 / store / EditSubmission / 监听 / 历史 / 事务 / 预览 / 稳定选择，**DocumentCodec（两阶段解码）+ DocumentDecodeResult（结构失败可带字段路径）** |
 | api.animation.eval | 查询/索引、FrameFacts（含世界实例身份）、显式采样请求、AxisSample / SpatialResolution、DocumentPose / SpatialReadings、依赖图与缓存接口；**R47**：`FrameFactsProvider` / `FrameFactsRequest` |
-| api.animation.playback | 请求/覆盖/服务/时钟/准备帧、事件预算/分发/**EventExecutorRegistry**、接管/探针、合成请求/结果/状态（含旧帧采样身份）、**ResolvedRect（已求值矩形）**；**R48**：`PlaybackAction` / `PlaybackSource` / `PlaybackLimits` / `PlaybackProtocolCodec` |
+| api.animation.playback | 请求/覆盖/服务/时钟/准备帧、事件预算/分发/**EventExecutorRegistry**、接管/探针、合成请求/结果/状态（含旧帧采样身份）、**ResolvedRect（已求值矩形）**、**RigQualityStatus / OutputPixelRect**；**R48**：`PlaybackAction` / `PlaybackSource` / `PlaybackLimits` / `PlaybackProtocolCodec` |
 | api.storage | ResourceId、资源条目/服务、Load/SaveResult、DiagnosticReport、RecoverySlot/Service/Decision |
 | api.animation.expression | **第十一批**：`ExpressionCompiler` / `CompilationResult` / `CompiledExpression`（不透明）/ `ExpressionReferences` / `ExpressionDiagnostic`；不公开语法树，依赖仅为 JDK |
-| api.editor | 会话 / 草稿 EditDraftState / 视图状态 / 交互请求 / 后端与宿主契约；客户端 UI 与实现未交付 |
+| api.editor | 会话 / 草稿 EditDraftState / 视图状态（含按 RigId 的预览覆盖）/ 交互请求 / 后端与宿主契约；客户端 UI 与实现未交付 |
 | editor / editor.spi / editor.internal | 仅分区说明；UI 实现未交付 |
 
 ### 1.1 当前差异与延期（唯一施工差异表）
@@ -32,13 +32,13 @@
 | --- | --- | --- |
 | 临时根包 | _v2 | 清理旧实现后去掉 _v2 |
 | field / expression / symbol 分工 | 值源/曲线/符号条目在 field；expression 只放编译与引用契约；符号表条目在 block/field | 求值入口在 eval（`ExpressionEvaluator` / `ExpressionInputs`（含必填 `source`）/ `EvaluationSession` / `ExpressionFailure`）；实现批次复核是否迁移符号条目 |
-| 轨道/锚点/采样注册与 Codec | 第九批交付注册表契约；第十批交付具体类型 Codec 与两阶段解码；**R35/R37/R39 修复**：叠加双向拒绝并声明为可选受检字段、`strictInt` 按 Number 类型精确检查、`TrackType` 上界收窄、解码结果严重级不变量 | **仍未交付**：叠加内容 Codec（O1–O3）、注册表能力描述（B，客户端批次）、类型级校验钩子、字段级结构化解码诊断（当前结构错误为 DFU 文本） |
+| 轨道/锚点/采样注册与 Codec | 第九批交付注册表契约；第十批交付具体类型 Codec 与两阶段解码；C4 交付类型级校验钩子与结构字段路径；**R35/R37/R39 修复**：叠加双向拒绝、`strictInt` 精确检查、`TrackType` 上界收窄、解码结果严重级不变量 | **仍未交付**：叠加内容 Codec（O1–O3）、注册表能力描述（B，客户端批次）；Codec 实际填充 `StructureFailed.fieldPath` 待实现 |
 | 存储资源身份 | `storage.ResourceId`、资源服务、载入/保存结果、恢复槽契约已交付 | 资源根/路径安全、原子替换、Codec 与恢复调度仍待实现 |
 | 叠加内容 | OverlayElement.content 暂为 Object | O1–O3 改封闭内容类型；不提前认定深不可变验收完成 |
 | 音频 | AudioRef / AudioRefId 仅身份与边界 | 全部非音频阶段完成后实施独立音频 API、可选接入、波形与同步 |
 | R6/R7/R8 扩展能力 | **C2 已交付**：`ExtensionTimelineTrack`、`EventExecutor`/`EventExecutorRegistry`、`ChannelDescription`/`ChannelDescriptionRegistry` | 时间轴编辑、事件执行器调用与通道显示派生待 core / editor |
 | EditTools / 注视捕获 | 工具请求 / 结果契约已交付；R29 补输入快照与捕获配置 | 缓动、批量、烘焙与注视捕获实现待 core / editor |
-| 可见像素自适应质量（新） | 仅设计，当前RigRenderStatus缺请求/可见几何与密度状态，原因枚举无专用出屏状态 | 先补输出像素需求/质量计划/结果状态契约，再做R0 renderer验证；不缩小视锥、不改FOV |
+| 可见像素自适应质量（新） | C4 交付契约：`OutputPixelRect` / `RigQualityStatus` / `RigRenderStatus.quality` / `CANVAS_OFFSCREEN` | 质量策略、裁剪映射、目标池与 R0 renderer 验证；不缩小视锥、不改 FOV |
 | 算法与服务实现 | 已交付类型/接口不等于运行实现 | core 补 store / validator / eval / playback / renderer；不得记成已运行 |
 
 Q14 已关闭：布局 `AnimatedNumber`、可动画矩形与已求值矩形已交付（第九批），不再作为临时差异。
@@ -80,7 +80,7 @@ Revision 包装、顶层 edit 及 edit ↔ document 例外已与主设计对齐�
 | 第七批 | editor：EditorSession、SessionViewState、时间轴/吸附/预览区间/轨道显隐、交互请求、后端选择/宿主 | 屏幕、输入、组件与 core 会话实现待后续 |
 | 第八批 | edit：EditTools、EasingPreset/Request、BatchTransform/Request、BakeRequest、AimCaptureRequest/Mode、ToolResult | 工具算法、冻结求值、原子提交待 core |
 | 第九批 | `field.AnimatedNumber`、`RigView.Rect` 改可动画分量、`playback.ResolvedRect` 与 `RigPose` 改写、`api.animation.registry`（`TypeRegistry` 冻结语义 + `TrackType` / `AnchorType` / `SampleType` + 三个注册表） | 具体类型 Codec 实现、注册表的**能力描述 / 类型级校验钩子**、客户端解析与采集部件延期 |
-| 第十批 | 具体类型 Codec（ID / 空间值 / 路径 / 值源 / 曲线 / 关键帧 / 布局数值 / 符号 / 标记 / 采样 / 音轨引用 / 机位 / 布局 / 文档根）、`DocumentRegistries`、`Codecs`、`DocumentCodec` 两阶段解码与往返测试 | 叠加内容、注册表能力与类型级校验钩子、字段级结构诊断、未知类型之外的 Codec 兼容矩阵延期 |
+| 第十批 | 具体类型 Codec（ID / 空间值 / 路径 / 值源 / 曲线 / 关键帧 / 布局数值 / 符号 / 标记 / 采样 / 音轨引用 / 机位 / 布局 / 文档根）、`DocumentRegistries`、`Codecs`、`DocumentCodec` 两阶段解码与往返测试 | 叠加内容、Codec 实际填充结构路径、未知类型之外的 Codec 兼容矩阵延期；类型级校验钩子由 C4 交付 |
 | 第十一批 | 表达式契约：`ExpressionCompiler` / `CompilationResult` / `CompiledExpression` / `ExpressionReferences` / `ExpressionDiagnostic`；`eval` 的 `ExpressionEvaluator` / `ExpressionInputs` / `ExpressionSample`；R43 增 `EvaluationSession`、`ExpressionSource` / `ExpressionFailure`；R45 增来源字段/`KeyId` 与 `cacheableInSharedCache` 规则 | 编译器与解释器实现、内建函数版本、`edit.Diagnostic` 包装、依赖图与试算接入延期 |
 | 第十二批 | R2/R3/R4：`FrameFactsProvider` + `FrameFactsRequest`；客户端 `AnchorResolver` / `SampleCollector` 及注册表与上下文；`TypeCapabilityService` / `TypeCapability` | 三个服务的实现、客户端世界查询与注册时序、群系/天气/记分板查询扩展延期 |
 | 第十三批 | R5：`PlaybackAction` / `PlaybackSource` / `PlaybackLimits` / `PlaybackProtocolCodec`（版本、规模上限、可报告编解码入口） | 具体编解码实现、收包校验与 `Local` 资源解析流程、文档级深度/数量上限延期 |
@@ -110,7 +110,7 @@ Revision 包装、顶层 edit 及 edit ↔ document 例外已与主设计对齐�
 - 内建轨道类型 ID curve / aim / active / camera_source 保留，ExtensionTrack 伪造由 L2 拒绝。Codec 归成员类型，common 注册和客户端执行分离；本批尚无完整编解码验收。
 - 布局连续属性用 `field.AnimatedNumber`：`Value`（常量 / 公式）或 `Keyed`（数值曲线 + 显式默认值）。`Keyed` 只接受 `CLAMP / CLAMP`，非空曲线首末之外保持端点；空曲线使用显式默认值，不得隐式取 0。静态可判定部分（常量、空曲线默认值）在构造期检查，公式与曲线产生的值必须留到运行期逐帧检查；两种坐标模式静态互斥。布局数值不通过 TrackRef 对外提供读数，也不新增 `TrackId`。
 - 准备帧携带**已求值**矩形（`playback.ResolvedRect`），不携带 `AnimatedNumber`：求值在准备阶段、画布到像素映射在合成阶段；非法求值结果（非有限、非正宽高）构造失败，不能伪装成合法准备帧。布局曲线计入文档时长，静态布局与末键保持不延长。
-- 开放类型经 `api.animation.registry` 的冻结注册表按 `Identifier` 分派：冻结后注册拒绝、重复 ID 拒绝、未知类型解码报错；锚点的存档 Codec 与网络 Codec 由同一 `AnchorType` 同时提供；common 侧只放 ID 与 Codec，客户端解析 / 采集执行部件单独注册。注册表的能力描述与类型级校验钩子形状未裁决前不得写入公开契约（§7.2）。
+- 开放类型经 `api.animation.registry` 的冻结注册表按 `Identifier` 分派：冻结后注册拒绝、重复 ID 拒绝、未知类型解码报错；锚点的存档 Codec 与网络 Codec 由同一 `AnchorType` 同时提供；common 侧只放 ID 与 Codec，客户端解析 / 采集执行部件单独注册。C4 已交付类型级校验钩子（`TypeValidator` / `TypeValidationContext`）与结构字段路径；能力描述仍走客户端服务（B）。
 - 编解码归**数据类型自身**：每个受序列化类型声明自己的 `Codec` / `MapCodec`；文档根 `CameraAnimation.mapCodec(registries)` 只组合成员 Codec，不复制子对象字段规则（§8.1）。多分支封闭类型用**显式标签**（`type` / `mode` / `kind`）分派，未知标签与未注册类型一律解码错误，不回退默认分支。
 - `data_version` 必填且当前只接受 `CURRENT_DATA_VERSION`；缺失、较旧或更高都在结构阶段拒绝。结构约束由值类型构造器执行，解码边界把 `IllegalArgumentException` 转成结构失败，不让异常穿透。
 - 文档解码分两阶段：**结构阶段**（Codec + 局部约束 + 类型分派）→ **统一校验阶段**（`DocumentValidator`，任一 `ERROR` 拒绝）。结构失败时没有候选文档，也不调用校验器；两阶段都通过才产出可发布候选（§4.2、§8.1）。
@@ -138,7 +138,7 @@ Revision 包装、顶层 edit 及 edit ↔ document 例外已与主设计对齐�
 .\gradlew.bat --offline compileJava test --rerun --console=plain
 ```
 
-2026-10-19 提交 C3 实际执行成功：31 个 suite / 214 个用例，v2 为 25 / 148，无失败/错误/跳过；216 个 v2 主源码 Java 文件。测试集中在 record 结构、不变量、容器隔离与 Codec 往返，不能替代 core 的时序、仲裁、事件/渲染运行验证，也不覆盖 NBT / 网络 Ops。第十批新增 [DocumentCodecTest](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/document/DocumentCodecTest.java>) 5 个用例（完整往返、版本拒绝、未知类型拒绝、校验拒绝与警告、叠加编码拒绝）；第九批新增 [布局连续属性](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/block/LayoutAnimationContractTest.java>) 9 个用例、`ResolvedRect` 1 个用例。
+2026-10-19 提交 C4 实际执行成功：33 个 suite / 218 个用例，v2 为 27 / 152，无失败/错误/跳过；220 个 v2 主源码 Java 文件。测试集中在 record 结构、不变量、容器隔离与 Codec 往返，不能替代 core 的时序、仲裁、事件/渲染运行验证，也不覆盖 NBT / 网络 Ops。第十批新增 [DocumentCodecTest](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/document/DocumentCodecTest.java>) 5 个用例（完整往返、版本拒绝、未知类型拒绝、校验拒绝与警告、叠加编码拒绝）；第九批新增 [布局连续属性](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/block/LayoutAnimationContractTest.java>) 9 个用例、`ResolvedRect` 1 个用例。
 
 必查：api 不依赖旧根、net.minecraft.client、core/editor；editor.spi 不依赖 internal。文本扫描仅辅助，正式依赖门禁检查编译产物。旧根不接线批次不应修改旧实现。按 Q13 允许 edit ↔ document 包引用，不能将此误报为禁止依赖。补丁格式检查使用 git diff --check。
 
@@ -162,14 +162,17 @@ Revision 包装、顶层 edit 及 edit ↔ document 例外已与主设计对齐�
 | EditTools | 第八批已交付，R30已关闭T1/T2契约问题 | 缓动/批量/烘焙/注视捕获算法、冻结求值、覆盖清理与原子提交待 core |
 | R6/R7/R8 | 提交 C2 已交付扩展时间轴、事件执行器注册、通道描述注册表 | 时间轴编辑、执行器分派、通道显示派生待 core / editor |
 | R51-N1 | 提交 C3 已改为 `FrameFacts.sourceSnapshot` 引用绑定 | 同版本异源拒绝已加测试；provider 实际传递仍待 core |
+| C4 剩余契约 | R9–R12 已交付（类型校验钩子、结构路径、预览覆盖、质量切片） | 校验分派、Codec 路径填充、预览实现与 renderer 待 core / editor |
 | 布局连续属性（Q14） | **第九批已交付**：`AnimatedNumber` 两分支、矩形四分量可动画、`ResolvedRect` 冻结已求值矩形；布局曲线计入时长 | 求值（分量→数值）、逐帧有限性/正尺寸检查、静态校验器接入与映射到输出像素待 eval / core |
-| 类型注册表（轨道/锚点/采样） | 第九批交付契约；第十批交付 `DocumentRegistries` 与锚点分派 Codec | 能力描述（B，客户端批次）、类型级校验钩子、`core` 侧的注册表实现与冻结时序 |
-| 编解码与两阶段解码 | **第十批交付**：各数据类型自身 Codec、文档根 `CameraAnimation.mapCodec(registries)`、`DocumentCodec`（结构 → 校验 → Accepted/StructureFailed/ValidationFailed） | 叠加内容（O1–O3）、字段级结构诊断（当前为 DFU 文本）、NBT/网络 Ops 往返实测、规模上限与深度限制 |
-| 可见像素自适应质量 | 用户确认新需求，主设计§7.6.1已记录，无实现 | 输出像素/画布交集、档位/滞回、状态可查询、出屏副路跳绘/来源保留，R0测量性能与画质 |
+| 类型注册表（轨道/锚点/采样） | 第九批交付契约；第十批交付 `DocumentRegistries` 与锚点分派 Codec；C4 交付 `TypeValidator` / `TypeValidationContext` | 能力描述（B，客户端批次）、统一校验分派、`core` 注册表实现与冻结时序 |
+| 编解码与两阶段解码 | **第十批交付**：各数据类型自身 Codec、文档根 `CameraAnimation.mapCodec(registries)`、`DocumentCodec`（结构 → 校验 → Accepted/StructureFailed/ValidationFailed）；C4 允许 `StructureFailed` 携带字段路径 | 叠加内容（O1–O3）、Codec 实际填充路径、NBT/网络 Ops 往返实测、规模上限与深度限制 |
+| 可见像素自适应质量 | C4 已交付请求/可见几何、密度与专用出屏原因契约 | 输出像素/画布交集、档位/滞回、状态可查询、出屏副路跳绘/来源保留，R0测量性能与画质 |
 
 注册表机制已裁决维持自有实现（O）、能力描述走 B（见 §7.2 与[选型文档](<registry-selection.md>)）。剩余工作见 §6.1 清单；叠加 O1–O3 按用户指示**等设计补全字段**；音频保持最后实施。不能把这份顺序理解为 core 已交付。
 
 ### 6.1 P1 剩余契约清单（2026-10-19 对账）
+
+R9–R12 已由提交 C4 交付；当前**没有未交付的 P1 契约类型**。以下保留原始缺口记录与实现边界，剩余工作均为 `core` / `editor` / 客户端实现与运行验证。
 
 逐项比对设计 §2.1 包职责、§2.2 宿主服务、§4–§8 行为要求后，仍缺的**契约**（不含 core 实现）：
 
@@ -183,14 +186,14 @@ Revision 包装、顶层 edit 及 edit ↔ document 例外已与主设计对齐�
 | R6 | 扩展轨道的**纯派生时间轴能力接口**（**C2 已交付**） | §4.1 | `ExtensionTimelineTrack` / `TimelineKey` 已交付；扩展轨道可选择实现 | 时间轴编辑实现待 editor / core |
 | R7 | 第三方**事件执行器注册**契约（**C2 已交付**） | §7.4 | `EventExecutor` / `EventExecutorRegistry` 已交付；重复类型与内建类型拒绝 | 执行器分派、异常与部分执行待 core |
 | R8 | **通道描述注册表**（标签/颜色/默认信息）（**C2 已交付**） | §8.1 | `ChannelDescription` / `ChannelDescriptionRegistry` 已交付；注册表要求完整且一致 | 编辑器显示派生待 editor |
-| R9 | 类型级校验钩子（`TypeValidator<T>` vs 复用 `DocumentValidator`） | §2.2、§4.2 | 未定形；文档校验只走 `DocumentValidator` | 阻塞第三方轨道/采样类型的类型级校验 |
-| R10 | 结构解码的**字段级诊断**：`StructureFailed` 目前只有文本 | §4.2、§8.2 | `DocumentDecodeResult.StructureFailed(String)` | 解码错误无法定位对象/字段，不能进诊断面板 |
-| R11 | 会话按 RigId 的**预览锚点/目标/避障**契约 | §6.3、§9.1 | `SessionViewState` 有选择/时间轴/吸附/区间/显隐/`activeRigId`，无预览覆盖 | 阻塞多机位草稿恢复与预览一致性 |
-| R12 | 可见像素自适应质量的**新契约切片**（请求/可见几何、密度、专用出屏原因） | §7.6.1（R30 新需求） | 仅设计，`RigRenderStatus` 不足 | 阻塞 R0 渲染验证与降级可视化 |
+| R9 | 类型级校验钩子（`TypeValidator<T>`） | §2.2、§4.2 | **C4 已交付**：`TypeValidator` / `TypeValidationContext`，Track/Anchor/SampleType 可选 `validator()`；统一校验分派待实现 | 第三方类型可在统一校验中报告类型自身约束 |
+| R10 | 结构解码的**字段级诊断** | §4.2、§8.2 | **C4 已交付**：`StructureFailed(message, fieldPath)`；Codec/存储填充路径待实现 | 解码错误可带字段定位进入诊断面板 |
+| R11 | 会话按 RigId 的**预览锚点/目标/避障** | §6.3、§9.1 | **C4 已交付**：`SessionViewState.rigOverrides` + `previewOverrides(RigId)` | 预览覆盖保留、每个后端切换恢复待实现 |
+| R12 | 可见像素自适应质量的**契约切片** | §7.6.1（R30 新需求） | **C4 已交付**：`OutputPixelRect` / `RigQualityStatus`、`RigRenderStatus.quality`、`CANVAS_OFFSCREEN` | 质量策略、裁剪映射、目标池与实际 renderer 待 R0/core |
 
 按设计/用户裁决**明确延期**、不计入本轮缺口：叠加内容封闭类型（O1–O3，等设计补字段）、音频 `ReferenceAudioService` 与音频数据（A0–A2）、编辑器 SPI（`PanelRegistry`、公开组件，U1/U2）、采样实时读数/洋葱皮/构图辅助等面板模型（S1/S2、E1）。
 
-建议实施顺序：**R1 → R2 + R3 + R4 → R5 → R6/R7/R8 → R9/R10 → R11/R12**。R1 是所有求值相关契约的前置，应单独成批审核。
+R1–R12 的契约均已交付（R1 表达式编译/求值接口已由 R41/R43/R45 交付）；后续工作转入实现批次，不再新增 P1 契约类型。
 
 ## 7. 契约补齐与实现级验证（推荐方向已定）
 
@@ -209,6 +212,10 @@ Q15 的推荐方向已定，不再重复裁决；R18/R20 指出的可落契约�
 | EditTools | 缓动/批量请求绑定冻结快照，捕获携带 mode/override/baseRevision；`ToolResult` 已交付。算法、冻结事实消费、覆盖清理与原子提交待 core / editor |
 | 布局连续属性 | `AnimatedNumber` 两分支求值（常量/公式/曲线、空曲线默认值、端点保持）、逐帧有限性与正尺寸检查、静态可判定部分的校验接入、`ResolvedRect` 映射到输出像素 |
 | 类型注册表 | 冻结后注册被拒、重复 ID 拒绝、未知类型解码报错、锚点存档 Codec 与网络 Codec 由同一类型同时就位、客户端执行部件缺失与解码错误的诊断分离 |
+| 类型级校验 | `TypeValidator` 由统一 `DocumentValidator` 按类型分派；上下文版本/定位真实传递，校验器不修改候选 |
+| 结构路径 | `StructureFailed.fieldPath` 由 Codec/存储实际填充；空路径只表示解析器未提供，不吞掉已知字段 |
+| 预览覆盖 | `SessionViewState.rigOverrides` / `previewOverrides(RigId)` 在后端切换、草稿恢复与逐帧预览中保持一致，不写文档 |
+| 可见像素质量 | `OutputPixelRect` / `RigQualityStatus` 的完整/可见/请求/实际几何、密度、裁剪降采样与 `CANVAS_OFFSCREEN` 在 renderer 中实际计算；不改 FOV/构图 |
 | 扩展轨道/事件/通道描述 | `ExtensionTimelineTrack`、`EventExecutorRegistry`、`ChannelDescriptionRegistry` 已交付；时间轴编辑、按类型执行器分派与通道显示派生待 core / editor |
 | 消息显示 | LocalizedMessageRenderer 的翻译/参数/嵌套样式、语言切换与显示缓存边界 |
 
@@ -218,13 +225,13 @@ Q15 的推荐方向已定，不再重复裁决；R18/R20 指出的可落契约�
 
 以完整显示矩形R与输出画布交集V确定需求，不考虑机位互相遮挡；保持完整R宽高比、FOV和UV，降低分辨率不重新构图。完全出屏只跳过副路绘制，不跳过依赖求值/文档事件，不停止来源相机。按尺寸分档/池化/滞回，恢复可见/身份变化先出有效新帧。
 
-新增输入/状态应能表达输出像素、完整/可见矩形、请求/实际分辨率或密度、裁剪降采样和出屏未提交原因；不直接操作GL，不把宿主目标放进common文档。现有RigPose/CompositionRequest可提供基本几何和作者质量，但结果状态不足；具体新增类型名留实现前契约审核，不预写为已交付。
+新增输入/状态由 `OutputPixelRect`（完整 / 可见 / 请求 / 实际几何）与 `RigQualityStatus`（密度、裁剪降采样、出屏）承载，`RigRenderStatus.quality` 查询；`DegradeReason.CANVAS_OFFSCREEN` 区分画布外未提交。不直接操作 GL，不把宿主目标放进 common 文档。现有 `RigPose` / `CompositionRequest` 继续提供基本几何与作者质量；质量策略与 renderer 实现待 R0/core。
 
 待实测的阈值/函数与最低纹理尺寸不进文件语义；关闭裁剪降采样时仍按请求矩形尺寸适配。部分裁剪降密度是有损质量策略，UI需明确；实际视锥裁剪/非对称投影不在此次确认范围。
 
-### 7.2 注册表：机制选型、能力描述与类型级校验钩子（待裁决，未写入契约）
+### 7.2 注册表：能力描述与类型级校验钩子
 
-第九批只交付了注册表的 **ID 分派 + 结构 Codec + 冻结语义**。主设计 §2.2 把“能力描述与校验”也列在注册表职责内，但两者的接口形状存在先决问题，因此**没有**先写进公开契约。
+第九批交付注册表 ID 分派 + Codec + 冻结语义；**C4 已交付类型级校验钩子**，能力描述仍待客户端批次。`TypeValidator<T>` 携带 `TypeValidationContext`（Revision + 稳定对象 ID + 可选所属机位 + 字段路径），由统一 `DocumentValidator` 按类型分派；校验器只处理已解码实例，跨对象引用与区间规则仍归文档校验。
 
 **机制选型（用户已裁决）**：维持 **O（自有 `TypeRegistry`）** 作为 `api` 契约；能力描述选 **B（客户端能力服务）**，服务契约随客户端解析 / 采集批次定义；类型级校验钩子暂缓，等客户端执行部件批次一并裁决。**N′（`core` 用 NeoForge 自定义注册表实现接口）保留为将来演进选项**，仅在出现数据包扩展 / 注册表同步 / 别名迁移的真实需求时启用。
 
@@ -243,14 +250,7 @@ Q15 的推荐方向已定，不再重复裁决；R18/R20 指出的可落契约�
 | A：描述对象上声明能力 ID 集合 | 能力是**运行期**概念，需要区分“客户端执行部件缺失”“宿主不支持”“参数非法”三类 | 把能力做成类型数据，会让可恢复的缺失与不可恢复的错误混在一起（D18/I9） |
 | B：客户端能力服务按类型查询（推荐） | 服务契约需要“已注册执行部件”作为事实来源 | 与注册表选型解耦；等客户端解析/采集批次一起定义 |
 
-**类型级校验钩子**（用户指示：等注册表选型后决定）同样未写死：
-
-| 方向 | 先决问题 |
-| --- | --- |
-| C：`TypeValidator<T>`（`ValidationLayer` + `Revision` 上下文，聚合成 `DocumentValidator`） | 会改变 §4.2 的校验分层入口 |
-| 暂缓：第三方用整份 `DocumentValidator` 自行筛类型 | 不动现有契约，但第三方要遍历全文档 |
-
-在裁决前，解码器按类型 ID 查 Codec，文档校验仍走 `DocumentValidator`，两者都不依赖未定形状。
+**类型级校验钩子（C4 已交付）**：`TrackType` / `AnchorType` / `SampleType` 提供可选 `validator()`，由统一文档校验按类型分派；不改变 §4.2 的分层入口。
 
 **叠加内容**：按用户指示**等设计补全字段再定型**，`OverlayElement.content` 仍为不透明引用（见 §1.1）。
 
