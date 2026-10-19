@@ -1,5 +1,9 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.spatial;
 
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.registry.DocumentRegistries;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.MapCodec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
 import org.jspecify.annotations.NullMarked;
 
 /// 注视目标：让相机朝向某个锚点，而不是照着旋转通道 K 帧（主设计 §6.3）。
@@ -59,5 +63,19 @@ public record AimTarget(Anchor target, RotationMask mask, Vec3 offset) {
     /// 启用水平与俯仰注视、无偏移的常用形态。
     public static AimTarget lookAt(Anchor target) {
         return new AimTarget(target, RotationMask.YAW_PITCH, Vec3.ZERO);
+    }
+
+    /// 结构编码：`target / mask / offset`，锚点经类型注册表分派。
+    public static MapCodec<AimTarget> mapCodec(DocumentRegistries registries) {
+        return RecordCodecBuilder.mapCodec(instance -> instance.group(
+                registries.anchorCodec().fieldOf("target").forGetter(AimTarget::target),
+                RotationMask.CODEC.fieldOf("mask").forGetter(AimTarget::mask),
+                Vec3.CODEC.fieldOf("offset").forGetter(AimTarget::offset)
+        ).apply(instance, AimTarget::new));
+    }
+
+    /// 独立解析注视配置时使用的 Codec。
+    public static Codec<AimTarget> codec(DocumentRegistries registries) {
+        return mapCodec(registries).codec();
     }
 }

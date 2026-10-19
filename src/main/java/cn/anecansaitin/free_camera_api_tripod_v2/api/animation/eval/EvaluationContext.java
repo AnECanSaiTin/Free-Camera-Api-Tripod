@@ -46,6 +46,13 @@ public record EvaluationContext(
             throw new IllegalArgumentException(
                     "EvaluationContext trackIndex must hold the exact bound snapshot reference");
         }
+
+        // 事实必须由同一快照的准备请求生成；内容相等不等于同源（复核 R49-H1）。
+        if (!facts.sourceRevision().equals(snapshot.revision())) {
+            throw new IllegalArgumentException(
+                    "EvaluationContext facts were prepared for revision " + facts.sourceRevision()
+                            + " but the bound snapshot is " + snapshot.revision());
+        }
     }
 
     /// 统一绑定入口：调用方必须保证快照、事实、查询与索引来自同一次快照绑定。

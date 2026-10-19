@@ -1,6 +1,10 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field;
 
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.codec.Codecs;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.KeyId;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.MapCodec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
@@ -86,6 +90,19 @@ public record Curve(List<Keyframe> keys, Wrap preMode, Wrap postMode) {
     public static Curve of(Keyframe key) {
         return new Curve(List.of(key), Wrap.CLAMP, Wrap.CLAMP);
     }
+
+    /// 结构编码：`keys / pre_mode / post_mode`。
+    ///
+    /// 键按时间升序写出（构造器已整理）；重复时间的键在解码时会被构造器拒绝，
+    /// 由解码边界转成结构错误（主设计 §4.4：同轨时间唯一）。
+    public static final MapCodec<Curve> MAP_CODEC = RecordCodecBuilder.mapCodec(instance -> instance.group(
+            Keyframe.CODEC.listOf().fieldOf("keys").forGetter(Curve::keys),
+            Codecs.enumByName(Wrap.class).fieldOf("pre_mode").forGetter(Curve::preMode),
+            Codecs.enumByName(Wrap.class).fieldOf("post_mode").forGetter(Curve::postMode)
+    ).apply(instance, Curve::new));
+
+    /// 独立解析一条曲线时使用的 Codec。
+    public static final Codec<Curve> CODEC = MAP_CODEC.codec();
 
     public int size() {
         return keys.size();

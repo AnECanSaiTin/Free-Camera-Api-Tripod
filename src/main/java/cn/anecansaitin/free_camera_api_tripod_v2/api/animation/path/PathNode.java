@@ -1,7 +1,11 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.path;
 
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.codec.Codecs;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.PathNodeId;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.spatial.Vec3;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.MapCodec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
 import org.jspecify.annotations.NullMarked;
 
 /// 路径节点：坐标 + 两侧切线 + 段插值方式（主设计 §3.3）。
@@ -46,6 +50,21 @@ public record PathNode(
         Vec3 outTangent,
         PathMode mode,
         boolean smooth) {
+
+    /// 结构编码：`{id, position, in_tangent, out_tangent, mode, smooth}`。
+    ///
+    /// 切线仅 `BEZIER` 使用；非贝塞尔模式解码后由构造器归一为零（不是错误）。
+    public static final MapCodec<PathNode> MAP_CODEC = RecordCodecBuilder.mapCodec(instance -> instance.group(
+            PathNodeId.CODEC.fieldOf("id").forGetter(PathNode::id),
+            Vec3.CODEC.fieldOf("position").forGetter(PathNode::position),
+            Vec3.CODEC.fieldOf("in_tangent").forGetter(PathNode::inTangent),
+            Vec3.CODEC.fieldOf("out_tangent").forGetter(PathNode::outTangent),
+            Codecs.enumByName(PathMode.class).fieldOf("mode").forGetter(PathNode::mode),
+            Codec.BOOL.fieldOf("smooth").forGetter(PathNode::smooth)
+    ).apply(instance, PathNode::new));
+
+    /// 独立解析一个路径节点时使用的 Codec。
+    public static final Codec<PathNode> CODEC = MAP_CODEC.codec();
 
     public PathNode {
         if (mode != PathMode.BEZIER) {

@@ -13,6 +13,9 @@
  *       `ABSENT / VALUE / ERROR` 结果与公式可读的空间事实；空间锚点 / 目标用
  *       {@code SpatialResolution} 区分不需要 / 成功 / 失败。</li>
  *   <li>{@code DependencyGraph} / {@code EvaluationCache}：文档派生的依赖图与单上下文采样缓存。</li>
+ *   <li>{@code FrameFactsProvider} / {@code FrameFactsRequest} / {@code FrameFactsPlan}：帧准备入口；
+ *       请求携带动画时间与宿主算出的逐机位锚点 / 目标需求，解析机位空间事实与声明式世界采样。</li>
+ *   <li>{@code EvaluationSession} / {@code ExpressionEvaluator} / {@code ExpressionInputs}：公式求值的共享预算、来源与显式输入。</li>
  * </ul>
  *
  * <h2>帧事实不是文档</h2>
@@ -21,6 +24,10 @@
  * partial tick、实际所需机位锚点 / 目标读数、采样表及有效性；不进入文档、历史或网络文档。
  * 帧内所有机位与公式读取同一份事实（不变量 I5），求值阶段不自行访问世界。同一维度重进世界
  * 也必须生成新的世界实例身份。
+ *
+ * <p>准备请求必须显式给出**动画时间**与逐机位需求计划：同一游戏刻可以定位到不同动画时刻，
+ * 覆盖后的生效锚点 / 注视状态也不能由提供者重新推断（复核 R49-H1）。返回事实绑定请求快照的
+ * 发布版本，{@code EvaluationContext} 据此拒绝跨发布混用。
  *
  * <h2>状态与缓存</h2>
  *

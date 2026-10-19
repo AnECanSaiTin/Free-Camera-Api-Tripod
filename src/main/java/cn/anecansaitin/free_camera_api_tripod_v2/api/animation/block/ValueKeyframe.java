@@ -1,6 +1,10 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block;
 
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.codec.Codecs;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.KeyId;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.MapCodec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
 import org.jspecify.annotations.NullMarked;
 
 import java.util.Objects;
@@ -40,6 +44,22 @@ import java.util.Objects;
 /// @param <T>   轨道值类型
 @NullMarked
 public record ValueKeyframe<T>(KeyId keyId, float time, T value) {
+
+    /// 按值类型构造结构编码：`{key_id, time, value}`。
+    ///
+    /// 时间用秒并做有限、非负校验；`value` 由调用方给出的值 Codec 决定。
+    public static <T> MapCodec<ValueKeyframe<T>> mapCodec(Codec<T> valueCodec) {
+        return RecordCodecBuilder.mapCodec(instance -> instance.group(
+                KeyId.CODEC.fieldOf("key_id").forGetter(ValueKeyframe::keyId),
+                Codecs.seconds().fieldOf("time").forGetter(ValueKeyframe::time),
+                valueCodec.fieldOf("value").forGetter(ValueKeyframe::value)
+        ).apply(instance, ValueKeyframe::new));
+    }
+
+    /// 按值类型构造独立 Codec；形状与 [mapCodec] 相同。
+    public static <T> Codec<ValueKeyframe<T>> codec(Codec<T> valueCodec) {
+        return mapCodec(valueCodec).codec();
+    }
 
     public ValueKeyframe {
         Objects.requireNonNull(keyId, "keyId");

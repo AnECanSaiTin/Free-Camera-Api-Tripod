@@ -1,6 +1,13 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block;
 
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.codec.Codecs;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.SampleId;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.registry.DocumentRegistries;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.registry.SampleType;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.DataResult;
+import com.mojang.serialization.MapCodec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.resources.Identifier;
 import org.jspecify.annotations.NullMarked;
 
@@ -101,5 +108,34 @@ public record WorldSample(
     /// 换重采周期；参数与类型不变。
     public WorldSample withResampleEveryTicks(int newResampleEveryTicks) {
         return new WorldSample(id, name, kind, args, newResampleEveryTicks);
+    }
+
+    /// 结构编码：`kind` 分派 + `id / name / args / resample_every_ticks`。
+    ///
+    /// 先读 `kind`，再查冻结的采样类型注册表拿到该类型的参数 `MapCodec`（主设计 §8.1）。
+    /// 未知类型返回解码错误，不构造默认参数；重采周期必须是**严格整数**，
+    /// 不接受小数截断或溢出（复核 R34 C2）。
+    public static Codec<WorldSample> codec(DocumentRegistries registries) {
+        return Identifier.CODEC.<WorldSample>partialDispatch(
+                "kind",
+                sample -> DataResult.success(sample.kind()),
+                id -> registries.samples().find(id)
+                        .<DataResult<MapCodec<? extends WorldSample>>>map(
+                                type -> DataResult.success(perType(type)))
+                        .orElseGet(() -> DataResult.error(() -> "Unknown sample type: " + id)));
+    }
+
+    /// 某个采样类型的完整样本编码：公共字段 + 该类型的参数。
+    @SuppressWarnings("unchecked")
+    private static MapCodec<? extends WorldSample> perType(SampleType<?> type) {
+        MapCodec<SampleArgs> args = (MapCodec<SampleArgs>) type.codec();
+
+        return RecordCodecBuilder.mapCodec(instance -> instance.group(
+                SampleId.CODEC.fieldOf("id").forGetter(WorldSample::id),
+                Codecs.nonBlankString().fieldOf("name").forGetter(WorldSample::name),
+                args.fieldOf("args").forGetter(WorldSample::args),
+                Codecs.strictInt().fieldOf("resample_every_ticks").forGetter(WorldSample::resampleEveryTicks)
+        ).apply(instance, (sampleId, name, a, ticks) ->
+                new WorldSample(sampleId, name, a.type(), a, ticks)));
     }
 }

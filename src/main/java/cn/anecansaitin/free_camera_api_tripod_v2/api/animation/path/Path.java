@@ -1,6 +1,9 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.path;
 
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.PathNodeId;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.MapCodec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
@@ -36,6 +39,17 @@ public record Path(String name, List<PathNode> nodes) {
 
     /// 空路径：没有名称、没有节点。
     public static final Path EMPTY = new Path("", List.of());
+
+    /// 结构编码：`{name, nodes}`。
+    ///
+    /// `name` 允许空串（空路径没有名称）；`nodes` 顺序即几何顺序，空列表合法。
+    public static final MapCodec<Path> MAP_CODEC = RecordCodecBuilder.mapCodec(instance -> instance.group(
+            Codec.STRING.fieldOf("name").forGetter(Path::name),
+            PathNode.CODEC.listOf().fieldOf("nodes").forGetter(Path::nodes)
+    ).apply(instance, Path::new));
+
+    /// 独立解析一条路径时使用的 Codec。
+    public static final Codec<Path> CODEC = MAP_CODEC.codec();
 
     public Path {
         // 防御性复制：不保留调用方容器（主设计 §3.2）

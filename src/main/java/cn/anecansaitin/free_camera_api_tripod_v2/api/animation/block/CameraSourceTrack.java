@@ -1,5 +1,8 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block;
 
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.codec.Codecs;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.TrackId;
 import net.minecraft.resources.Identifier;
 import org.jspecify.annotations.NullMarked;
@@ -102,4 +105,14 @@ public record CameraSourceTrack(
     public CameraSourceTrack withId(TrackId newId) {
         return new CameraSourceTrack(newId, name, defaultValue, keys);
     }
+
+    /// 结构编码：`id / name / default / keys`；来源按 `Player` / `Rig` 分支写入。
+    public static final Codec<CameraSourceTrack> CODEC =
+            RecordCodecBuilder.<CameraSourceTrack>mapCodec(instance -> instance.group(
+                    TrackId.CODEC.fieldOf("id").forGetter(CameraSourceTrack::id),
+                    Codecs.nonBlankString().fieldOf("name").forGetter(CameraSourceTrack::name),
+                    CameraSource.CODEC.fieldOf("default").forGetter(CameraSourceTrack::defaultValue),
+                    ValueKeyframe.codec(CameraSource.CODEC).listOf().fieldOf("keys")
+                            .forGetter(CameraSourceTrack::keys)
+            ).apply(instance, CameraSourceTrack::new)).codec();
 }

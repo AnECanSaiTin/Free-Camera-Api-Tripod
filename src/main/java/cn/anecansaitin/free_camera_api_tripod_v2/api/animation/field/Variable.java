@@ -1,6 +1,10 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field;
 
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.codec.Codecs;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.TrackId;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.MapCodec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
 import org.jspecify.annotations.NullMarked;
 
 import java.util.Optional;
@@ -39,6 +43,17 @@ import java.util.Optional;
 /// @param source 取值来源；恒非空
 @NullMarked
 public record Variable(String name, ValueSource source) {
+
+    /// 结构编码：`{name, source}`。
+    ///
+    /// `name` 非空白；`source` 用 `ValueSource.CODEC`，可含 `constant` / `formula` / `track_ref`。
+    public static final MapCodec<Variable> MAP_CODEC = RecordCodecBuilder.mapCodec(instance -> instance.group(
+            Codecs.nonBlankString().fieldOf("name").forGetter(Variable::name),
+            ValueSource.CODEC.fieldOf("source").forGetter(Variable::source)
+    ).apply(instance, Variable::new));
+
+    /// 独立解析一个变量时使用的 Codec。
+    public static final Codec<Variable> CODEC = MAP_CODEC.codec();
 
     public Variable {
         if (name.isBlank()) {

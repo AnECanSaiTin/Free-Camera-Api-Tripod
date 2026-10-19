@@ -1,5 +1,9 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.spatial;
 
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.codec.Codecs;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.MapCodec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
 import org.jspecify.annotations.NullMarked;
 
 /// 欧拉旋转：**弧度**，顺序固定为 YXZ。
@@ -31,6 +35,18 @@ public record Rotation(double yaw, double pitch, double roll) {
 
     /// 单位旋转：三轴皆零。
     public static final Rotation NONE = new Rotation(0, 0, 0);
+
+    /// 结构编码：`{yaw, pitch, roll}`，三轴均为有限双精度（弧度）。
+    ///
+    /// 非有限角度在解码期报错，不放行 NaN / Infinity。
+    public static final MapCodec<Rotation> MAP_CODEC = RecordCodecBuilder.mapCodec(instance -> instance.group(
+            Codecs.finiteDouble().fieldOf("yaw").forGetter(Rotation::yaw),
+            Codecs.finiteDouble().fieldOf("pitch").forGetter(Rotation::pitch),
+            Codecs.finiteDouble().fieldOf("roll").forGetter(Rotation::roll)
+    ).apply(instance, Rotation::new));
+
+    /// 独立解析一个旋转时使用的 Codec。
+    public static final Codec<Rotation> CODEC = MAP_CODEC.codec();
 
     public Rotation {
         if (!Double.isFinite(yaw) || !Double.isFinite(pitch) || !Double.isFinite(roll)) {

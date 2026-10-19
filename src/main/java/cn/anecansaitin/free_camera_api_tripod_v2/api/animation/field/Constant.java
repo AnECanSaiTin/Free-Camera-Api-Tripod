@@ -1,5 +1,7 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field;
 
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.MapCodec;
 import org.jspecify.annotations.NullMarked;
 
 /// 固定数值。
@@ -10,6 +12,16 @@ import org.jspecify.annotations.NullMarked;
 /// @param value 取值。`-0.0` 规范化为 `0.0`，其余不变
 @NullMarked
 public record Constant(float value) implements NumberSource {
+
+    /// 结构编码：`{"type": "constant", "value": <float>}` 的 `value` 部分。
+    ///
+    /// 分支标签由 `NumberSource` 的分派 Codec 写出；本 MapCodec 只负责自身字段。
+    public static final MapCodec<Constant> MAP_CODEC =
+            Codec.FLOAT.fieldOf("value").xmap(Constant::new, Constant::value);
+
+    /// 独立解析本分支时使用的 Codec。
+    public static final Codec<Constant> CODEC = MAP_CODEC.codec();
+
     public Constant {
         // 主设计 §4.4：输入构造时统一 -0.0 为 0.0，不改变其他有效时间与数值
         if (value == 0f) {

@@ -1,6 +1,8 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field;
 
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.TrackId;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.MapCodec;
 import org.jspecify.annotations.NullMarked;
 
 /// 轨道读数：取一条曲线轨道在当前位置上的值。
@@ -22,6 +24,14 @@ import org.jspecify.annotations.NullMarked;
 /// @param trackId 被读取的曲线轨道 ID
 @NullMarked
 public record TrackRef(TrackId trackId) implements ValueSource {
+
+    /// 结构编码：`{"type": "track_ref", "track_id": "..."}` 的 `track_id` 部分。
+    public static final MapCodec<TrackRef> MAP_CODEC =
+            TrackId.CODEC.fieldOf("track_id").xmap(TrackRef::new, TrackRef::trackId);
+
+    /// 独立解析本分支时使用的 Codec。
+    public static final Codec<TrackRef> CODEC = MAP_CODEC.codec();
+
     @Override
     public String toString() {
         return "track(" + trackId.value() + ")";

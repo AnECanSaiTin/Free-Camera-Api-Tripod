@@ -1,5 +1,10 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block;
 
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.codec.Codecs;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.registry.DocumentRegistries;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.MapCodec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.TrackId;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.spatial.AimState;
 import net.minecraft.resources.Identifier;
@@ -104,5 +109,22 @@ public record AimTrack(
     @Override
     public AimTrack withId(TrackId newId) {
         return new AimTrack(newId, name, defaultValue, keys);
+    }
+
+    /// 结构编码：`id / name / default / keys`；注视状态按类型分派，键为有类型 STEP 键。
+    public static MapCodec<AimTrack> mapCodec(DocumentRegistries registries) {
+        Codec<AimState> stateCodec = AimState.codec(registries);
+
+        return RecordCodecBuilder.mapCodec(instance -> instance.group(
+                TrackId.CODEC.fieldOf("id").forGetter(AimTrack::id),
+                Codecs.nonBlankString().fieldOf("name").forGetter(AimTrack::name),
+                stateCodec.fieldOf("default").forGetter(AimTrack::defaultValue),
+                ValueKeyframe.codec(stateCodec).listOf().fieldOf("keys").forGetter(AimTrack::keys)
+        ).apply(instance, AimTrack::new));
+    }
+
+    /// 独立解析注视轨道时使用的 Codec。
+    public static Codec<AimTrack> codec(DocumentRegistries registries) {
+        return mapCodec(registries).codec();
     }
 }

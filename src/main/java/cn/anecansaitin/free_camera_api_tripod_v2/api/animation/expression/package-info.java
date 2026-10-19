@@ -1,22 +1,38 @@
 /**
- * 表达式与符号契约（主设计 §2.1）：值源、编译、符号与函数。
+ * 表达式编译契约（主设计 §2.1、§6.1）。
  *
- * <h2>当前状态</h2>
+ * <h2>内容</h2>
  *
- * <p>本包目前**没有类型**。设计把“值源、编译、符号与函数契约”放在
- * {@code api.animation.expression}；本轮拆分中，值源（{@code ValueSource} /
- * {@code NumberSource}）、曲线、关键帧、通道语义键与符号表条目落在
- * {@code api.animation.field}，差异记录在 P1 契约计划 §1.4。
+ * <ul>
+ *   <li>{@link cn.anecansaitin.free_camera_api_tripod_v2.api.animation.expression.ExpressionCompiler}：
+ *       源码 → 不透明编译句柄或结构化诊断；实现按源码文本做有界 LRU 缓存。</li>
+ *   <li>{@link cn.anecansaitin.free_camera_api_tripod_v2.api.animation.expression.CompilationResult}：
+ *       成功 / 失败两分支，失败不产生可求值句柄。</li>
+ *   <li>{@link cn.anecansaitin.free_camera_api_tripod_v2.api.animation.expression.CompiledExpression}：
+ *       只暴露源码与外部引用，不公开语法树。</li>
+ *   <li>{@link cn.anecansaitin.free_camera_api_tripod_v2.api.animation.expression.ExpressionReferences}、
+ *       {@link cn.anecansaitin.free_camera_api_tripod_v2.api.animation.expression.ExpressionReference}：
+ *       供提交期 L3 校验（名字/实参/样本绑定）与依赖图使用。</li>
+ *   <li>{@link cn.anecansaitin.free_camera_api_tripod_v2.api.animation.expression.ExpressionDiagnostic}、
+ *       {@link cn.anecansaitin.free_camera_api_tripod_v2.api.animation.expression.ExpressionDiagnosticCode}：
+ *       本层的轻量结构化诊断，由上层包装成 {@code edit.Diagnostic}。</li>
+ * </ul>
  *
- * <p>按 Q6 裁决，求值层最小查询面 {@code TrackLookup} 已迁到
- * {@code api.animation.eval}；本包预留给编译器、语法树与符号解析契约
- * （P3 / 后续批次），届时再决定是否把 {@code field} 中的部分类型迁回本包。
+ * <h2>与求值层的分工</h2>
  *
- * <h2>依赖方向</h2>
+ * <p>求值输入涉及快照、帧事实、机位空间上下文与曲线采样器，因此求值入口在
+ * {@code api.animation.eval}（{@code ExpressionEvaluator} / {@code ExpressionInputs}）。
+ * 本包**不反向依赖** {@code eval}、{@code block}、{@code edit} 或 {@code playback}
+ * （主设计 §2.1 的依赖方向），只依赖 JDK 与注解。
  *
- * <p>本包不得反向依赖 {@code eval}、{@code playback}、{@code storage} 或
- * {@code editor}（主设计 §2.1、§2.3）。编译器不是稳定扩展接口（主设计 §6.1），
- * 实现类不进入公开契约。
+ * <h2>不在本包的内容</h2>
+ *
+ * <ul>
+ *   <li>值源、曲线、关键帧与通道语义键在 {@code api.animation.field}；</li>
+ *   <li>符号表条目（{@code Variable} / {@code CustomFunction}）在对应模型包；</li>
+ *   <li>语法树、解释器与常量折叠实现**不是稳定扩展接口**（主设计 §6.1），
+ *       实现类不进入本包公开契约。</li>
+ * </ul>
  */
 @NullMarked
 package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.expression;

@@ -1,5 +1,8 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block;
 
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.codec.Codecs;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.TrackId;
 import net.minecraft.resources.Identifier;
 import org.jspecify.annotations.NullMarked;
@@ -106,4 +109,13 @@ public record ActiveTrack(
     public ActiveTrack withId(TrackId newId) {
         return new ActiveTrack(newId, name, defaultValue, keys);
     }
+
+    /// 结构编码：`id / name / default / keys`；键为有类型 STEP 键（主设计 §3.1.1）。
+    public static final Codec<ActiveTrack> CODEC =
+            RecordCodecBuilder.<ActiveTrack>mapCodec(instance -> instance.group(
+                    TrackId.CODEC.fieldOf("id").forGetter(ActiveTrack::id),
+                    Codecs.nonBlankString().fieldOf("name").forGetter(ActiveTrack::name),
+                    Codec.BOOL.fieldOf("default").forGetter(ActiveTrack::defaultValue),
+                    ValueKeyframe.codec(Codec.BOOL).listOf().fieldOf("keys").forGetter(ActiveTrack::keys)
+            ).apply(instance, ActiveTrack::new)).codec();
 }

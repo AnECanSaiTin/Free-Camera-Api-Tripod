@@ -1,6 +1,9 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block;
 
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.RigId;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.DataResult;
+import com.mojang.serialization.MapCodec;
 import org.jspecify.annotations.NullMarked;
 
 import java.util.Objects;
@@ -36,6 +39,20 @@ import java.util.Optional;
 /// 播放历史，因此直接定位与顺序播放结果一致（主设计 §3.1.1、独立音频设计 §6.4）。
 @NullMarked
 public sealed interface CameraSource permits CameraSource.Player, CameraSource.Rig {
+
+    /// 结构编码：按 `type` 分派；`player` 无额外字段，`rig` 带 `rig`（RigId）。
+    ///
+    /// 未知 `type` 在解码期返回错误，不回退为 `player`（主设计 §8.1）。
+    public static final Codec<CameraSource> CODEC = Codec.STRING.partialDispatch(
+            "type",
+            source -> DataResult.success(source instanceof CameraSource.Rig ? "rig" : "player"),
+            type -> switch (type) {
+                case "player" -> DataResult.<MapCodec<? extends CameraSource>>success(
+                        MapCodec.unit(CameraSource.player()));
+                case "rig" -> DataResult.<MapCodec<? extends CameraSource>>success(
+                        RigId.CODEC.fieldOf("rig").xmap(CameraSource.Rig::new, CameraSource.Rig::rigId));
+                default -> DataResult.error(() -> "Unknown camera source type: " + type);
+            });
 
     /// 玩家正常相机：播放不接管玩家视角，活动机位只参与合成。
     record Player() implements CameraSource {

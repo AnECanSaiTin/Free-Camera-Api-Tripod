@@ -1,6 +1,10 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block;
 
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.codec.Codecs;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.MarkerId;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.MapCodec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
 import org.jspecify.annotations.NullMarked;
 
 /// 文档级标记：时刻 + 标签 + 种类（主设计 §3.1）。
@@ -36,6 +40,19 @@ import org.jspecify.annotations.NullMarked;
 /// @param kind  种类
 @NullMarked
 public record Marker(MarkerId id, float time, String label, MarkerKind kind) {
+
+    /// 结构编码：`{id, time, label, kind}`。
+    ///
+    /// `time` 为秒，必须有限且非负；`label` 允许空串，缺失标签不是错误。
+    public static final MapCodec<Marker> MAP_CODEC = RecordCodecBuilder.mapCodec(instance -> instance.group(
+            MarkerId.CODEC.fieldOf("id").forGetter(Marker::id),
+            Codecs.seconds().fieldOf("time").forGetter(Marker::time),
+            Codec.STRING.fieldOf("label").forGetter(Marker::label),
+            Codecs.enumByName(MarkerKind.class).fieldOf("kind").forGetter(Marker::kind)
+    ).apply(instance, Marker::new));
+
+    /// 独立解析一个标记时使用的 Codec。
+    public static final Codec<Marker> CODEC = MAP_CODEC.codec();
 
     public Marker {
         if (!Float.isFinite(time) || time < 0f) {

@@ -1,6 +1,8 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field;
 
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.TrackId;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.DataResult;
 import org.jspecify.annotations.NullMarked;
 
 import java.util.List;
@@ -56,6 +58,15 @@ public enum CameraChannel {
     /// 见 [#POSITION_AXES]
     public static final List<CameraChannel> ROTATION_AXES =
             List.of(ROTATION_X, ROTATION_Y, ROTATION_Z);
+
+    /// 结构编码：按 [#key] 的语义键字符串读写，不用枚举序号。
+    ///
+    /// 未知键在解码期返回错误，不回退默认通道（主设计 §8.1）。
+    public static final Codec<CameraChannel> CODEC = Codec.STRING.comapFlatMap(
+            key -> byKey(key)
+                    .<DataResult<CameraChannel>>map(DataResult::success)
+                    .orElseGet(() -> DataResult.error(() -> "Unknown camera channel: " + key)),
+            CameraChannel::key);
 
     private final String key;
     private final AxisGroup group;

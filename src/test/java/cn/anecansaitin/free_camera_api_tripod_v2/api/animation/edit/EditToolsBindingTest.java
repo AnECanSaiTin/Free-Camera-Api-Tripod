@@ -38,7 +38,7 @@ class EditToolsBindingTest {
 
     private static EvaluationContext context(AnimationSnapshot snapshot) {
         FrameFacts facts = new FrameFacts(
-                DIMENSION, 7L, 1L, 0f, 1L, Map.of(), Map.of(), true);
+                new Revision(1), DIMENSION, 7L, 1L, 0f, 1L, Map.of(), Map.of(), true);
         TrackLookup lookup = trackId -> Optional.empty();
         TrackIndex index = new TrackIndex() {
             @Override

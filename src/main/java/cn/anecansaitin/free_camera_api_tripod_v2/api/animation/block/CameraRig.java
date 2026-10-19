@@ -1,5 +1,10 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block;
 
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.codec.Codecs;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.registry.DocumentRegistries;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.MapCodec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field.CameraChannel;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.RigId;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.TrackId;
@@ -133,13 +138,18 @@ public record CameraRig(
         return motionMode == MotionMode.PATH;
     }
 
-    /// 机位自身的结束时间：通道、注视轨道与活动轨道末键的最大值。
+    /// 机位自身的结束时间：通道、注视轨道、活动轨道与**布局曲线**末键的最大值。
     ///
     /// 这是**创作数据的结束时间**，不是机位的播放长度。文档播放长度取启用机位的本值、
-    /// 相机来源轨道、文档轨道、标记、音轨范围与叠加范围的有限最大结束时间；
-    /// 静态布局不延长动画（主设计 §3.1）。
+    /// 相机来源轨道、文档轨道、标记、音轨范围与叠加范围的有限最大结束时间。
+    ///
+    /// 布局曲线计入时长（主设计 §3.1：时长取“布局轨道”…的结束时间），
+    /// 但**静态布局不延长动画**：常量矩形与空曲线的布局贡献为 0，
+    /// 只有真正打了布局键的机位才会把动画拖长。末键保持也不产生无限时长。
     public float contentDuration() {
-        return Math.max(channelsDuration(), Math.max(aim.duration(), view.active().duration()));
+        return Math.max(channelsDuration(),
+                Math.max(aim.duration(),
+                        Math.max(view.active().duration(), view.layoutDuration())));
     }
 
     /// 机位**通道**的结束时间：最后一个通道键的时间。
@@ -210,5 +220,28 @@ public record CameraRig(
     /// 否则两台机位会共用同一批 `TrackId`，破坏“`TrackId` 在整份文档内唯一”。
     public CameraRig withId(RigId newId) {
         return new CameraRig(newId, name, channels, path, motionMode, distanceMode, space, aim, obstacle, view);
+    }
+
+    /// 结构编码：机位全部字段；锚点 / 注视 / 采样经注册表分派。
+    ///
+    /// 机位内通道顺序、机位顺序都是数据，按集合顺序写出（主设计 §3.1）。
+    public static MapCodec<CameraRig> mapCodec(DocumentRegistries registries) {
+        return RecordCodecBuilder.mapCodec(instance -> instance.group(
+                RigId.CODEC.fieldOf("id").forGetter(CameraRig::id),
+                Codecs.nonBlankString().fieldOf("name").forGetter(CameraRig::name),
+                CurveTrack.CODEC.listOf().fieldOf("channels").forGetter(CameraRig::channels),
+                Path.CODEC.fieldOf("path").forGetter(CameraRig::path),
+                Codecs.enumByName(MotionMode.class).fieldOf("motion_mode").forGetter(CameraRig::motionMode),
+                Codecs.enumByName(DistanceMode.class).fieldOf("distance_mode").forGetter(CameraRig::distanceMode),
+                Space.codec(registries).fieldOf("space").forGetter(CameraRig::space),
+                AimTrack.codec(registries).fieldOf("aim").forGetter(CameraRig::aim),
+                ObstacleSettings.CODEC.fieldOf("obstacle").forGetter(CameraRig::obstacle),
+                RigView.CODEC.fieldOf("view").forGetter(CameraRig::view)
+        ).apply(instance, CameraRig::new));
+    }
+
+    /// 独立解析机位时使用的 Codec。
+    public static Codec<CameraRig> codec(DocumentRegistries registries) {
+        return mapCodec(registries).codec();
     }
 }

@@ -1,5 +1,8 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.spatial;
 
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.MapCodec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
 import org.jspecify.annotations.NullMarked;
 
 /// 逐轴启用掩码：哪几个轴参与锚点旋转跟随 / 注视覆盖。
@@ -34,6 +37,18 @@ public record RotationMask(boolean x, boolean y, boolean z) {
 
     /// 只启用水平朝向（Yaw）与俯仰（Pitch）。注视的常用形态。
     public static final RotationMask YAW_PITCH = new RotationMask(true, true, false);
+
+    /// 结构编码：`{x, y, z}`，三轴均为布尔。
+    ///
+    /// 三个字段都是必填；缺失字段按 DFU 规则报错，不默认为 false。
+    public static final MapCodec<RotationMask> MAP_CODEC = RecordCodecBuilder.mapCodec(instance -> instance.group(
+            Codec.BOOL.fieldOf("x").forGetter(RotationMask::x),
+            Codec.BOOL.fieldOf("y").forGetter(RotationMask::y),
+            Codec.BOOL.fieldOf("z").forGetter(RotationMask::z)
+    ).apply(instance, RotationMask::new));
+
+    /// 独立解析一个掩码时使用的 Codec。
+    public static final Codec<RotationMask> CODEC = MAP_CODEC.codec();
 
     /// 是否至少启用了一个轴。全部未启用时锚点不参与旋转合成。
     public boolean any() {

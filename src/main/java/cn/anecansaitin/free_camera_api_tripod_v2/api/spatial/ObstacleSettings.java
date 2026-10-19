@@ -1,5 +1,10 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.spatial;
 
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.codec.Codecs;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.DataResult;
+import com.mojang.serialization.MapCodec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
 import org.jspecify.annotations.NullMarked;
 
 /// 机位的避障默认设置（主设计 §6.4、D3）。
@@ -34,6 +39,27 @@ public record ObstacleSettings(boolean enabled, double margin) {
     /// 默认关闭是因为避障需要宿主逐路适配与验证（主设计 §6.4 指出旧 `enableObstacle()`
     /// 围绕玩家眼睛做第三人称避障，不能直接代替任意机位算法）；作者显式打开才生效。
     public static final ObstacleSettings DISABLED = new ObstacleSettings(false, 0.1);
+
+    /// 保留距离字段：有限且非负。
+    ///
+    /// 有限性由 [Codecs#finiteDouble] 保证；负值在这里转成解码错误，
+    /// 避免构造器的异常穿透解码边界。
+    private static final Codec<Double> MARGIN_CODEC = Codecs.finiteDouble().comapFlatMap(
+            margin -> margin < 0
+                    ? DataResult.error(() -> "Obstacle margin must be finite and non-negative: " + margin)
+                    : DataResult.success(margin),
+            margin -> margin);
+
+    /// 结构编码：`{enabled, margin}`。
+    ///
+    /// `margin` 单位格，必须有限且非负；字段必填，不写默认值。
+    public static final MapCodec<ObstacleSettings> MAP_CODEC = RecordCodecBuilder.mapCodec(instance -> instance.group(
+            Codec.BOOL.fieldOf("enabled").forGetter(ObstacleSettings::enabled),
+            MARGIN_CODEC.fieldOf("margin").forGetter(ObstacleSettings::margin)
+    ).apply(instance, ObstacleSettings::new));
+
+    /// 独立解析避障设置时使用的 Codec。
+    public static final Codec<ObstacleSettings> CODEC = MAP_CODEC.codec();
 
     public ObstacleSettings {
         if (!Double.isFinite(margin) || margin < 0) {

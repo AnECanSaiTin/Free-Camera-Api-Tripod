@@ -1,6 +1,10 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field;
 
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.codec.Codecs;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.KeyId;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.MapCodec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
 import org.jspecify.annotations.NullMarked;
 
 import java.util.Objects;
@@ -61,6 +65,26 @@ public record Keyframe(
             time = 0f;
         }
     }
+
+    /// 结构编码：`key_id / time / value / in_slope / out_slope / in_length /
+    /// out_length / interpolation`。
+    ///
+    /// 取值用 [NumberSource#CODEC]：轨道读数在类型上就进不了键字段（主设计 §6.1）。
+    /// 时间用秒并做有限、非负校验（§4.4）。
+    public static final MapCodec<Keyframe> MAP_CODEC = RecordCodecBuilder.mapCodec(instance -> instance.group(
+            KeyId.CODEC.fieldOf("key_id").forGetter(Keyframe::keyId),
+            Codecs.seconds().fieldOf("time").forGetter(Keyframe::time),
+            NumberSource.CODEC.fieldOf("value").forGetter(Keyframe::value),
+            Codecs.finiteFloat().fieldOf("in_slope").forGetter(Keyframe::inSlope),
+            Codecs.finiteFloat().fieldOf("out_slope").forGetter(Keyframe::outSlope),
+            Codecs.finiteFloat().fieldOf("in_length").forGetter(Keyframe::inLength),
+            Codecs.finiteFloat().fieldOf("out_length").forGetter(Keyframe::outLength),
+            Codecs.enumByName(Curve.Interpolation.class)
+                    .fieldOf("interpolation").forGetter(Keyframe::interpolation)
+    ).apply(instance, Keyframe::new));
+
+    /// 独立解析一个关键帧时使用的 Codec。
+    public static final Codec<Keyframe> CODEC = MAP_CODEC.codec();
 
     /// 只要固定数值的键。公式键会抛异常——调用方若要“只读常量”，应当先判断来源类型。
     public float constantValue() {

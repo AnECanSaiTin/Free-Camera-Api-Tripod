@@ -44,7 +44,7 @@ class PlaybackContractTest {
     }
 
     private static FrameFacts facts() {
-        return new FrameFacts(DIMENSION, 7L, 1L, 0f, 1L, Map.of(), Map.of(), true);
+        return new FrameFacts(new Revision(1), DIMENSION, 7L, 1L, 0f, 1L, Map.of(), Map.of(), true);
     }
 
     private static AnimationSnapshot snapshot() {
@@ -124,7 +124,7 @@ class PlaybackContractTest {
         RigPose pose = new RigPose(
                 new RigId("rig"),
                 new WorldPose(Vec3.ZERO, Rotation.NONE, 70f),
-                RigView.Rect.full(),
+                new ResolvedRect.Normalized(0, 0, 1, 1),
                 3,
                 0.5,
                 2);
@@ -135,10 +135,28 @@ class PlaybackContractTest {
 
         assertThrows(IllegalArgumentException.class, () -> new RigPose(
                 new RigId("rig"), new WorldPose(Vec3.ZERO, Rotation.NONE, 70f),
-                RigView.Rect.full(), 0, 0.0, 1));
+                new ResolvedRect.Normalized(0, 0, 1, 1), 0, 0.0, 1));
         assertThrows(IllegalArgumentException.class, () -> new RigPose(
                 new RigId("rig"), new WorldPose(Vec3.ZERO, Rotation.NONE, 70f),
-                RigView.Rect.full(), 0, 1.0, 0));
+                new ResolvedRect.Normalized(0, 0, 1, 1), 0, 1.0, 0));
+    }
+
+    @Test
+    void resolvedRectRejectsIllegalEvaluatedGeometry() {
+        // 已求值矩形不接受非有限值与非正尺寸：非法求值结果不能伪装成合法准备帧
+        // （主设计 §3.1.2：曲线过冲与公式导致的非法中间帧属于运行期错误）。
+        assertThrows(IllegalArgumentException.class,
+                () -> new ResolvedRect.Normalized(0, 0, 0, 1));
+        assertThrows(IllegalArgumentException.class,
+                () -> new ResolvedRect.Normalized(Double.NaN, 0, 1, 1));
+        assertThrows(IllegalArgumentException.class,
+                () -> new ResolvedRect.Anchored(RigView.Rect.Corner.TOP_LEFT, 0, 0, -1, 1));
+
+        ResolvedRect anchored = new ResolvedRect.Anchored(RigView.Rect.Corner.BOTTOM_RIGHT, -10, -20, 320, 180);
+
+        assertFalse(anchored.scalesWithWindow());
+        assertFalse(anchored.normalized());
+        assertTrue(anchored.asNormalized().isEmpty());
     }
 
     @Test

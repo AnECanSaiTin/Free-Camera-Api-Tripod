@@ -1,5 +1,9 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field;
 
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.codec.Codecs;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.DataResult;
+import com.mojang.serialization.MapCodec;
 import org.jspecify.annotations.NullMarked;
 
 /// 能直接给出一个数值的取值来源：固定值或公式。
@@ -14,4 +18,21 @@ import org.jspecify.annotations.NullMarked;
 /// - 值源均为不可变 `record`，放进别的对象时不需要复制。
 @NullMarked
 public sealed interface NumberSource extends ValueSource permits Constant, Formula {
+
+    /// 分支标签：`constant` / `formula`。
+    Codec<String> VARIANT = Codecs.variant("constant", "formula");
+
+    /// 结构编码：固定分支写 `{"type": "constant", "value": ...}`，
+    /// 公式分支写 `{"type": "formula", "expression": "..."}`。
+    ///
+    /// 采用**显式分支标签**而不是“数字即常量、字符串即公式”的隐式判别：
+    /// 后者在诊断与将来扩展分支时都不可读，也无法给出稳定的错误码路径。
+    Codec<NumberSource> CODEC = VARIANT.<NumberSource>partialDispatch(
+            "type",
+            source -> DataResult.success(source instanceof Formula ? "formula" : "constant"),
+            name -> switch (name) {
+                case "constant" -> DataResult.<MapCodec<? extends NumberSource>>success(Constant.MAP_CODEC);
+                case "formula" -> DataResult.<MapCodec<? extends NumberSource>>success(Formula.MAP_CODEC);
+                default -> DataResult.error(() -> "Unknown number source: " + name);
+            });
 }

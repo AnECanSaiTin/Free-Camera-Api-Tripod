@@ -1,9 +1,14 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.eval;
 
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.Diagnostic;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.Diagnostic.Location;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.DiagnosticCode;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.DiagnosticScope;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.LocalizedMessage;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.Severity;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.spatial.ResolvedAnchor;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 import java.util.Objects;
 
@@ -39,6 +44,43 @@ public sealed interface SpatialResolution
                 throw new IllegalArgumentException("SpatialResolution.Failed requires an ERROR diagnostic");
             }
         }
+    }
+
+    /// 构造带快照作用域的失败结果：严重级别固定 ERROR。
+    ///
+    /// 客户端解析器应传入 [cn.anecansaitin.free_camera_api_tripod_v2.api.animation.registry.AnchorResolutionContext#diagnosticScope]，
+    /// 不要自行使用文件作用域或凭当前 store 猜测版本（复核 R49-H2）。
+    ///
+    /// @param scope 本帧快照的文档作用域
+    /// @param code  稳定错误码
+    /// @param message 不可变、可本地化消息
+    /// @return 携带 ERROR 诊断的失败结果
+    static SpatialResolution failed(
+            DiagnosticScope.Document scope,
+            DiagnosticCode code,
+            LocalizedMessage message) {
+        return failed(scope, code, message, null);
+    }
+
+    /// 构造带快照作用域与可选对象定位的失败结果。
+    ///
+    /// 对象定位是可选项：解析器只拿到锚点时，`location` 可以为 `null`（复核 R49-H2）。
+    ///
+    /// @param scope    本帧快照的文档作用域
+    /// @param code     稳定错误码
+    /// @param message  不可变、可本地化消息
+    /// @param location 对象 / 字段定位；可空
+    /// @return 携带 ERROR 诊断的失败结果
+    static SpatialResolution failed(
+            DiagnosticScope.Document scope,
+            DiagnosticCode code,
+            LocalizedMessage message,
+            @Nullable Location location) {
+        Objects.requireNonNull(scope, "scope");
+        Objects.requireNonNull(code, "code");
+        Objects.requireNonNull(message, "message");
+
+        return new Failed(new Diagnostic(code, Severity.ERROR, message, scope, location, null));
     }
 
     /// 是否成功解析。

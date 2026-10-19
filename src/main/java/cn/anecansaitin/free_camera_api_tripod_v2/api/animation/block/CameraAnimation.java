@@ -1,7 +1,15 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block;
 
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.codec.Codecs;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.RigId;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.TrackId;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.registry.DocumentRegistries;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.DataResult;
+import com.mojang.serialization.Dynamic;
+import com.mojang.serialization.MapCodec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
+import net.minecraft.resources.Identifier;
 import org.jspecify.annotations.NullMarked;
 
 import java.util.ArrayList;
@@ -135,6 +143,116 @@ public record CameraAnimation(
         return new CameraAnimation(CURRENT_DATA_VERSION, name, List.of(rig),
                 CameraSourceTrack.player(cameraSourceTrackId), List.of(), Symbols.EMPTY,
                 List.of(), List.of(), List.of(), List.of());
+    }
+
+    // endregion
+
+    // region 编解码
+
+    /// 文档根的结构编解码（主设计 §8.1）。
+    ///
+    /// 字段：`data_version / name / rigs / camera_source / tracks / symbols / markers /
+    /// samples / audio_refs`，以及**受检的可选** `overlays`。容器只组合成员 Codec，
+    /// 自身不复制子对象字段规则。
+    ///
+    /// - `data_version` **必填**，且必须是严格整数：缺失、小数、溢出、较旧或更高一律拒绝
+    ///   （复核 R34 C2 / R36-N1）。
+    /// - `tracks` 按 `type` 查冻结的轨道类型注册表；未知类型返回解码错误。
+    /// - `overlays` 在 O1–O3 前**双向拒绝**：解码时出现非空 `overlays` 报错，编码含非空
+    ///   叠加的文档也报错（复核 R34 C1 / R35）。不能接受后静默丢弃作者数据；空列表、
+    ///   `null` 或字段缺失仍然接受（`null` 由 `optionalFieldOf` 视为缺省）。
+    /// - `overlays` 作为**正式声明的字段**参与 `keys()`：压缩 Ops（如
+    ///   `JsonOps.COMPRESSED`）按声明顺序建立键表，未声明的键会取到错误索引
+    ///   （复核 R36-N2）。这里不用 `mapResult` 直接读原始 MapLike。
+    public static MapCodec<CameraAnimation> mapCodec(DocumentRegistries registries) {
+        MapCodec<RawFields> raw = RecordCodecBuilder.mapCodec(instance -> instance.group(
+                Codecs.strictInt().fieldOf("data_version").forGetter(RawFields::dataVersion),
+                Codecs.nonBlankString().fieldOf("name").forGetter(RawFields::name),
+                CameraRig.codec(registries).listOf().fieldOf("rigs").forGetter(RawFields::rigs),
+                CameraSourceTrack.CODEC.fieldOf("camera_source").forGetter(RawFields::cameraSource),
+                trackCodec(registries).listOf().fieldOf("tracks").forGetter(RawFields::tracks),
+                Symbols.CODEC.fieldOf("symbols").forGetter(RawFields::symbols),
+                Marker.CODEC.listOf().fieldOf("markers").forGetter(RawFields::markers),
+                WorldSample.codec(registries).listOf().fieldOf("samples").forGetter(RawFields::samples),
+                AudioRef.CODEC.listOf().fieldOf("audio_refs").forGetter(RawFields::audioRefs),
+                Codec.PASSTHROUGH.optionalFieldOf("overlays").forGetter(RawFields::overlays)
+        ).apply(instance, RawFields::new));
+
+        return raw.flatXmap(
+                fields -> overlaysUnsupported(fields.overlays())
+                        ? DataResult.error(CameraAnimation::overlaysUnsupported)
+                        : DataResult.success(new CameraAnimation(
+                        fields.dataVersion(), fields.name(), fields.rigs(), fields.cameraSource(),
+                        fields.tracks(), fields.symbols(), fields.markers(), fields.samples(),
+                        fields.audioRefs(), List.of())),
+                document -> document.overlays().isEmpty()
+                        ? DataResult.success(new RawFields(
+                        document.dataVersion(), document.name(), document.rigs(),
+                        document.cameraSource(), document.tracks(), document.symbols(),
+                        document.markers(), document.samples(), document.audioRefs(),
+                        Optional.empty()))
+                        : DataResult.error(CameraAnimation::overlaysUnsupported)
+        ).validate(document -> document.dataVersion() == CURRENT_DATA_VERSION
+                ? DataResult.success(document)
+                : DataResult.error(() -> "Unsupported data version: " + document.dataVersion()
+                        + ", expected " + CURRENT_DATA_VERSION));
+    }
+
+    /// 文档根解码后的原始字段；`overlays` 只用于受检，不进入结果文档。
+    private record RawFields(
+            int dataVersion,
+            String name,
+            List<CameraRig> rigs,
+            CameraSourceTrack cameraSource,
+            List<AnimationTrack.ExtensionTrack> tracks,
+            Symbols symbols,
+            List<Marker> markers,
+            List<WorldSample> samples,
+            List<AudioRef> audioRefs,
+            Optional<Dynamic<?>> overlays) {
+    }
+
+    /// `overlays` 暂不可序列化时的统一错误文案（解码与编码共用）。
+    private static String overlaysUnsupported() {
+        return "overlays are not serializable yet (O1-O3 pending); "
+                + "non-empty overlays are rejected instead of being silently dropped";
+    }
+
+    /// `overlays` 是否为**不支持**的内容：非空列表，或不是列表的值。
+    ///
+    /// 空列表与缺省（含 `null`，由 `optionalFieldOf` 归一为缺省）视为支持。
+    private static boolean overlaysUnsupported(Optional<Dynamic<?>> overlays) {
+        if (overlays.isEmpty()) {
+            return false;
+        }
+
+        return overlays.get().asStreamOpt()
+                .result()
+                .map(stream -> stream.findAny().isPresent())
+                .orElse(true);
+    }
+
+    /// 独立解析文档时使用的 Codec。
+    public static Codec<CameraAnimation> codec(DocumentRegistries registries) {
+        return mapCodec(registries).codec();
+    }
+
+    /// 扩展轨道的分派 Codec：读 `type`，查注册表，交给该类型的 `MapCodec`。
+    ///
+    /// 内建轨道（curve / aim / active / camera_source）不经过本表：
+    /// 它们是框架的 sealed 分支，按所属位置（机位通道、`CameraRig.aim`、`RigView.active`、
+    /// `cameraSource`）直接编解码。因此本表只服务 `AnimationTrack.ExtensionTrack`。
+    ///
+    /// `TrackType` 的类型参数已收窄到 `AnimationTrack.ExtensionTrack`（复核 R34 C3），
+    /// 因此这里不需要、也不允许把任意轨道的 Codec 强转成扩展轨道 Codec。
+    private static Codec<AnimationTrack.ExtensionTrack> trackCodec(DocumentRegistries registries) {
+        return Identifier.CODEC.<AnimationTrack.ExtensionTrack>partialDispatch(
+                "type",
+                track -> DataResult.success(track.type()),
+                id -> registries.tracks().find(id)
+                        .<DataResult<MapCodec<? extends AnimationTrack.ExtensionTrack>>>map(
+                                type -> DataResult.success(type.codec()))
+                        .orElseGet(() -> DataResult.error(() -> "Unknown track type: " + id)));
     }
 
     // endregion

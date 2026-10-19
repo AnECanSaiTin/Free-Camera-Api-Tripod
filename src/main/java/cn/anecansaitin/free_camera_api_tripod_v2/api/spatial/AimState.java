@@ -1,5 +1,10 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.spatial;
 
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.codec.Codecs;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.registry.DocumentRegistries;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.DataResult;
+import com.mojang.serialization.MapCodec;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
@@ -74,5 +79,25 @@ public sealed interface AimState permits AimState.Off, AimState.Target {
     /// 当前注视配置；`Off` 时为 `null`。供不需要 `Optional` 的热路径使用。
     default @Nullable AimTarget targetOrNull() {
         return this instanceof Target target ? target.target() : null;
+    }
+
+    /// 分支标签：`off` / `target`。
+    static Codec<String> VARIANT = Codecs.variant("off", "target");
+
+    /// 结构编码：按 `type` 分派。`off` 无额外字段；`target` 携带完整注视配置。
+    ///
+    /// 目标立即切换，不做双目标混合或平滑过渡（主设计 §3.1.1）。
+    public static Codec<AimState> codec(DocumentRegistries registries) {
+        return VARIANT.<AimState>partialDispatch(
+                "type",
+                state -> DataResult.success(state instanceof AimState.Target ? "target" : "off"),
+                name -> switch (name) {
+                    case "off" -> DataResult.<MapCodec<? extends AimState>>success(
+                            MapCodec.unit(AimState.OFF));
+                    case "target" -> DataResult.<MapCodec<? extends AimState>>success(
+                            AimTarget.codec(registries).fieldOf("target")
+                                    .xmap(AimState.Target::new, target -> target.target()));
+                    default -> DataResult.error(() -> "Unknown aim state: " + name);
+                });
     }
 }

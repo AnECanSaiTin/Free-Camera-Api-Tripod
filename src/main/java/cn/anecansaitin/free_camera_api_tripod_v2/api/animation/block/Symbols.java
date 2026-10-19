@@ -2,6 +2,9 @@ package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block;
 
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field.CustomFunction;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field.Variable;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.MapCodec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
@@ -50,6 +53,17 @@ public record Symbols(List<Variable> variables, List<CustomFunction> functions) 
 
     /// 空符号表。
     public static final Symbols EMPTY = new Symbols(List.of(), List.of());
+
+    /// 结构编码：`{variables, functions}`。
+    ///
+    /// 两张表都是列表，顺序即显示顺序；空列表合法。
+    public static final MapCodec<Symbols> MAP_CODEC = RecordCodecBuilder.mapCodec(instance -> instance.group(
+            Variable.CODEC.listOf().fieldOf("variables").forGetter(Symbols::variables),
+            CustomFunction.CODEC.listOf().fieldOf("functions").forGetter(Symbols::functions)
+    ).apply(instance, Symbols::new));
+
+    /// 独立解析一张符号表时使用的 Codec。
+    public static final Codec<Symbols> CODEC = MAP_CODEC.codec();
 
     public Symbols {
         // 防御性复制：不保留调用方容器（主设计 §3.2）

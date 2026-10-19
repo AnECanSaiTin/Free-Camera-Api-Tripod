@@ -1,9 +1,13 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block;
 
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.codec.Codecs;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field.CameraChannel;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field.Curve;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field.Keyframe;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.TrackId;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.MapCodec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.resources.Identifier;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
@@ -49,6 +53,21 @@ public record CurveTrack(TrackId id, String name, @Nullable CameraChannel channe
 
     /// 相机通道轨道的类型标识。
     public static final Identifier TYPE = Identifier.fromNamespaceAndPath("free_camera_api_tripod", "curve");
+
+    /// 结构编码：`{id, name, channel?, curve}`。
+    ///
+    /// `channel` 缺失表示通用曲线；`name` 非空白，`curve` 用 `field.Curve.CODEC`。
+    public static final MapCodec<CurveTrack> MAP_CODEC = RecordCodecBuilder.mapCodec(instance -> instance.group(
+            TrackId.CODEC.fieldOf("id").forGetter(CurveTrack::id),
+            Codecs.nonBlankString().fieldOf("name").forGetter(CurveTrack::name),
+            CameraChannel.CODEC.optionalFieldOf("channel")
+                    .forGetter(track -> Optional.ofNullable(track.channel())),
+            Curve.CODEC.fieldOf("curve").forGetter(CurveTrack::curve)
+    ).apply(instance, (id, name, channel, curve) ->
+            new CurveTrack(id, name, channel.orElse(null), curve)));
+
+    /// 独立解析一条曲线轨道时使用的 Codec。
+    public static final Codec<CurveTrack> CODEC = MAP_CODEC.codec();
 
     public CurveTrack {
         if (name.isBlank()) {

@@ -1,5 +1,9 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.spatial;
 
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.codec.Codecs;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.MapCodec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
 import org.jspecify.annotations.NullMarked;
 
 import java.util.Optional;
@@ -36,6 +40,18 @@ public record Vec3(double x, double y, double z) {
 
     /// Z 单位向量。
     public static final Vec3 UNIT_Z = new Vec3(0, 0, 1);
+
+    /// 结构编码：`{x, y, z}`，三轴均为有限双精度。
+    ///
+    /// 非有限分量在解码期报错，不放行 NaN / Infinity（主设计 §3.2 的不可变数值约束）。
+    public static final MapCodec<Vec3> MAP_CODEC = RecordCodecBuilder.mapCodec(instance -> instance.group(
+            Codecs.finiteDouble().fieldOf("x").forGetter(Vec3::x),
+            Codecs.finiteDouble().fieldOf("y").forGetter(Vec3::y),
+            Codecs.finiteDouble().fieldOf("z").forGetter(Vec3::z)
+    ).apply(instance, Vec3::new));
+
+    /// 独立解析一个向量时使用的 Codec。
+    public static final Codec<Vec3> CODEC = MAP_CODEC.codec();
 
     public Vec3 {
         if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)) {

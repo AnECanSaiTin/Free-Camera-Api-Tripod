@@ -1,5 +1,8 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field;
 
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.codec.Codecs;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.MapCodec;
 import org.jspecify.annotations.NullMarked;
 
 /// 公式值：一段表达式文本。
@@ -17,6 +20,16 @@ import org.jspecify.annotations.NullMarked;
 /// @param expression 表达式文本，非空白
 @NullMarked
 public record Formula(String expression) implements NumberSource {
+
+    /// 结构编码：`{"type": "formula", "expression": "..."}` 的 `expression` 部分。
+    ///
+    /// 文本非空白；编译结果不进存档，解码后按文本在编译缓存里驻留（主设计 §3.4）。
+    public static final MapCodec<Formula> MAP_CODEC =
+            Codecs.nonBlankString().fieldOf("expression").xmap(Formula::new, Formula::expression);
+
+    /// 独立解析本分支时使用的 Codec。
+    public static final Codec<Formula> CODEC = MAP_CODEC.codec();
+
     public Formula {
         if (expression.isBlank()) {
             throw new IllegalArgumentException("Formula expression must not be blank");

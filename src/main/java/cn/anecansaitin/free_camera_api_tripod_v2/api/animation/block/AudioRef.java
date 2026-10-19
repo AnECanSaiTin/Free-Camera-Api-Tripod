@@ -1,8 +1,15 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block;
 
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.codec.Codecs;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.AudioRefId;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.DataResult;
+import com.mojang.serialization.MapCodec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
+
+import java.util.Optional;
 
 /// 参考音轨的**创作数据**引用（主设计 §7.8，D25）。
 ///
@@ -55,6 +62,40 @@ public record AudioRef(
         float sourceIn,
         float sourceDuration,
         float gain) {
+
+    /// 源片段时长字段：有限且为正（构造器约束）。
+    ///
+    /// [Codecs#seconds] 已拒绝负数与非有限值；这里再把 0 转成解码错误。
+    private static final Codec<Float> DURATION_CODEC = Codecs.seconds().comapFlatMap(
+            duration -> duration > 0f
+                    ? DataResult.success(duration)
+                    : DataResult.error(() -> "AudioRef sourceDuration must be positive: " + duration),
+            duration -> duration);
+
+    /// 增益字段：有限且非负（构造器约束），不放行 NaN / Infinity / 负值。
+    private static final Codec<Float> GAIN_CODEC = Codecs.finiteFloat().comapFlatMap(
+            gain -> gain >= 0f
+                    ? DataResult.success(gain)
+                    : DataResult.error(() -> "AudioRef gain must be non-negative: " + gain),
+            gain -> gain);
+
+    /// 结构编码：`{id, asset, content_hash?, offset, source_in, source_duration, gain}`。
+    ///
+    /// `content_hash` 缺失表示未绑定；时间字段单位为秒且有限、非负；
+    /// `source_duration` 必须为正，`gain` 必须非负。
+    public static final MapCodec<AudioRef> MAP_CODEC = RecordCodecBuilder.mapCodec(instance -> instance.group(
+            AudioRefId.CODEC.fieldOf("id").forGetter(AudioRef::id),
+            Codecs.nonBlankString().fieldOf("asset").forGetter(AudioRef::asset),
+            Codec.STRING.optionalFieldOf("content_hash").forGetter(ref -> Optional.ofNullable(ref.contentHash())),
+            Codecs.seconds().fieldOf("offset").forGetter(AudioRef::offset),
+            Codecs.seconds().fieldOf("source_in").forGetter(AudioRef::sourceIn),
+            DURATION_CODEC.fieldOf("source_duration").forGetter(AudioRef::sourceDuration),
+            GAIN_CODEC.fieldOf("gain").forGetter(AudioRef::gain)
+    ).apply(instance, (id, asset, contentHash, offset, sourceIn, sourceDuration, gain) ->
+            new AudioRef(id, asset, contentHash.orElse(null), offset, sourceIn, sourceDuration, gain)));
+
+    /// 独立解析一条音频引用时使用的 Codec。
+    public static final Codec<AudioRef> CODEC = MAP_CODEC.codec();
 
     public AudioRef {
         if (asset.isBlank()) {

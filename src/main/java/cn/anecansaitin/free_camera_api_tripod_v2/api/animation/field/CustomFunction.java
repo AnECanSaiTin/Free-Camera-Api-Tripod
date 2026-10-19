@@ -1,5 +1,10 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field;
 
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.codec.Codecs;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.DataResult;
+import com.mojang.serialization.MapCodec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
 import org.jspecify.annotations.NullMarked;
 
 import java.util.List;
@@ -35,6 +40,28 @@ import java.util.List;
 /// @param body       函数体公式文本
 @NullMarked
 public record CustomFunction(String name, List<String> parameters, String body) {
+
+    /// 字段解码的中间形态：先按字段校验，再由构造器检查形参约束。
+    private record Raw(String name, List<String> parameters, String body) {
+    }
+
+    /// 只做字段校验的 MapCodec；形参空白 / 重名留给构造器判断。
+    private static final MapCodec<Raw> RAW_CODEC = RecordCodecBuilder.mapCodec(instance -> instance.group(
+            Codecs.nonBlankString().fieldOf("name").forGetter(Raw::name),
+            Codec.STRING.listOf().fieldOf("parameters").forGetter(Raw::parameters),
+            Codecs.nonBlankString().fieldOf("body").forGetter(Raw::body)
+    ).apply(instance, Raw::new));
+
+    /// 结构编码：`{name, parameters, body}`。
+    ///
+    /// `name` 与 `body` 非空白，`parameters` 为字符串列表；形参空白或重名时
+    /// 构造器会拒绝，这里经 [Codecs#checked] 转成解码错误而不是异常。
+    public static final MapCodec<CustomFunction> MAP_CODEC = RAW_CODEC.flatXmap(
+            raw -> Codecs.checked(() -> new CustomFunction(raw.name(), raw.parameters(), raw.body())),
+            function -> DataResult.success(new Raw(function.name(), function.parameters(), function.body())));
+
+    /// 独立解析一个自定义函数时使用的 Codec。
+    public static final Codec<CustomFunction> CODEC = MAP_CODEC.codec();
 
     public CustomFunction {
         if (name.isBlank()) {

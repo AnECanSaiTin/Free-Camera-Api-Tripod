@@ -1,5 +1,12 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.spatial;
 
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.codec.Codecs;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.registry.DocumentRegistries;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.DataResult;
+import com.mojang.serialization.MapCodec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
+import java.util.Optional;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
 
@@ -36,5 +43,30 @@ public sealed interface Space {
     /// @param followMask    锚点旋转沿哪几个轴跟随宿主。主设计 D4：支持平移与逐轴启用的旋转，
     ///                       **不支持缩放**——缩放会让格数含义失真，也超出宿主相机能力
     record Local(@Nullable Anchor defaultAnchor, RotationMask followMask) implements Space {
+    }
+
+    /// 分支标签：`world` / `local`。
+    static Codec<String> VARIANT = Codecs.variant("world", "local");
+
+    /// 结构编码：按 `type` 分派。`world` 无额外字段；`local` 携带可选默认锚点与跟随掩码。
+    ///
+    /// 默认锚点可空：局部空间允许没有默认锚点，但播放前必须由请求提供（主设计 §6.3）。
+    public static Codec<Space> codec(DocumentRegistries registries) {
+        return VARIANT.<Space>partialDispatch(
+                "type",
+                space -> DataResult.success(space instanceof Space.Local ? "local" : "world"),
+                name -> switch (name) {
+                    case "world" -> DataResult.<MapCodec<? extends Space>>success(
+                            MapCodec.unit(new Space.World()));
+                    case "local" -> DataResult.<MapCodec<? extends Space>>success(
+                            RecordCodecBuilder.<Space.Local>mapCodec(instance -> instance.group(
+                                    registries.anchorCodec().optionalFieldOf("default_anchor")
+                                            .forGetter(local -> Optional.ofNullable(local.defaultAnchor())),
+                                    RotationMask.CODEC.fieldOf("follow_mask")
+                                            .forGetter(Space.Local::followMask)
+                            ).apply(instance, (anchor, followMask) ->
+                                    new Space.Local(anchor.orElse(null), followMask))));
+                    default -> DataResult.error(() -> "Unknown space: " + name);
+                });
     }
 }
