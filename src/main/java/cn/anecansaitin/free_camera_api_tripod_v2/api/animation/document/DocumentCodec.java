@@ -82,11 +82,15 @@ public final class DocumentCodec {
         } catch (RuntimeException e) {
             // 值类型构造器的局部约束（重复键时间、布局尺寸非法等）。
             // 只在解码边界兜底一次，不把异常当作校验诊断。
-            return new DocumentDecodeResult.StructureFailed(describe(e));
+            String message = describe(e);
+            return new DocumentDecodeResult.StructureFailed(message,
+                    StructureFieldPath.locate(message, input));
         }
 
         if (parsed.isError()) {
-            return new DocumentDecodeResult.StructureFailed(errorMessage(parsed));
+            String message = errorMessage(parsed);
+            return new DocumentDecodeResult.StructureFailed(message,
+                    StructureFieldPath.locate(message, input));
         }
 
         CameraAnimation candidate = parsed.result().orElseThrow();

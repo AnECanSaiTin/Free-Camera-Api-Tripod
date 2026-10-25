@@ -23,6 +23,11 @@ public interface PlaybackService {
     /// 当前生命周期状态。
     PlaybackState state();
 
+    /// 当前共享时钟读数；只读，不推进时间。
+    ///
+    /// 暂停、停止与失败终止后仍返回最后一次时钟读数；`stopAndReset()` 后为重置后的读数。
+    PlaybackClock clock();
+
     /// 最近一次失败；未失败时为空。
     @Nullable
     PlaybackFailure failure();

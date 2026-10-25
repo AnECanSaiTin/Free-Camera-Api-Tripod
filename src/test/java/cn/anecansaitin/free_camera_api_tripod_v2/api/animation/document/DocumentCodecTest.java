@@ -58,6 +58,8 @@ import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.DataResult;
+import net.minecraft.nbt.NbtOps;
+import net.minecraft.nbt.Tag;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import com.mojang.serialization.JsonOps;
@@ -139,6 +141,11 @@ class DocumentCodecTest {
     }
 
     private record TextTrack(TrackId id, String name, String text) implements AnimationTrack.ExtensionTrack {
+        @Override
+        public TextTrack withName(String newName) {
+            return new TextTrack(id, newName, text);
+        }
+
         @Override
         public Identifier type() {
             return TRACK_TYPE;
@@ -332,6 +339,34 @@ class DocumentCodecTest {
     }
 
     @Test
+    void fullDocumentRoundTripsThroughNbtOps() {
+        CameraAnimation document = document();
+        Codec<CameraAnimation> codec = CameraAnimation.codec(registries());
+
+        DataResult<Tag> encoded = codec.encodeStart(NbtOps.INSTANCE, document);
+        assertTrue(encoded.result().isPresent(), () -> "NBT encode failed: " + encoded);
+        DataResult<CameraAnimation> decoded = codec.parse(NbtOps.INSTANCE, encoded.result().orElseThrow());
+
+        assertTrue(decoded.result().isPresent(), () -> "NBT decode failed: " + decoded);
+        assertEquals(document, decoded.result().orElseThrow());
+    }
+
+    @Test
+    void renamedExtensionTrackStillRoundTripsThroughItsOwnCodec() {
+        DocumentCodec codec = DocumentCodec.of(registries(), candidate -> List.of());
+        TextTrack renamed = new TextTrack(new TrackId("text"), "renamed", "hello");
+        CameraAnimation document = document().withTracks(List.of(renamed));
+
+        JsonObject json = encode(codec, document);
+        DocumentDecodeResult decoded = codec.decode(JsonOps.INSTANCE, json);
+
+        assertTrue(decoded.accepted(), () -> "decode failed: " + decoded);
+        assertEquals(document, decoded.candidate().orElseThrow());
+        assertEquals("renamed",
+                ((TextTrack) decoded.candidate().orElseThrow().tracks().getFirst()).name());
+    }
+
+    @Test
     void rejectsUnsupportedAndMissingDataVersionInStructurePhase() {
         DocumentCodec codec = DocumentCodec.of(registries(), candidate -> List.of());
         JsonObject json = encode(codec, document());
@@ -487,6 +522,38 @@ class DocumentCodecTest {
                 .diagnostics()
                 .stream()
                 .anyMatch(diagnostic -> diagnostic.severity() == Severity.ERROR));
+    }
+
+    @Test
+    void structureFailuresCarryBestEffortFieldPath() {
+        DocumentCodec codec = DocumentCodec.of(registries(), candidate -> List.of());
+        JsonObject json = encode(codec, document());
+
+        JsonObject fractionalVersion = json.deepCopy();
+        fractionalVersion.addProperty("data_version", 1.9);
+        DocumentDecodeResult versionResult = codec.decode(JsonOps.INSTANCE, fractionalVersion);
+
+        assertTrue(versionResult instanceof DocumentDecodeResult.StructureFailed);
+        assertEquals("data_version",
+                ((DocumentDecodeResult.StructureFailed) versionResult).fieldPath());
+
+        JsonObject fractionalFrames = json.deepCopy();
+        fractionalFrames.getAsJsonArray("rigs").get(0).getAsJsonObject()
+                .getAsJsonObject("view").addProperty("update_every_frames", 1.9);
+        DocumentDecodeResult framesResult = codec.decode(JsonOps.INSTANCE, fractionalFrames);
+
+        assertTrue(framesResult instanceof DocumentDecodeResult.StructureFailed);
+        assertEquals("rigs[0].view.update_every_frames",
+                ((DocumentDecodeResult.StructureFailed) framesResult).fieldPath());
+
+        JsonObject fractionalTicks = json.deepCopy();
+        fractionalTicks.getAsJsonArray("samples").get(0).getAsJsonObject()
+                .addProperty("resample_every_ticks", 1.9);
+        DocumentDecodeResult ticksResult = codec.decode(JsonOps.INSTANCE, fractionalTicks);
+
+        assertTrue(ticksResult instanceof DocumentDecodeResult.StructureFailed);
+        assertEquals("samples[0].resample_every_ticks",
+                ((DocumentDecodeResult.StructureFailed) ticksResult).fieldPath());
     }
 
     @Test

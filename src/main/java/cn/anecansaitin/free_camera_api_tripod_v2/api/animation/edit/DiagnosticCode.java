@@ -35,6 +35,17 @@ public record DiagnosticCode(String value) implements Comparable<DiagnosticCode>
     public static final DiagnosticCode BROKEN_REFERENCE =
             new DiagnosticCode("free_camera_api_tripod:broken_reference");
 
+    /// 编辑操作本身无法应用到当前候选（类型不匹配、身份冲突、结构性约束等）。
+    ///
+    /// 这是提交层的兜底码：能定位到更具体原因（过期、目标不存在、键时间重复）时，
+    /// 应优先使用对应专用码。
+    public static final DiagnosticCode INVALID_EDIT =
+            new DiagnosticCode("free_camera_api_tripod:invalid_edit");
+
+    /// 表达式源码无法编译，或引用的变量 / 函数 / 样本未绑定。
+    public static final DiagnosticCode EXPRESSION_INVALID =
+            new DiagnosticCode("free_camera_api_tripod:expression_invalid");
+
     public DiagnosticCode {
         if (value.isBlank()) {
             throw new IllegalArgumentException("DiagnosticCode must not be blank");

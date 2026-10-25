@@ -24,10 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /// 编辑器会话 / 视图 / 交互 / 后端契约的结构约束（主设计 §5、§9）。
 class EditorContractTest {
@@ -137,7 +134,7 @@ class EditorContractTest {
     @Test
     void backendSelectorDistinguishesAutoAndExplicit() {
         assertTrue(EditorBackendSelector.auto().isAuto());
-        assertEquals(null, EditorBackendSelector.auto().backendId());
+        assertNull(EditorBackendSelector.auto().backendId());
 
         Identifier id = Identifier.fromNamespaceAndPath("test", "backend");
         EditorBackendSelector explicit = EditorBackendSelector.of(id);

@@ -46,11 +46,12 @@ class CameraAnimationDurationTest {
     }
 
     /// 测试用文档级扩展轨道：只提供时长与键数，不参与求值。
-    private record TestExtensionTrack(TrackId id, float duration) implements AnimationTrack.ExtensionTrack {
+    private record TestExtensionTrack(TrackId id, String name, float duration)
+            implements AnimationTrack.ExtensionTrack {
 
         @Override
-        public String name() {
-            return "test-extension";
+        public TestExtensionTrack withName(String newName) {
+            return new TestExtensionTrack(id, newName, duration);
         }
 
         @Override
@@ -89,7 +90,7 @@ class CameraAnimationDurationTest {
         CameraAnimation document = CameraAnimation.create("doc", enabledRig, source.id())
                 .withCameraSource(source)
                 .withRigs(List.of(enabledRig, disabledRig))
-                .withTracks(List.<AnimationTrack.ExtensionTrack>of(new TestExtensionTrack(track("ext"), 40f)))
+                .withTracks(List.<AnimationTrack.ExtensionTrack>of(new TestExtensionTrack(track("ext"), "test-extension", 40f)))
                 .withMarkers(List.of(Marker.at(new MarkerId("marker"), 300f)))
                 .withAudioRefs(List.of(new AudioRef(new AudioRefId("audio"),
                         "assets/free_camera_api_tripod/test.ogg", null, 2f, 0f, 4f, 1f)))

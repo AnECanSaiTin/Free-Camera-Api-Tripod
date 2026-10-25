@@ -2,7 +2,7 @@
 
 > 更新：2026-10-19。源码复核基线：`7095284`（提交 C5）。本文件为 refactor 目录唯一维护入口，合并原施工计划、协议提案、注册表选型、复核日志及历史归档的有效结论；旧文档全文由 Git 历史追溯。
 >
-> **当前结论：P1 已列 R1–R12 契约均已交付；C5 两项修复在原问题范围复核通过，未发现确定回归。** 这表示公开类型、接口和部分结构/编解码逻辑已完成，不表示 core、客户端或完整 P1 运行验收完成。最近实际验证为 **33 suite / 219 用例**，其中 v2 **27 / 153**，失败、错误、跳过均为 0。
+> **当前结论：P1 已列 R1–R12 契约均已交付；C5 两项修复在原问题范围复核通过，未发现确定回归。** 这表示公开类型、接口和部分结构/编解码逻辑已完成，不表示 core、客户端或完整 P1 运行验收完成。C5 审核基线为 **33 suite / 219 用例**（v2 27 / 153）；2026-10-25 本地实现批次验证为 **59 suite / 511 用例**（v2 53 / 445），失败/错误 0、跳过 1（Windows 符号链接权限），该批次尚未提交或审核。
 >
 > 行为规范仍以[动画主设计](<../design-animation-editor-framework.md>)、[UI 设计](<../design-editor-ui-framework.md>)和[音频设计](<../design-spatial-audio-api.md>)为准；本文维护实际交付、既有裁决、施工边界与证据，不新增产品裁决。
 
@@ -93,6 +93,7 @@
 ### 3.4 开放类型与编解码
 
 - 类型注册启动后冻结，重复 ID、冻结后注册及未知类型解码均拒绝。TrackType 上界为 ExtensionTrack，内建轨道不能注册成扩展；锚点存档 MapCodec 与网络 StreamCodec 由同一 AnchorType 提供。common 类型描述与客户端执行部件分开注册。
+- 扩展轨道必须实现纯派生的 `withName(String)`：`RenameTrack` 直接调用它并保留 TrackId / 类型 ID / 自身 Codec 可编码字段；不得用框架不认识的包装器绕过类型 Codec。该破坏性扩展点变更要求第三方实现补齐并重新编译。
 - TypeValidator 只处理已解码单实例自身约束；TypeValidationContext 携带 Revision、稳定对象 ID、可选所属 Rig 与字段路径，不读当前 store、不修改候选。跨对象引用/区间规则归统一 DocumentValidator，实际分派仍延期。
 - 成员类型维护自身 Codec/MapCodec；根文档只组合，不复制子字段规则。封闭分支使用显式 type/mode/kind 标签；未知分支不回退默认。data_version 必填且仅接受 CURRENT_DATA_VERSION。
 - DocumentCodec 先结构解码，再统一文档校验；结构失败无候选、不调用 validator，解码边界将构造异常转为 StructureFailed。任一 ERROR 拒绝发布；Accepted 不含 ERROR，ValidationFailed 至少含一条 ERROR。
@@ -149,6 +150,47 @@ EditorSession 写文档必须走 EditSubmission/store；播放头、轨道显隐
 
 未将下列候选升级为缺陷：统一 validator 可由每请求捕获 Revision 的闭包装配；成员 Curve Codec 的构造异常由正式 DocumentCodec 解码边界捕获。上述均不用于扩大两项原问题范围，也不声称任意成员 Codec 独立调用都不会抛异常。
 
+### 4.2 本地实现批次（2026-10-25，未提交、未审核）
+
+| 范围 | 实现 | 边界 |
+|---|---|---|
+| 文档发布 | `CoreAnimationDocumentStore`：提交、历史、换档、重入拒绝、延迟队列、按 Revision 装配 validator | 历史仅 64 项；32 MiB 估算未实现 |
+| 编辑操作 | `EditOpApplier`：覆盖全部 `EditOp` 分支与 Batch 原子应用 | 第三方扩展轨道 `withName` 必须保留 TrackId/type，否则拒绝 |
+| 统一校验 | `UnifiedDocumentValidator`：L1–L4、ID/引用、来源活动区间、类型校验器分派、表达式引用绑定 | 资源规模、跨文档引用不在本批 |
+| 类型注册表 | `FrozenTypeRegistry` 与 Anchor/Track/Sample 三个冻结实现 | 注册期与冻结期语义已测，客户端能力服务未实现 |
+| 轨道索引 | `SnapshotTrackIndex`：绑定快照、所属机位、重复 ID 诊断 | 不解析公式、不判断活动区间 |
+| 曲线采样 | `ConstantCurveSampler` + `CurveInterpolation`：STEP/LINEAR/HERMITE、三种 wrap | 仅常量键；公式键明确报 `expression_evaluator_unavailable`，不兜底 |
+| 公式曲线 | `ExpressionCurveSampler`：常量/公式端点、STEP 只求值左端、失败诊断 | 空间读数仍为空事实；无编译缓存 |
+| 播放时间 | `PlaybackTimeline`：速度、循环、夹取、定位 | 未接真实帧准备与相机应用 |
+| 播放服务 | `CorePlaybackService`：启动/暂停/恢复/定位/停止/失败终止、线程约束、时钟推进、`clock()` | 完整宿主帧执行/相机应用未接 |
+| 帧准备 | `CorePlaybackFrameFactory`：事实、活动机位、通道补全、局部锚点、注视、布局、路径、旋转合成、避障端口、来源活动性、事件接线 | 真实世界碰撞/读数适配未接 |
+| 避障端口 | `ObstacleResolver`：起点/期望位置/保留距离，调整或明确不可用 | 真实世界碰撞查询由宿主实现，当前无客户端适配 |
+| 旋转合成 | `CoreRotationMath`：YXZ 矩阵、父子旋转合成、注视角、万向节处理 | 与 MC 相机度/象限边界转换仍属宿主 |
+| 路径采样 | `CorePathSampler`：LINEAR / BEZIER / CATMULL_ROM、弧长表、绝对/百分比 | 弧长按 64 段近似；无避障/切线朝向应用 |
+| 布局求值 | `AnimatedNumberEvaluator` + `ResolvedRectEvaluator`：常量/公式/曲线、STEP/LINEAR/HERMITE、正尺寸检查 | 布局公式默认已走编译缓存 |
+| 事件展开 | `PlaybackEventExpander`：非循环/循环区间、零时刻、文档顺序、预算失败 | 每个 timeline key 暂按一个事件；载荷/KeyId 不进结果 |
+| 播放请求校验 | `PlaybackRequestValidator`：开始时间、覆盖机位、局部锚点、Replace Roll | 不替代文档统一校验 |
+| 依赖图 | `CoreDependencyGraph`：TrackRef/变量/函数展开、未定义引用、arity 与轨道环诊断 | 不覆盖布局公式；构建期每次全量重算 |
+| 编辑器会话 | `CoreEditorSession`：提交/事务草稿/预览/撤销重做/视图/交互/播放控制/关闭 | 文本字段解析仅保留原文+诊断；真实 UI/后端未接 |
+| 存储路径 | `ResourcePathResolver`：根内解析、遍历/绝对路径/符号链接逃逸拒绝 | 不消除 TOCTOU |
+| 载入发布 | `CoreAnimationLoader`：资源服务 → `switchDocument`；A1 端到端入口 | 依赖资源服务的结构解码；不替代统一校验 |
+| 帧事实计划 | `FrameFactsPlanBuilder`：按时间求值注视、应用覆盖三态、生成锚点/目标需求 | 不解析世界坐标、不判断实际渲染依赖 |
+| 帧事实提供 | `CoreFrameFactsProvider`：逐项解析、采样周期缓存、表版本、预算与 valid | v1 世界查询面保守为空；真实客户端读数未接 |
+| 事件分派 | `CoreEventDispatcher`：连续同类型片段、`maxEvents`、缺失执行器/异常终止 | `maxIntervals` 由准备阶段消费；事件载荷解析仍待事件轨道实现 |
+| 网络协议 | `FlatPlaybackProtocolCodec`：v1 字节布局、Embedded/Local、覆盖三态、限额与截断拒绝 | 包注册/传输/收包校验/文档校验未做 |
+| 表达式编译 | `DefaultExpressionCompiler`：数字/算术/调用/`sample`/内建函数、引用与诊断区间、嵌套/长度上限 | 单次实现本身无缓存 |
+| 编译缓存 | `BoundedExpressionCompiler`：源码文本 LRU、成功/失败缓存、并发去重 | 默认接入 evaluator/sampler/布局；graph/validator 未统一注入 |
+| 表达式绑定 | `ExpressionValidation`：编译公式并检查变量/函数/样本引用、函数 arity、形参遮蔽 | 运行期求值、空间内建读数仍待 |
+| 表达式求值 | `CoreExpressionEvaluator`：算术/内建函数/变量/函数/`sample`/预算深度 | 空间内建读数与真实宿主接线待后续 |
+| JSON 资源服务 | `FileAnimationResourceService`：本地 JSON 载入/保存、SHA-256、原子替换、稳定枚举 | 仅结构解码；无 NBT/网络 |
+| 资源限制 | `JsonResourceLimits` + `JsonDepthGuard`：读取/解析前限制单文件字节与 JSON 深度 | 目录资源数量、NBT/网络载荷限制未做 |
+| 结构定位 | `StructureFieldPath`：整数语义字段/未知类型/overlays/消息字段名定位到 JSON 路径 | 只覆盖有证据的位置；纯 Codec 消息无路径时为空 |
+| 恢复服务 | `FileRecoveryService`：独立恢复根、异步捕获、自包含槽、16 槽裁剪、结构恢复 | 仅本地 JSON；真实调度/客户端接线未接 |
+| NBT 往返 | `CameraAnimation.codec` 在 `NbtOps` 下完整文档往返测试通过 | 网络包注册/传输、NBT 资源服务未做 |
+| 扩展点 | `AnimationTrack.ExtensionTrack.withName(String)` 成为必需方法，`RenameTrack` 直接调用 | 破坏性变更：第三方实现须补齐并重新编译 |
+
+最近实际执行：`clean compileJava test --no-build-cache --rerun-tasks`，**59 suite / 511 用例**（v2 53 / 445），失败/错误 0，跳过 1（Windows 无符号链接权限，JUnit assumption）。本批仅表示实现落地，不代表审核通过或运行验收完成。
+
 ## 5. 后续实现与验收清单
 
 <a id="p1-follow-up"></a>
@@ -171,13 +213,21 @@ EditorSession 写文档必须走 EditSubmission/store；播放头、轨道显隐
 
 ## 6. 验证基线与维护方式
 
-本轮实际执行：
+C5 审核基线实际执行：
 
 ```powershell
 .\gradlew.bat --offline compileJava test --rerun --console=plain
 ```
 
-结果 BUILD SUCCESSFUL，33 suite / 219 用例，v2 27 / 153，失败/错误/跳过均为 0。编译任务为 UP-TO-DATE，测试任务重新执行；不把它表述为清空产物后的全量重编译。检查 384 个 v2 API class 的禁止包引用为 0，git diff --check 通过。
+结果 BUILD SUCCESSFUL，33 suite / 219 用例，v2 27 / 153，失败/错误/跳过均为 0。编译任务为 UP-TO-DATE，测试任务重新执行；不把它表述为清空产物后的全量重编译。
+
+2026-10-25 本地实现批次执行：
+
+```powershell
+.\gradlew.bat --offline clean compileJava test --no-build-cache --rerun-tasks --console=plain
+```
+
+结果 BUILD SUCCESSFUL，59 suite / 511 用例，v2 53 / 445，失败/错误 0、跳过 1（Windows 无符号链接权限的 JUnit assumption）。该批次为未提交、未审核的本地实现，不改变 C5 的审核结论。两次检查均确认 384 个 v2 API class 的禁止包引用为 0，`git diff --check` 通过。
 
 必守门禁：api 不依赖旧根、net.minecraft.client、core/editor 实现；editor.spi 不依赖 editor.internal；按 Q13 允许 edit ↔ document。源码文本扫描只作辅助，依赖门禁检查编译产物。测试目前集中于结构不变量、容器隔离、JSON/压缩 JSON Codec 与替身契约，不代替真实 store/时序/世界/渲染/网络验证。
 
@@ -195,5 +245,6 @@ EditorSession 写文档必须走 EditSubmission/store；播放头、轨道显隐
 | C2/C3 扩展与事实来源 | 31/214            | 25/148        |
 | C4 剩余契约          | 33/218            | 27/152        |
 | C5 / 审核 R54        | 33/219            | 27/153        |
+| 本地实现批次（未审核） | 59/511          | 53/445        |
 
 后续只更新本文的实际状态、裁决变化、审核结论与验证证据，避免恢复多份重复待办；行为规则变更同步主设计。审核通过只关闭明确的问题范围，新增需求另行分期。原 R1–R14/R1–R29 归档、协议提案、注册表选型与旧复核日志已并入本文件；如需原文，可查凝练前提交 `7095284` 的对应路径。

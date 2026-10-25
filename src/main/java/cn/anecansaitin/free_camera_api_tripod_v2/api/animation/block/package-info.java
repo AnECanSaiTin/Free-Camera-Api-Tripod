@@ -23,7 +23,8 @@
  * <p>{@link cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.CurveTrack} 是数值曲线
  * （相机通道或供变量读取的通用曲线）；{@link cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.KeyframeTrack}
  * 是仅有 STEP 的有类型状态轨道，三个内建分支分别为注视、机位活动与相机来源；
- * 其余第三方数据走 {@code AnimationTrack.ExtensionTrack}；需要统一时间轴编辑的扩展轨道可
+ * 其余第三方数据走 {@code AnimationTrack.ExtensionTrack}；扩展轨道必须实现纯派生的
+ * {@code withName(String)}，供通用改名操作使用。需要统一时间轴编辑的扩展轨道可
  * 额外实现 {@code ExtensionTimelineTrack}，只暴露稳定键与时间，不发放原地修改方法。
  *
  * <p>状态轨道只持久化一次：它们是机位 / 文档上的有类型访问入口，不在 {@code tracks}
