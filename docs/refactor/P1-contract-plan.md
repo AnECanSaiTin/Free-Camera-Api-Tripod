@@ -141,7 +141,8 @@ EditorSession 写文档必须走 EditSubmission/store；播放头、轨道显隐
 | C12 | 基于 C11，已提交 `40abc7e` | NBT 文档编解码与深度 / 条目 / 字节限制 | 施工方自检；独立复核待 R62 |
 | C13 | 基于 C12，已提交 `40abc7e` | 全文档 KeyId 唯一性 | 施工方自检；独立复核待 R63 |
 | C14 | 基于 C13，已提交 `4bffdc0` | NBT 文件资源服务 | 施工方自检；独立复核待 R64 |
-| C15 | 基于 C14，未提交 | NBT 结构失败字段路径 | 施工方自检；独立复核待 R65 |
+| C15 | 基于 C14，已提交 `dc7c9cc` | NBT 结构失败字段路径 | 施工方自检；独立复核待 R65 |
+| C16 | 基于 C15，未提交 | 有界 GZIP NBT、`.nbt.gz` 资源服务、资源诊断字段路径 | 施工方自检；独立复核待定 |
 
 ### 4.1 历史交付摘要
 
@@ -417,6 +418,18 @@ EditorSession 写文档必须走 EditSubmission/store；播放头、轨道显隐
 
 **关闭边界。** 这不是完整 DFU 路径追踪：仍只对已知整数语义字段、未知类型与消息中可唯一匹配的键定位；NBT 资源服务的 `LoadResult.Rejected` 仍只有 File 诊断，没有结构化 fieldPath；JSON 路径逻辑未复用，NBT 与 JSON 的定位证据可能不同。R65 独立复核尚未执行。
 
+### 4.13 C16：压缩 NBT 与资源服务字段路径（2026-10-26，未提交）
+
+- [NbtDocumentCodec](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/storage/NbtDocumentCodec.java>) 新增 `encodeCompressed` / `decodeCompressed`：GZIP 编码；压缩输入与解压后原始 NBT 都受 `maxBytes` 限制；解压计数读取，超限立即停止；损坏 GZIP 返回 `StructureFailed`。
+- [NbtAnimationResourceService](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/storage/NbtAnimationResourceService.java>) 以 `.nbt.gz` 后缀识别压缩资源：保存先编码原始 NBT，再 GZIP；载入先检查压缩字节，再有界解压；`entry` / `entries` 同时枚举 `.nbt` 与 `.nbt.gz`。
+- [StructureFieldPath](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/document/StructureFieldPath.java>) 改为公开定位入口；JSON 资源服务结构失败在可证明时写入 `Diagnostic.Location.fieldPath`，NBT 资源服务使用 [NbtStructureFieldPath](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/storage/NbtStructureFieldPath.java>) 做同样填充。File 诊断仍不伪装成可提交文档诊断。
+
+测试新增 6 例：压缩 NBT 往返、损坏 / 解压炸弹拒绝、`.nbt.gz` 保存载入与枚举、损坏 / 炸弹资源拒绝、JSON 与 NBT 资源结构失败的 fieldPath。
+
+**施工验证。** `.\gradlew.bat --offline clean compileJava test --no-build-cache --rerun-tasks --console=plain`，BUILD SUCCESSFUL；按测试结果 XML 统计 **68 suite / 611 用例**（v2 62 / 545），失败/错误 0、跳过 1（Windows 符号链接权限）。
+
+**关闭边界。** 不做 SavedData 生命周期、恢复调度、网络传输、跨版本兼容矩阵；目录资源数量仍未限制；结构路径仍只覆盖有证据的字段；GZIP 只降低字节数，不代表网络协议或压缩族全部完成。
+
 ## 5. 后续实现与验收清单
 
 <a id="p1-follow-up"></a>
@@ -445,13 +458,15 @@ C10 已交付 `CorePlaybackRequestReceiver` 的本地接收入口；真实网络
 
 C11 已交付 `CoreEditorUiHost` 的后端选择编排；实际客户端 UI 挂载、接管令牌与会话生命周期接线仍未接。
 
-C12 已交付 `NbtDocumentCodec` 的 NBT 载荷编解码与规模限制；NBT 文件服务、SavedData 生命周期、压缩与原子替换仍未接。
+C12 已交付 `NbtDocumentCodec` 的 NBT 载荷编解码与规模限制，并在 C16 补齐 GZIP 压缩载荷；NBT 文件服务、SavedData 生命周期与原子替换已部分由 C14/C16 接上。
 
 C13 已把 `KeyId` 唯一性收紧到全文档作用域；非时间轴扩展轨道内部键仍由类型校验器负责。
 
-C14 已交付 `NbtAnimationResourceService` 的本地 `.nbt` 文件资源服务；SavedData 生命周期、压缩、恢复调度与网络传输仍未接。
+C14 已交付 `NbtAnimationResourceService` 的本地 `.nbt` 文件资源服务；C16 补齐 `.nbt.gz`；SavedData 生命周期、恢复调度与网络传输仍未接。
 
-C15 已为 NBT 结构失败补充部分字段路径；完整 DFU 路径追踪与资源服务结构化路径仍未接。
+C15 已为 NBT 结构失败补充部分字段路径；C16 已把部分路径写入资源服务的 File 诊断，完整 DFU 路径追踪仍未接。
+
+C16 已为 `NbtDocumentCodec` 增加有界 GZIP 编解码，并让 `NbtAnimationResourceService` 按 `.nbt.gz` 后缀压缩保存 / 有界解压；JSON 与 NBT 资源服务的结构失败在可证明时写入 `Diagnostic.Location.fieldPath`。
 
 ## 6. 验证基线与维护方式
 
@@ -551,6 +566,14 @@ C5 审核基线实际执行：
 
 结果 BUILD SUCCESSFUL，按测试结果 XML 统计 **68 suite / 605 用例**（v2 62 / 539），失败/错误 0、跳过 1（Windows 无符号链接权限的 JUnit assumption）。C15 新增 1 个用例、suite 数不变；v2 主源码 301 个 Java 文件，v2 API class 仍为 386。施工方自检命令与证据见 §4.12；R65 独立复核尚未执行。
 
+2026-10-26 C16 施工批次执行：
+
+```powershell
+.\gradlew.bat --offline clean compileJava test --no-build-cache --rerun-tasks --console=plain
+```
+
+结果 BUILD SUCCESSFUL，按测试结果 XML 统计 **68 suite / 611 用例**（v2 62 / 545），失败/错误 0、跳过 1（Windows 无符号链接权限的 JUnit assumption）。C16 新增 6 个用例、suite 数不变。施工方自检命令与证据见 §4.13；独立复核另行编号，当前尚未执行。
+
 必守门禁：api 不依赖旧根、net.minecraft.client、core/editor 实现；editor.spi 不依赖 editor.internal；按 Q13 允许 edit ↔ document。源码文本扫描只作辅助，依赖门禁检查编译产物。测试目前集中于结构不变量、容器隔离、JSON/压缩 JSON Codec 与替身契约，不代替真实 store/时序/世界/渲染/网络验证。
 
 关键基线保留为里程碑，完整历史命令和原始论证由 Git 追溯：
@@ -578,5 +601,6 @@ C5 审核基线实际执行：
 | C13 / 待 R63（全文档 KeyId） | 67/600        | 61/534        |
 | C14 / 待 R64（NBT 文件资源服务） | 68/604        | 62/538        |
 | C15 / 待 R65（NBT 字段路径） | 68/605        | 62/539        |
+| C16（压缩 NBT 与资源字段路径） | 68/611        | 62/545        |
 
 后续维护分为两个入口：本文更新契约、实施批次、施工记录与验证基线；[P1 审核与复核记录](<P1-review.md>)更新审核编号、原问题、关闭边界与独立复核结论。行为规则变更同步主设计；审核通过只关闭明确的问题范围，新增需求另行分期。原 R1–R14/R1–R29 归档、协议提案、注册表选型与旧复核日志已并入两份文档；如需原文，可查凝练前提交 `7095284` 的对应路径。

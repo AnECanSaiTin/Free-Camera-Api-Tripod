@@ -12,14 +12,23 @@ import cn.anecansaitin.free_camera_api_tripod_v2.api.storage.SaveResult;
 import cn.anecansaitin.free_camera_api_tripod_v2.core.animation.registry.FrozenAnchorTypeRegistry;
 import cn.anecansaitin.free_camera_api_tripod_v2.core.animation.registry.FrozenSampleTypeRegistry;
 import cn.anecansaitin.free_camera_api_tripod_v2.core.animation.registry.FrozenTrackTypeRegistry;
+import com.mojang.serialization.DataResult;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtIo;
+import net.minecraft.nbt.NbtOps;
+import net.minecraft.nbt.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.zip.GZIPOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -84,6 +93,68 @@ class NbtAnimationResourceServiceTest {
 
         assertType(LoadResult.Rejected.class,
                 service.load(new ResourceId("bad.nbt")));
+    }
+
+    @Test
+    void compressedSaveLoadAndEntriesRoundTrip() {
+        NbtAnimationResourceService service = service(NbtResourceLimits.DEFAULT);
+        ResourceId id = new ResourceId("test/animation.nbt.gz");
+        CameraAnimation document = document();
+
+        assertType(SaveResult.Saved.class, service.save(id, document));
+        assertTrue(Files.isRegularFile(root.resolve("test/animation.nbt.gz")));
+
+        LoadResult.Loaded loaded = assertType(LoadResult.Loaded.class, service.load(id));
+
+        assertEquals(document, loaded.document());
+        assertEquals(id, loaded.entry().resource());
+        assertTrue(service.entry(id).isPresent());
+        assertTrue(service.entries().stream().anyMatch(entry -> entry.resource().equals(id)));
+    }
+
+    @Test
+    void corruptCompressedAndDecompressionBombAreRejected() throws IOException {
+        NbtAnimationResourceService service = service(new NbtResourceLimits(128, 128, 1_000_000));
+        Path corrupt = root.resolve("corrupt.nbt.gz");
+        Files.write(corrupt, new byte[]{1, 2, 3});
+
+        assertType(LoadResult.Rejected.class,
+                service.load(new ResourceId("corrupt.nbt.gz")));
+
+        Path bomb = root.resolve("bomb.nbt.gz");
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+
+        try (GZIPOutputStream gzip = new GZIPOutputStream(bytes)) {
+            gzip.write(new byte[4096]);
+        }
+
+        Files.write(bomb, bytes.toByteArray());
+
+        assertType(LoadResult.Rejected.class,
+                service.load(new ResourceId("bomb.nbt.gz")));
+    }
+
+    @Test
+    void structureFailureCarriesNbtFieldPathInFileDiagnostic() throws IOException {
+        NbtAnimationResourceService service = service(NbtResourceLimits.DEFAULT);
+        DataResult<Tag> encoded = CameraAnimation.codec(frozenRegistries())
+                .encodeStart(NbtOps.INSTANCE, document());
+        CompoundTag compound = (CompoundTag) encoded.result().orElseThrow();
+        compound.putString("data_version", "1");
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+
+        try (DataOutputStream output = new DataOutputStream(bytes)) {
+            NbtIo.write(compound, output);
+        }
+
+        Files.write(root.resolve("path-field.nbt"), bytes.toByteArray());
+
+        LoadResult result = service.load(new ResourceId("path-field.nbt"));
+
+        assertType(LoadResult.Rejected.class, result);
+        LoadResult.Rejected rejected = (LoadResult.Rejected) result;
+        assertEquals("data_version",
+                rejected.report().diagnostics().getFirst().location().fieldPath());
     }
 
     @Test

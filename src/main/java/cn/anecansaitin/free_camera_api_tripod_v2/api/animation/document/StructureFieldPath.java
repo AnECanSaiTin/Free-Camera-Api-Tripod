@@ -26,7 +26,7 @@ import java.util.regex.Pattern;
 ///
 /// 找不到有证据的位置时返回 `null`；不把猜测的路径写进诊断。
 @NullMarked
-final class StructureFieldPath {
+public final class StructureFieldPath {
 
     private static final Set<String> INTEGER_FIELDS = Set.of(
             "data_version", "update_every_frames", "resample_every_ticks");
@@ -45,7 +45,7 @@ final class StructureFieldPath {
     /// @param message 结构错误消息
     /// @param input   原始输入；仅 JSON 树可定位
     /// @return 字段路径；无法证明时为空
-    static @Nullable String locate(String message, Object input) {
+    public static @Nullable String locate(String message, Object input) {
         if (!(input instanceof JsonElement json)) {
             return null;
         }

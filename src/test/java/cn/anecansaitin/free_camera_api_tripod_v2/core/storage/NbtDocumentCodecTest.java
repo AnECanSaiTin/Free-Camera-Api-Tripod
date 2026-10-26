@@ -21,7 +21,9 @@ import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
+import java.io.IOException;
 import java.util.List;
+import java.util.zip.GZIPOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -47,6 +49,40 @@ class NbtDocumentCodecTest {
         DocumentDecodeResult.Accepted accepted = assertType(
                 DocumentDecodeResult.Accepted.class, decoded);
         assertEquals(document, accepted.document());
+    }
+
+    @Test
+    void compressedRoundTripPreservesDocument() {
+        DocumentCodec documents = DocumentCodec.of(frozenRegistries(), document -> List.of());
+        NbtDocumentCodec codec = new NbtDocumentCodec(documents, NbtResourceLimits.DEFAULT);
+        CameraAnimation document = document();
+
+        DataResult<byte[]> encoded = codec.encodeCompressed(document);
+        assertTrue(encoded.result().isPresent(), () -> "encode failed: " + encoded.error());
+        DocumentDecodeResult decoded = codec.decodeCompressed(encoded.result().orElseThrow());
+
+        DocumentDecodeResult.Accepted accepted = assertType(
+                DocumentDecodeResult.Accepted.class, decoded);
+        assertEquals(document, accepted.document());
+    }
+
+    @Test
+    void compressedDecodeRejectsCorruptAndDecompressionBomb() throws IOException {
+        DocumentCodec documents = DocumentCodec.of(frozenRegistries(), document -> List.of());
+        NbtDocumentCodec codec = new NbtDocumentCodec(documents,
+                new NbtResourceLimits(128, 128, 1_000_000));
+
+        assertType(DocumentDecodeResult.StructureFailed.class,
+                codec.decodeCompressed(new byte[]{1, 2, 3}));
+
+        ByteArrayOutputStream bomb = new ByteArrayOutputStream();
+
+        try (GZIPOutputStream gzip = new GZIPOutputStream(bomb)) {
+            gzip.write(new byte[4096]);
+        }
+
+        assertType(DocumentDecodeResult.StructureFailed.class,
+                codec.decodeCompressed(bomb.toByteArray()));
     }
 
     @Test

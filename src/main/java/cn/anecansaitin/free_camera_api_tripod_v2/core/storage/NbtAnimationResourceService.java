@@ -20,6 +20,7 @@ import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -41,6 +42,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
 
 /// 本地 NBT 文件资源服务（主设计 §8.2、§8.4）。
 ///
@@ -50,14 +53,17 @@ import java.util.function.Consumer;
 ///   `Codec`。**只做结构解码**，统一文档校验仍由 [cn.anecansaitin.free_camera_api_tripod_v2.core.animation.document.CoreAnimationLoader]
 ///   或文档 store 执行。
 /// - 编码文档为 NBT 字节，检查字节 / 深度 / 条目上限后写入同目录临时文件，再原子替换正式文件。
-/// - 生成 SHA-256 元数据、枚举 `.nbt` 普通文件、异步保存。
+/// - 以 `.nbt.gz` 结尾的资源使用 GZIP；压缩输入与解压后的原始 NBT 都受字节上限约束，
+///   解压采用计数读取，超限立即停止。
+/// - 生成 SHA-256 元数据、枚举 `.nbt` / `.nbt.gz` 普通文件、异步保存。
 ///
-/// 不注册网络包、不做 SavedData 生命周期、不压缩、不提供恢复槽或跨版本兼容矩阵。与
+/// 不注册网络包、不做 SavedData 生命周期、不提供恢复槽或跨版本兼容矩阵。与
 /// [FileAnimationResourceService] 一样，本类不消除校验后路径被替换的 TOCTOU 窗口。
 @NullMarked
 public final class NbtAnimationResourceService implements AnimationResourceService {
 
     private static final String NBT_SUFFIX = ".nbt";
+    private static final String GZIP_SUFFIX = ".nbt.gz";
     private static final String TEMP_PREFIX = ".resource-";
     private static final String TEMP_SUFFIX = ".tmp";
 
@@ -114,9 +120,24 @@ public final class NbtAnimationResourceService implements AnimationResourceServi
                             + " bytes, exceeds maxBytes " + limits.maxBytes());
         }
 
+        byte[] fileBytes = bytes;
+        byte[] payload;
+
+        if (isCompressed(resource)) {
+            try {
+                payload = gunzip(bytes, limits.maxBytes());
+            } catch (IOException | RuntimeException exception) {
+                return rejectedLoad(resource, FileAnimationResourceService.RESOURCE_STRUCTURE_INVALID,
+                        "Resource '" + resource.value() + "' is not valid GZIP: "
+                                + describe(exception));
+            }
+        } else {
+            payload = bytes;
+        }
+
         CompoundTag tag;
 
-        try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(bytes))) {
+        try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(payload))) {
             tag = NbtIo.read(input, NbtAccounter.create(limits.maxBytes()));
         } catch (IOException | RuntimeException exception) {
             return rejectedLoad(resource, FileAnimationResourceService.RESOURCE_STRUCTURE_INVALID,
@@ -136,17 +157,19 @@ public final class NbtAnimationResourceService implements AnimationResourceServi
             DataResult<CameraAnimation> parsed = structureCodec.parse(NbtOps.INSTANCE, tag);
 
             if (parsed.error().isPresent()) {
+                String message = errorMessage(parsed);
                 return rejectedLoad(resource,
                         FileAnimationResourceService.RESOURCE_STRUCTURE_INVALID,
-                        "Resource '" + resource.value() + "' has invalid structure: "
-                                + errorMessage(parsed));
+                        "Resource '" + resource.value() + "' has invalid structure: " + message,
+                        NbtStructureFieldPath.locate(message, tag));
             }
 
             document = parsed.result().orElse(null);
         } catch (RuntimeException exception) {
+            String message = describe(exception);
             return rejectedLoad(resource, FileAnimationResourceService.RESOURCE_STRUCTURE_INVALID,
-                    "Resource '" + resource.value() + "' has invalid structure: "
-                            + describe(exception));
+                    "Resource '" + resource.value() + "' has invalid structure: " + message,
+                    NbtStructureFieldPath.locate(message, tag));
         }
 
         if (document == null) {
@@ -155,7 +178,7 @@ public final class NbtAnimationResourceService implements AnimationResourceServi
         }
 
         try {
-            return new LoadResult.Loaded(document, entryFor(resource, path, bytes));
+            return new LoadResult.Loaded(document, entryFor(resource, path, fileBytes));
         } catch (IOException | RuntimeException exception) {
             return rejectedLoad(resource, FileAnimationResourceService.RESOURCE_READ_FAILED,
                     "Could not read resource metadata for '" + resource.value() + "': "
@@ -206,7 +229,7 @@ public final class NbtAnimationResourceService implements AnimationResourceServi
                             + violation);
         }
 
-        byte[] bytes;
+        byte[] rawBytes;
 
         try {
             ByteArrayOutputStream buffer = new ByteArrayOutputStream();
@@ -215,16 +238,36 @@ public final class NbtAnimationResourceService implements AnimationResourceServi
                 NbtIo.write(compound, output);
             }
 
-            bytes = buffer.toByteArray();
+            rawBytes = buffer.toByteArray();
         } catch (IOException | RuntimeException exception) {
             return rejectedSave(resource, FileAnimationResourceService.RESOURCE_WRITE_FAILED,
                     "Could not write NBT resource '" + resource.value() + "': "
                             + describe(exception));
         }
 
+        if (rawBytes.length > limits.maxBytes()) {
+            return rejectedSave(resource, FileAnimationResourceService.RESOURCE_TOO_LARGE,
+                    "Encoded resource '" + resource.value() + "' is " + rawBytes.length
+                            + " bytes, exceeds maxBytes " + limits.maxBytes());
+        }
+
+        byte[] bytes;
+
+        if (isCompressed(resource)) {
+            try {
+                bytes = gzip(rawBytes);
+            } catch (IOException | RuntimeException exception) {
+                return rejectedSave(resource, FileAnimationResourceService.RESOURCE_WRITE_FAILED,
+                        "Could not compress resource '" + resource.value() + "': "
+                                + describe(exception));
+            }
+        } else {
+            bytes = rawBytes;
+        }
+
         if (bytes.length > limits.maxBytes()) {
             return rejectedSave(resource, FileAnimationResourceService.RESOURCE_TOO_LARGE,
-                    "Encoded resource '" + resource.value() + "' is " + bytes.length
+                    "Compressed resource '" + resource.value() + "' is " + bytes.length
                             + " bytes, exceeds maxBytes " + limits.maxBytes());
         }
 
@@ -290,7 +333,7 @@ public final class NbtAnimationResourceService implements AnimationResourceServi
         }
 
         try {
-            if (!Files.isRegularFile(path) || !path.getFileName().toString().endsWith(NBT_SUFFIX)) {
+            if (!Files.isRegularFile(path) || !isNbtFile(path.getFileName().toString())) {
                 return Optional.empty();
             }
 
@@ -313,7 +356,7 @@ public final class NbtAnimationResourceService implements AnimationResourceServi
 
         try (var paths = Files.walk(root)) {
             paths.filter(Files::isRegularFile)
-                    .filter(path -> path.getFileName().toString().endsWith(NBT_SUFFIX))
+                    .filter(path -> isNbtFile(path.getFileName().toString()))
                     .forEach(path -> {
                         ResourceId id = resourceId(root, path);
 
@@ -342,6 +385,42 @@ public final class NbtAnimationResourceService implements AnimationResourceServi
                 resource, bytes.length, sha256(bytes), Files.getLastModifiedTime(path).toMillis());
     }
 
+    private static boolean isCompressed(ResourceId resource) {
+        return resource.value().endsWith(GZIP_SUFFIX);
+    }
+
+    private static boolean isNbtFile(String fileName) {
+        return fileName.endsWith(NBT_SUFFIX) || fileName.endsWith(GZIP_SUFFIX);
+    }
+
+    private static byte[] gzip(byte[] bytes) throws IOException {
+        ByteArrayOutputStream output = new ByteArrayOutputStream(Math.max(64, bytes.length / 2));
+
+        try (GZIPOutputStream gzip = new GZIPOutputStream(output)) {
+            gzip.write(bytes);
+        }
+
+        return output.toByteArray();
+    }
+
+    private static byte[] gunzip(byte[] bytes, int maxBytes) throws IOException {
+        try (GZIPInputStream input = new GZIPInputStream(new ByteArrayInputStream(bytes));
+             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[8192];
+            int read;
+
+            while ((read = input.read(buffer)) != -1) {
+                if (output.size() + read > maxBytes) {
+                    throw new IOException("decompressed NBT exceeds byte limit " + maxBytes);
+                }
+
+                output.write(buffer, 0, read);
+            }
+
+            return output.toByteArray();
+        }
+    }
+
     private static ResourceId resourceId(Path root, Path file) {
         try {
             String relative = root.relativize(file).toString().replace('\\', '/');
@@ -354,22 +433,32 @@ public final class NbtAnimationResourceService implements AnimationResourceServi
     private static LoadResult rejectedLoad(ResourceId resource,
                                             DiagnosticCode code,
                                             String message) {
-        return new LoadResult.Rejected(new DiagnosticReport(resource, List.of(fileError(
-                resource, code, message))));
+        return rejectedLoad(resource, code, message, null);
+    }
+
+    private static LoadResult rejectedLoad(ResourceId resource,
+                                            DiagnosticCode code,
+                                            String message,
+                                            @Nullable String fieldPath) {
+        return new LoadResult.Rejected(new DiagnosticReport(resource, List.of(
+                fileError(resource, code, message, fieldPath))));
     }
 
     private static SaveResult rejectedSave(ResourceId resource,
                                             DiagnosticCode code,
                                             String message) {
-        return new SaveResult.Rejected(new DiagnosticReport(resource, List.of(fileError(
-                resource, code, message))));
+        return new SaveResult.Rejected(new DiagnosticReport(resource, List.of(
+                fileError(resource, code, message, null))));
     }
 
     private static Diagnostic fileError(ResourceId resource,
                                         DiagnosticCode code,
-                                        String message) {
+                                        String message,
+                                        @Nullable String fieldPath) {
         return new Diagnostic(code, Severity.ERROR, LocalizedMessage.literal(message),
-                new DiagnosticScope.File(resource), null, null);
+                new DiagnosticScope.File(resource),
+                fieldPath == null ? null : new Diagnostic.Location(null, fieldPath),
+                null);
     }
 
     private static String errorMessage(DataResult<?> result) {

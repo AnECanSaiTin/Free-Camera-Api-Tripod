@@ -203,6 +203,24 @@ class FileAnimationResourceServiceTest {
     }
 
     @Test
+    void structureFailureCarriesJsonFieldPathInFileDiagnostic() throws IOException {
+        ResourceId id = new ResourceId("path-field.json");
+        assertTrue(service.save(id, document("path-field")) instanceof SaveResult.Saved);
+        Path file = root.resolve("path-field.json");
+        com.google.gson.JsonObject json = com.google.gson.JsonParser
+                .parseString(Files.readString(file)).getAsJsonObject();
+        json.addProperty("data_version", 1.9);
+        Files.writeString(file, json.toString());
+
+        LoadResult result = service.load(id);
+
+        assertTrue(result instanceof LoadResult.Rejected);
+        LoadResult.Rejected rejected = (LoadResult.Rejected) result;
+        assertEquals("data_version",
+                rejected.report().diagnostics().getFirst().location().fieldPath());
+    }
+
+    @Test
     void loadOnlyDecodesStructureAndDoesNotRunDocumentValidation() throws IOException {
         // 来源引用一台不存在的机位：结构可编码，但统一校验会拒绝。资源服务必须只做结构解码。
         CameraAnimation semanticallyInvalid = document("unvalidated").withCameraSource(
@@ -370,7 +388,10 @@ class FileAnimationResourceServiceTest {
             assertEquals(id, ((DiagnosticScope.File) diagnostic.scope()).resource());
             assertEquals(Severity.ERROR, diagnostic.severity());
             assertNull(diagnostic.fix());
-            assertNull(diagnostic.location());
+
+            if (diagnostic.location() != null) {
+                assertFalse(diagnostic.location().fieldPath().isBlank());
+            }
         }
     }
 

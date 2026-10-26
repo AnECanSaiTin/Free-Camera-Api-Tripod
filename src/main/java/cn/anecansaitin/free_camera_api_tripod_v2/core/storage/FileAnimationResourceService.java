@@ -1,6 +1,7 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.core.storage;
 
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.CameraAnimation;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.StructureFieldPath;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.Diagnostic;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.DiagnosticCode;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.DiagnosticScope;
@@ -19,6 +20,7 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.DataResult;
 import com.mojang.serialization.JsonOps;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -204,15 +206,18 @@ public final class FileAnimationResourceService implements AnimationResourceServ
             DataResult<CameraAnimation> parsed = structureCodec.parse(JsonOps.INSTANCE, json);
 
             if (parsed.error().isPresent()) {
+                String message = errorMessage(parsed);
                 return rejectedLoad(resource, RESOURCE_STRUCTURE_INVALID,
-                        "Resource '" + resource.value() + "' has invalid structure: "
-                                + errorMessage(parsed));
+                        "Resource '" + resource.value() + "' has invalid structure: " + message,
+                        StructureFieldPath.locate(message, json));
             }
 
             document = parsed.result().orElse(null);
         } catch (RuntimeException e) {
+            String message = describe(e);
             return rejectedLoad(resource, RESOURCE_STRUCTURE_INVALID,
-                    "Resource '" + resource.value() + "' has invalid structure: " + describe(e));
+                    "Resource '" + resource.value() + "' has invalid structure: " + message,
+                    StructureFieldPath.locate(message, json));
         }
 
         if (document == null) {
@@ -479,21 +484,31 @@ public final class FileAnimationResourceService implements AnimationResourceServ
     }
 
     private static LoadResult rejectedLoad(ResourceId resource, DiagnosticCode code, String message) {
-        return new LoadResult.Rejected(report(resource, code, message));
+        return rejectedLoad(resource, code, message, null);
+    }
+
+    private static LoadResult rejectedLoad(ResourceId resource,
+                                           DiagnosticCode code,
+                                           String message,
+                                           @Nullable String fieldPath) {
+        return new LoadResult.Rejected(report(resource, code, message, fieldPath));
     }
 
     private static SaveResult rejectedSave(ResourceId resource, DiagnosticCode code, String message) {
-        return new SaveResult.Rejected(report(resource, code, message));
+        return new SaveResult.Rejected(report(resource, code, message, null));
     }
 
     /// 构造只含单条 File 作用域诊断的单资源报告。
-    private static DiagnosticReport report(ResourceId resource, DiagnosticCode code, String message) {
+    private static DiagnosticReport report(ResourceId resource,
+                                           DiagnosticCode code,
+                                           String message,
+                                           @Nullable String fieldPath) {
         Diagnostic diagnostic = new Diagnostic(
                 code,
                 Severity.ERROR,
                 LocalizedMessage.literal(message),
                 new DiagnosticScope.File(resource),
-                null,
+                fieldPath == null ? null : new Diagnostic.Location(null, fieldPath),
                 null);
 
         return new DiagnosticReport(resource, List.of(diagnostic));

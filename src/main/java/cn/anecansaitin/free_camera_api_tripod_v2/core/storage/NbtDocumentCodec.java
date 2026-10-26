@@ -17,6 +17,8 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.Objects;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
 
 /// 单份文档的 NBT 载荷编解码（主设计 §8.1、§8.2）。
 ///
@@ -80,6 +82,80 @@ public final class NbtDocumentCodec {
         }
 
         return DataResult.success(bytes.toByteArray());
+    }
+
+    /// 编码为 GZIP 压缩的 NBT 字节。
+    ///
+    /// 原始 NBT 与压缩结果都受 [NbtResourceLimits#maxBytes()] 约束；压缩失败或超限返回
+    /// `DataResult` 错误。载荷仍是未命名 CompoundTag 的 GZIP 字节，不添加命名根。
+    ///
+    /// @param document 待编码文档
+    /// @return 成功时的 GZIP 字节；失败不返回部分结果
+    public DataResult<byte[]> encodeCompressed(CameraAnimation document) {
+        DataResult<byte[]> encoded = encode(document);
+
+        if (encoded.isError()) {
+            return DataResult.error(() -> errorMessage(encoded));
+        }
+
+        byte[] raw = encoded.result().orElseThrow();
+        ByteArrayOutputStream compressed = new ByteArrayOutputStream(Math.max(64, raw.length / 2));
+
+        try (GZIPOutputStream output = new GZIPOutputStream(compressed)) {
+            output.write(raw);
+        } catch (IOException | RuntimeException exception) {
+            return DataResult.error(() -> "Cannot compress NBT document: " + messageOf(exception));
+        }
+
+        byte[] bytes = compressed.toByteArray();
+
+        if (bytes.length > limits.maxBytes()) {
+            return DataResult.error(() -> "Compressed NBT document exceeds byte limit "
+                    + limits.maxBytes() + ": " + bytes.length);
+        }
+
+        return DataResult.success(bytes);
+    }
+
+    /// 解码 GZIP 压缩的 NBT 文档。
+    ///
+    /// 压缩输入与解压后的原始 NBT 都必须不超过 [NbtResourceLimits#maxBytes()]；解压过程
+    /// 采用计数读取，超限立即停止，不先完整展开再拒绝。
+    ///
+    /// @param bytes GZIP 压缩的未命名 CompoundTag 字节
+    /// @return 两阶段解码结果；失败不返回部分文档
+    public DocumentDecodeResult decodeCompressed(byte[] bytes) {
+        Objects.requireNonNull(bytes, "bytes");
+
+        if (bytes.length > limits.maxBytes()) {
+            return new DocumentDecodeResult.StructureFailed(
+                    "Compressed NBT document exceeds byte limit " + limits.maxBytes()
+                            + ": " + bytes.length, null);
+        }
+
+        byte[] raw;
+
+        try (GZIPInputStream input = new GZIPInputStream(new ByteArrayInputStream(bytes));
+             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            byte[] buffer = new byte[8192];
+            int read;
+
+            while ((read = input.read(buffer)) != -1) {
+                if (output.size() + read > limits.maxBytes()) {
+                    return new DocumentDecodeResult.StructureFailed(
+                            "Decompressed NBT document exceeds byte limit " + limits.maxBytes(), null);
+                }
+
+                output.write(buffer, 0, read);
+            }
+
+            raw = output.toByteArray();
+        } catch (IOException | RuntimeException exception) {
+            return new DocumentDecodeResult.StructureFailed(
+                    "Cannot decompress NBT document: " + messageOf(exception), null);
+        }
+
+        return decode(raw);
     }
 
     /// 从 NBT 字节解码并执行统一文档校验。
