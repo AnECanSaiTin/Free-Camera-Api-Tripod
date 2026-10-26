@@ -13,9 +13,14 @@ import cn.anecansaitin.free_camera_api_tripod_v2.core.animation.registry.FrozenT
 import com.mojang.serialization.DataResult;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.NbtIo;
+import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.StringTag;
+import net.minecraft.nbt.Tag;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -64,6 +69,29 @@ class NbtDocumentCodecTest {
         DataResult<byte[]> result = codec.encode(document());
 
         assertTrue(result.error().isPresent(), "oversized NBT must be rejected");
+    }
+
+    @Test
+    void invalidDataVersionFillsStructureFieldPath() throws Exception {
+        DocumentCodec documents = DocumentCodec.of(frozenRegistries(), document -> List.of());
+        NbtDocumentCodec codec = new NbtDocumentCodec(documents, NbtResourceLimits.DEFAULT);
+        Tag encoded = CameraAnimation.codec(frozenRegistries())
+                .encodeStart(NbtOps.INSTANCE, document())
+                .result()
+                .orElseThrow();
+        CompoundTag compound = assertType(CompoundTag.class, encoded);
+        compound.putString("data_version", "1");
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+
+        try (DataOutputStream output = new DataOutputStream(bytes)) {
+            NbtIo.write(compound, output);
+        }
+
+        DocumentDecodeResult result = codec.decode(bytes.toByteArray());
+
+        DocumentDecodeResult.StructureFailed failed = assertType(
+                DocumentDecodeResult.StructureFailed.class, result);
+        assertEquals("data_version", failed.fieldPath());
     }
 
     @Test

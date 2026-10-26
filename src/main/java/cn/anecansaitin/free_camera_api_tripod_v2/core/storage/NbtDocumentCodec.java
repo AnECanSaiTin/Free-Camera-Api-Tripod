@@ -110,7 +110,22 @@ public final class NbtDocumentCodec {
             return new DocumentDecodeResult.StructureFailed(violation, null);
         }
 
-        return documents.decode(NbtOps.INSTANCE, tag);
+        return withFieldPath(documents.decode(NbtOps.INSTANCE, tag), tag);
+    }
+
+    /// 结构失败时用 NBT 输入补一次有证据的字段定位；无法证明时保留空路径。
+    private static DocumentDecodeResult withFieldPath(DocumentDecodeResult result,
+                                                       CompoundTag tag) {
+        if (result instanceof DocumentDecodeResult.StructureFailed failed
+                && failed.fieldPath() == null) {
+            String path = NbtStructureFieldPath.locate(failed.message(), tag);
+
+            if (path != null) {
+                return new DocumentDecodeResult.StructureFailed(failed.message(), path);
+            }
+        }
+
+        return result;
     }
 
     private static String errorMessage(DataResult<?> result) {

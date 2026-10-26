@@ -1,8 +1,8 @@
 # P1 契约、实施与验收
 
-> 更新：2026-10-26。最近实施批次为 **C14**（NBT 文件资源服务，未提交）；C13 为全文档 KeyId 唯一性（已提交 `40abc7e`，待 R63）；C12 为 NBT 文档编解码（已提交，待 R62）；C11 为编辑器 UI 后端编排（已提交，待 R61）；C10 为播放请求接收入口（已提交，待 R60）；C9 为消息渲染与编辑工具（已提交，待 R59）；C8 为相机接管仲裁与类型能力服务（已提交，待 R58）；C7 为 R56-H1 修复（已提交，R57 已复核）；C6 为 R55 九项修复（已提交）；`95c3dda` 为 2026-10-25 已提交实现批次，经 R55 审核发现九项问题。审核、复核与关闭边界见[P1 审核与复核记录](<P1-review.md>)。
+> 更新：2026-10-26。最近实施批次为 **C15**（NBT 结构字段路径，未提交）；C14 为 NBT 文件资源服务（已提交 `4bffdc0`，待 R64）；C13 为全文档 KeyId 唯一性（已提交 `40abc7e`，待 R63）；C12 为 NBT 文档编解码（已提交，待 R62）；C11 为编辑器 UI 后端编排（已提交，待 R61）；C10 为播放请求接收入口（已提交，待 R60）；C9 为消息渲染与编辑工具（已提交，待 R59）；C8 为相机接管仲裁与类型能力服务（已提交，待 R58）；C7 为 R56-H1 修复（已提交，R57 已复核）；C6 为 R55 九项修复（已提交）；`95c3dda` 为 2026-10-25 已提交实现批次，经 R55 审核发现九项问题。审核、复核与关闭边界见[P1 审核与复核记录](<P1-review.md>)。
 >
-> **当前结论：P1 已列 R1–R12 契约均已交付；C5 两项修复在原范围复核通过；C7 已按 R56-H1 完成形参作用域修复，R57 独立复核在原范围关闭；C8 已实现相机接管仲裁与类型能力服务，待 R58；C9 已实现消息渲染与四个编辑工具，待 R59；C10 已实现播放请求接收入口，待 R60；C11 已实现编辑器 UI 后端选择编排，待 R61；C12 已实现 NBT 文档编解码与规模限制，待 R62；C13 已实现全文档 KeyId 唯一性，待 R63；C14 已实现 NBT 文件资源服务，待 R64。** 这不表示 core、客户端或完整 P1 运行验收完成。C5 审核基线为 **33 suite / 219 用例**（v2 27 / 153）；`95c3dda` 为 **59 suite / 511 用例**（v2 53 / 445）；C6 复核为 **60 suite / 537 用例**（v2 54 / 471）；C7 后全量为 **60 suite / 542 用例**（v2 54 / 476）；C8 后全量为 **62 suite / 566 用例**（v2 56 / 500）；C9 后全量为 **64 suite / 580 用例**（v2 58 / 514）；C10 后全量为 **65 suite / 585 用例**（v2 59 / 519）；C11 后全量为 **66 suite / 593 用例**（v2 60 / 527）；C12 后全量为 **67 suite / 598 用例**（v2 61 / 532）；C13 后全量为 **67 suite / 600 用例**（v2 61 / 534）；C14 后全量为 **68 suite / 604 用例**（v2 62 / 538），失败/错误 0、跳过 1（Windows 符号链接权限）。
+> **当前结论：P1 已列 R1–R12 契约均已交付；C5 两项修复在原范围复核通过；C7 已按 R56-H1 完成形参作用域修复，R57 独立复核在原范围关闭；C8 已实现相机接管仲裁与类型能力服务，待 R58；C9 已实现消息渲染与四个编辑工具，待 R59；C10 已实现播放请求接收入口，待 R60；C11 已实现编辑器 UI 后端选择编排，待 R61；C12 已实现 NBT 文档编解码与规模限制，待 R62；C13 已实现全文档 KeyId 唯一性，待 R63；C14 已实现 NBT 文件资源服务，待 R64；C15 已补齐 NBT 结构失败字段路径，待 R65。** 这不表示 core、客户端或完整 P1 运行验收完成。C5 审核基线为 **33 suite / 219 用例**（v2 27 / 153）；`95c3dda` 为 **59 suite / 511 用例**（v2 53 / 445）；C6 复核为 **60 suite / 537 用例**（v2 54 / 471）；C7 后全量为 **60 suite / 542 用例**（v2 54 / 476）；C8 后全量为 **62 suite / 566 用例**（v2 56 / 500）；C9 后全量为 **64 suite / 580 用例**（v2 58 / 514）；C10 后全量为 **65 suite / 585 用例**（v2 59 / 519）；C11 后全量为 **66 suite / 593 用例**（v2 60 / 527）；C12 后全量为 **67 suite / 598 用例**（v2 61 / 532）；C13 后全量为 **67 suite / 600 用例**（v2 61 / 534）；C14 后全量为 **68 suite / 604 用例**（v2 62 / 538）；C15 后全量为 **68 suite / 605 用例**（v2 62 / 539），失败/错误 0、跳过 1（Windows 符号链接权限）。
 >
 > 行为规范仍以[动画主设计](<../design-animation-editor-framework.md>)、[UI 设计](<../design-editor-ui-framework.md>)和[音频设计](<../design-spatial-audio-api.md>)为准；本文维护实际交付、既有裁决、施工记录、施工边界与证据，不新增产品裁决。
 
@@ -25,7 +25,7 @@
 | 编辑器       | 会话、草稿、选择/视图、按 RigId 预览覆盖、交互请求、后端选择与 open 契约                                        | 会话实现、后端装配、草稿恢复、UI/输入/生命周期及预览执行                           |
 | 叠加与音频   | OverlayElement 暂存不透明内容；AudioRef / AudioRefId 仅身份与边界                                               | 叠加封闭内容等 O1–O3 补全设计后实施；音频整体最后实施                              |
 
-源码入口：[v2 API](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/>)；回归入口：[v2 测试](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/>)。当前 v2 主源码为 300 个 Java 文件（api / core / editor）。
+源码入口：[v2 API](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/>)；回归入口：[v2 测试](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/>)。当前 v2 主源码为 301 个 Java 文件（api / core / editor）。
 
 ## 2. 已确认裁决
 
@@ -140,7 +140,8 @@ EditorSession 写文档必须走 EditSubmission/store；播放头、轨道显隐
 | C11 | 基于 C10，已提交 `40abc7e` | 编辑器 UI 后端选择 / 回退编排 | 施工方自检；独立复核待 R61 |
 | C12 | 基于 C11，已提交 `40abc7e` | NBT 文档编解码与深度 / 条目 / 字节限制 | 施工方自检；独立复核待 R62 |
 | C13 | 基于 C12，已提交 `40abc7e` | 全文档 KeyId 唯一性 | 施工方自检；独立复核待 R63 |
-| C14 | 基于 C13，未提交 | NBT 文件资源服务 | 施工方自检；独立复核待 R64 |
+| C14 | 基于 C13，已提交 `4bffdc0` | NBT 文件资源服务 | 施工方自检；独立复核待 R64 |
+| C15 | 基于 C14，未提交 | NBT 结构失败字段路径 | 施工方自检；独立复核待 R65 |
 
 ### 4.1 历史交付摘要
 
@@ -401,6 +402,21 @@ EditorSession 写文档必须走 EditSubmission/store；播放头、轨道显隐
 
 **关闭边界。** 不做 SavedData 生命周期、压缩命名根、恢复槽调度、跨版本兼容矩阵或网络传输；`entries` 只枚举 `.nbt`，不限制目录资源数量；路径校验后文件系统被替换的 TOCTOU 窗口仍存在。载入只保证结构成立，不保证统一校验通过。R64 独立复核尚未执行。
 
+### 4.12 C15：NBT 结构失败字段路径（2026-10-26，未提交）
+
+[NbtStructureFieldPath](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/storage/NbtStructureFieldPath.java>) 为 [NbtDocumentCodec](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/storage/NbtDocumentCodec.java>) 的结构失败补充有证据的 `fieldPath`：
+
+- 检查 `data_version` 是否为合法 `IntTag` 且等于 `CURRENT_DATA_VERSION`；检查 `update_every_frames` / `resample_every_ticks` 的 NBT 类型；
+- 对未知类型消息按 `type` 值定位其实际路径；
+- 其次按消息中的已知字段名 / 引号字段做唯一键定位；找不到时保留空路径，不猜测。
+- `NbtDocumentCodec.decode` 只在结构失败且原路径为空时补路径；校验失败与结构成功路径不变。
+
+[NbtDocumentCodecTest](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/core/storage/NbtDocumentCodecTest.java>) 新增 `invalidDataVersionFillsStructureFieldPath`，验证把 `data_version` 改成字符串后得到 `data_version` 路径。
+
+**施工验证。** `.\gradlew.bat --offline clean compileJava test --no-build-cache --rerun-tasks --console=plain`，BUILD SUCCESSFUL；按测试结果 XML 统计 **68 suite / 605 用例**（v2 62 / 539），失败/错误 0、跳过 1（Windows 符号链接权限）。C15 新增 1 个用例、suite 数不变；v2 主源码 301 个 Java 文件，API class 仍为 386；jdeps 对 386 个 API class 的禁止类型依赖为 0，`git diff --check` 通过。
+
+**关闭边界。** 这不是完整 DFU 路径追踪：仍只对已知整数语义字段、未知类型与消息中可唯一匹配的键定位；NBT 资源服务的 `LoadResult.Rejected` 仍只有 File 诊断，没有结构化 fieldPath；JSON 路径逻辑未复用，NBT 与 JSON 的定位证据可能不同。R65 独立复核尚未执行。
+
 ## 5. 后续实现与验收清单
 
 <a id="p1-follow-up"></a>
@@ -434,6 +450,8 @@ C12 已交付 `NbtDocumentCodec` 的 NBT 载荷编解码与规模限制；NBT �
 C13 已把 `KeyId` 唯一性收紧到全文档作用域；非时间轴扩展轨道内部键仍由类型校验器负责。
 
 C14 已交付 `NbtAnimationResourceService` 的本地 `.nbt` 文件资源服务；SavedData 生命周期、压缩、恢复调度与网络传输仍未接。
+
+C15 已为 NBT 结构失败补充部分字段路径；完整 DFU 路径追踪与资源服务结构化路径仍未接。
 
 ## 6. 验证基线与维护方式
 
@@ -525,6 +543,14 @@ C5 审核基线实际执行：
 
 结果 BUILD SUCCESSFUL，按测试结果 XML 统计 **68 suite / 604 用例**（v2 62 / 538），失败/错误 0、跳过 1（Windows 无符号链接权限的 JUnit assumption）。C14 新增 4 个用例、1 个 suite；v2 主源码 300 个 Java 文件，v2 API class 仍为 386。施工方自检命令与证据见 §4.11；R64 独立复核尚未执行。
 
+2026-10-26 C15 修复批次执行：
+
+```powershell
+.\gradlew.bat --offline clean compileJava test --no-build-cache --rerun-tasks --console=plain
+```
+
+结果 BUILD SUCCESSFUL，按测试结果 XML 统计 **68 suite / 605 用例**（v2 62 / 539），失败/错误 0、跳过 1（Windows 无符号链接权限的 JUnit assumption）。C15 新增 1 个用例、suite 数不变；v2 主源码 301 个 Java 文件，v2 API class 仍为 386。施工方自检命令与证据见 §4.12；R65 独立复核尚未执行。
+
 必守门禁：api 不依赖旧根、net.minecraft.client、core/editor 实现；editor.spi 不依赖 editor.internal；按 Q13 允许 edit ↔ document。源码文本扫描只作辅助，依赖门禁检查编译产物。测试目前集中于结构不变量、容器隔离、JSON/压缩 JSON Codec 与替身契约，不代替真实 store/时序/世界/渲染/网络验证。
 
 关键基线保留为里程碑，完整历史命令和原始论证由 Git 追溯：
@@ -551,5 +577,6 @@ C5 审核基线实际执行：
 | C12 / 待 R62（NBT 文档编解码） | 67/598        | 61/532        |
 | C13 / 待 R63（全文档 KeyId） | 67/600        | 61/534        |
 | C14 / 待 R64（NBT 文件资源服务） | 68/604        | 62/538        |
+| C15 / 待 R65（NBT 字段路径） | 68/605        | 62/539        |
 
 后续维护分为两个入口：本文更新契约、实施批次、施工记录与验证基线；[P1 审核与复核记录](<P1-review.md>)更新审核编号、原问题、关闭边界与独立复核结论。行为规则变更同步主设计；审核通过只关闭明确的问题范围，新增需求另行分期。原 R1–R14/R1–R29 归档、协议提案、注册表选型与旧复核日志已并入两份文档；如需原文，可查凝练前提交 `7095284` 的对应路径。
