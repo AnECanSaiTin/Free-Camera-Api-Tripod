@@ -145,7 +145,8 @@ EditorSession 写文档必须走 EditSubmission/store；播放头、轨道显隐
 | C16 | 基于 C15，已提交 `391946a` | 有界 GZIP NBT、`.nbt.gz` 资源服务、资源诊断字段路径 | 施工方自检；R66 合并审查发现四项 P2 |
 | C17 | 基于 C16，已提交 `4f1a641` | R66-N1–N4 修复：令牌归属、烘焙时间、避障前捕获、NBT 整数语义 | 施工方自检；R67 待执行 |
 | C18 | 基于 C17，已提交 `bc06d8c` + `ce3e777` | 有界资源枚举、截断标记与有界堆 | 施工方自检；独立复核待定 |
-| C19 | 基于 C18，未提交 | 恢复调度：防抖、周期、在途去重与关闭 | 施工方自检；独立复核待定 |
+| C19 | 基于 C18，已提交 `77ca26f` | 恢复调度：防抖、周期、在途去重与关闭 | 施工方自检；独立复核待定 |
+| C20 | 基于 C19，未提交 | 帧执行顺序：相机应用 → 事件分派、部分执行 | 施工方自检；独立复核待定 |
 
 ### 4.1 历史交付摘要
 
@@ -458,7 +459,7 @@ EditorSession 写文档必须走 EditSubmission/store；播放头、轨道显隐
 
 **关闭边界。** 目前限制返回条数与内存占用并显式标记截断，但遍历仍走完整目录；目录极大时仍需目录索引或提前终止策略。
 
-### 4.16 C19：自动恢复调度（2026-10-26，未提交）
+### 4.16 C19：自动恢复调度（2026-10-26，已提交 `77ca26f`）
 
 - [CoreRecoveryScheduler](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/storage/CoreRecoveryScheduler.java>) 实现已发布快照后的防抖捕获、周期捕获、关闭取消与在途去重：
   - 连续 [onPublished] 只保留最后一次防抖任务；
@@ -473,6 +474,23 @@ EditorSession 写文档必须走 EditSubmission/store；播放头、轨道显隐
 **施工验证。** `.\gradlew.bat --offline clean compileJava test --no-build-cache --rerun-tasks --console=plain`，BUILD SUCCESSFUL；按测试结果 XML 统计 **69 suite / 621 用例**（v2 63 / 555），失败/错误 0、跳过 1（Windows 符号链接权限）。
 
 **关闭边界。** 尚未接真实客户端生命周期、资源身份切换或恢复选择 UI；调度线程池生命周期由宿主管理。
+
+### 4.17 C20：帧执行顺序（2026-10-26，未提交）
+
+- 新增 [CameraFrameSink](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/playback/CameraFrameSink.java>)：把来源与已准备机位姿态交给宿主相机边界；异常表示该帧相机应用失败。
+- 新增 [CoreFrameExecutor](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/playback/CoreFrameExecutor.java>)：
+  - 准备帧含 ERROR 时相机与事件都不执行；
+  - 先应用相机，再交给 [EventDispatcher](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/playback/EventDispatcher.java>)；
+  - 相机异常转为 `RENDER_FAILURE`，不执行本帧事件；
+  - 事件失败保留已成功分发数量，相机副作用不回滚；
+  - 成功才标记 `presented`。
+- 本类只编排端口，不重新求值文档、不读取当前 store。
+
+测试新增 4 例：相机先于事件、非法帧拒绝、相机异常停止事件、事件失败保留部分计数。
+
+**施工验证。** `.\gradlew.bat --offline clean compileJava test --no-build-cache --rerun-tasks --console=plain`，BUILD SUCCESSFUL；按测试结果 XML 统计 **70 suite / 625 用例**（v2 64 / 559），失败/错误 0、跳过 1（Windows 符号链接权限）。
+
+**关闭边界。** 真实相机 API 接线、MC 度/象限转换、renderer 合成与真实宿主回滚仍属客户端阶段；本类不提供跨帧事务回滚。
 
 ## 5. 后续实现与验收清单
 
@@ -642,6 +660,14 @@ C5 审核基线实际执行：
 
 结果 BUILD SUCCESSFUL，按测试结果 XML 统计 **69 suite / 621 用例**（v2 63 / 555），失败/错误 0、跳过 1（Windows 无符号链接权限的 JUnit assumption）。C19 新增 4 个用例、1 个 suite。施工方自检命令与证据见 §4.16。
 
+2026-10-26 C20 施工批次执行：
+
+```powershell
+.\gradlew.bat --offline clean compileJava test --no-build-cache --rerun-tasks --console=plain
+```
+
+结果 BUILD SUCCESSFUL，按测试结果 XML 统计 **70 suite / 625 用例**（v2 64 / 559），失败/错误 0、跳过 1（Windows 无符号链接权限的 JUnit assumption）。C20 新增 4 个用例、1 个 suite。施工方自检命令与证据见 §4.17。
+
 必守门禁：api 不依赖旧根、net.minecraft.client、core/editor 实现；editor.spi 不依赖 editor.internal；按 Q13 允许 edit ↔ document。源码文本扫描只作辅助，依赖门禁检查编译产物。测试目前集中于结构不变量、容器隔离、JSON/压缩 JSON Codec 与替身契约，不代替真实 store/时序/世界/渲染/网络验证。
 
 关键基线保留为里程碑，完整历史命令和原始论证由 Git 追溯：
@@ -673,5 +699,6 @@ C5 审核基线实际执行：
 | C17（R66 四项修复） | 68/615        | 62/549        |
 | C18（有界资源枚举） | 68/617        | 62/551        |
 | C19（恢复调度） | 69/621        | 63/555        |
+| C20（帧执行顺序） | 70/625        | 64/559        |
 
 后续维护分为两个入口：本文更新契约、实施批次、施工记录与验证基线；[P1 审核与复核记录](<P1-review.md>)更新审核编号、原问题、关闭边界与独立复核结论。行为规则变更同步主设计；审核通过只关闭明确的问题范围，新增需求另行分期。原 R1–R14/R1–R29 归档、协议提案、注册表选型与旧复核日志已并入两份文档；如需原文，可查凝练前提交 `7095284` 的对应路径。
