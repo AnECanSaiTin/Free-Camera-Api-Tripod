@@ -65,6 +65,21 @@ class NbtAnimationResourceServiceTest {
     }
 
     @Test
+    void boundedListingTruncatesAndReportsIt() {
+        NbtAnimationResourceService service = service(NbtResourceLimits.DEFAULT);
+        assertType(SaveResult.Saved.class, service.save(new ResourceId("a.nbt"), document()));
+        assertType(SaveResult.Saved.class, service.save(new ResourceId("b.nbt"), document()));
+
+        cn.anecansaitin.free_camera_api_tripod_v2.api.storage.ResourceListing one = service.list(1);
+        assertEquals(1, one.entries().size());
+        assertTrue(one.truncated());
+
+        cn.anecansaitin.free_camera_api_tripod_v2.api.storage.ResourceListing all = service.list(2);
+        assertEquals(2, all.entries().size());
+        assertFalse(all.truncated());
+    }
+
+    @Test
     void missingAndEscapingResourcesAreRejected() {
         NbtAnimationResourceService service = service(NbtResourceLimits.DEFAULT);
 

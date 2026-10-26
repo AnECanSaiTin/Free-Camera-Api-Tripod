@@ -30,5 +30,26 @@ public interface AnimationResourceService {
     Optional<AnimationResourceEntry> entry(ResourceId resource);
 
     /// 当前可列出的资源元数据；顺序稳定。
+    ///
+    /// 该入口不限制数量；需要限制列表规模时使用 [list(int)]。
     List<AnimationResourceEntry> entries();
+
+    /// 有界列出资源元数据。
+    ///
+    /// 默认实现先调用 [entries()] 再截断；实现应尽量在枚举过程中限制返回数量，不能把
+    /// “截断”静默当成完整列表。返回条目按资源身份稳定排序，最多 `maxEntries` 条。
+    ///
+    /// @param maxEntries 最大返回条数，非负
+    /// @return 有界列表与截断标记
+    default ResourceListing list(int maxEntries) {
+        if (maxEntries < 0) {
+            throw new IllegalArgumentException("maxEntries must be non-negative: " + maxEntries);
+        }
+
+        List<AnimationResourceEntry> all = entries();
+        boolean truncated = all.size() > maxEntries;
+        return new ResourceListing(
+                truncated ? all.subList(0, maxEntries) : all,
+                truncated);
+    }
 }

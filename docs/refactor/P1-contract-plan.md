@@ -143,7 +143,8 @@ EditorSession 写文档必须走 EditSubmission/store；播放头、轨道显隐
 | C14 | 基于 C13，已提交 `4bffdc0` | NBT 文件资源服务 | 施工方自检；独立复核待 R64 |
 | C15 | 基于 C14，已提交 `dc7c9cc` | NBT 结构失败字段路径 | 施工方自检；独立复核待 R65 |
 | C16 | 基于 C15，已提交 `391946a` | 有界 GZIP NBT、`.nbt.gz` 资源服务、资源诊断字段路径 | 施工方自检；R66 合并审查发现四项 P2 |
-| C17 | 基于 C16，未提交 | R66-N1–N4 修复：令牌归属、烘焙时间、避障前捕获、NBT 整数语义 | 施工方自检；独立复核待定 |
+| C17 | 基于 C16，已提交 `4f1a641` | R66-N1–N4 修复：令牌归属、烘焙时间、避障前捕获、NBT 整数语义 | 施工方自检；R67 待执行 |
+| C18 | 基于 C17，未提交 | 有界资源枚举与截断标记 | 施工方自检；独立复核待定 |
 
 ### 4.1 历史交付摘要
 
@@ -444,6 +445,18 @@ EditorSession 写文档必须走 EditSubmission/store；播放头、轨道显隐
 
 **关闭边界。** 本轮只关闭 R66-N1–N4 的已列反例；不追认 R58–R65 全部验收，不代表真实 renderer、网络协议、SavedData、碰撞适配或完整 P1 完成。N3 的 no-op resolver 只用于捕获避障前旋转，不执行真实碰撞查询。
 
+### 4.15 C18：有界资源枚举（2026-10-26，未提交）
+
+- 新增 [ResourceListing](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/storage/ResourceListing.java>)：稳定条目的只读列表 + `truncated` 标记。
+- [AnimationResourceService](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/storage/AnimationResourceService.java>) 新增 `list(int maxEntries)` 默认实现：负上限拒绝；超出时截断并明确标记，不把截断列表伪装成完整资源集合；`entries()` 保持原语义。
+- 显式 `ResourceId` 的载入不受列表上限影响；JSON / NBT 文件服务沿用各自稳定排序后截断。默认实现会先完整枚举再截断，尚未在遍历阶段停止，属于后续优化边界。
+
+测试新增 2 例：JSON 与 NBT 服务的 `list(0/部分/全部)` 截断标记与稳定顺序。
+
+**施工验证。** `.\gradlew.bat --offline clean compileJava test --no-build-cache --rerun-tasks --console=plain`，BUILD SUCCESSFUL；按测试结果 XML 统计 **68 suite / 617 用例**（v2 62 / 551），失败/错误 0、跳过 1（Windows 符号链接权限）。
+
+**关闭边界。** 目前只限制返回条数与显式标记截断，未限制遍历工作量；目录极大时仍应先做流式/索引优化。
+
 ## 5. 后续实现与验收清单
 
 <a id="p1-follow-up"></a>
@@ -596,6 +609,14 @@ C5 审核基线实际执行：
 
 结果 BUILD SUCCESSFUL，按测试结果 XML 统计 **68 suite / 615 用例**（v2 62 / 549），失败/错误 0、跳过 1（Windows 无符号链接权限的 JUnit assumption）。C17 新增 4 个用例、suite 数不变。施工方自检命令与证据见 §4.14；R67 独立复核待执行。
 
+2026-10-26 C18 施工批次执行：
+
+```powershell
+.\gradlew.bat --offline clean compileJava test --no-build-cache --rerun-tasks --console=plain
+```
+
+结果 BUILD SUCCESSFUL，按测试结果 XML 统计 **68 suite / 617 用例**（v2 62 / 551），失败/错误 0、跳过 1（Windows 无符号链接权限的 JUnit assumption）。C18 新增 2 个用例、suite 数不变。施工方自检命令与证据见 §4.15。
+
 必守门禁：api 不依赖旧根、net.minecraft.client、core/editor 实现；editor.spi 不依赖 editor.internal；按 Q13 允许 edit ↔ document。源码文本扫描只作辅助，依赖门禁检查编译产物。测试目前集中于结构不变量、容器隔离、JSON/压缩 JSON Codec 与替身契约，不代替真实 store/时序/世界/渲染/网络验证。
 
 关键基线保留为里程碑，完整历史命令和原始论证由 Git 追溯：
@@ -625,5 +646,6 @@ C5 审核基线实际执行：
 | C15 / 待 R65（NBT 字段路径） | 68/605        | 62/539        |
 | C16（压缩 NBT 与资源字段路径） | 68/611        | 62/545        |
 | C17（R66 四项修复） | 68/615        | 62/549        |
+| C18（有界资源枚举） | 68/617        | 62/551        |
 
 后续维护分为两个入口：本文更新契约、实施批次、施工记录与验证基线；[P1 审核与复核记录](<P1-review.md>)更新审核编号、原问题、关闭边界与独立复核结论。行为规则变更同步主设计；审核通过只关闭明确的问题范围，新增需求另行分期。原 R1–R14/R1–R29 归档、协议提案、注册表选型与旧复核日志已并入两份文档；如需原文，可查凝练前提交 `7095284` 的对应路径。

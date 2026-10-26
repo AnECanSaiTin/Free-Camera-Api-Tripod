@@ -129,6 +129,26 @@ class FileAnimationResourceServiceTest {
     }
 
     @Test
+    void boundedListingTruncatesAndReportsIt() {
+        assertTrue(service.save(new ResourceId("a.json"), document("a")) instanceof SaveResult.Saved);
+        assertTrue(service.save(new ResourceId("b.json"), document("b")) instanceof SaveResult.Saved);
+        assertTrue(service.save(new ResourceId("c.json"), document("c")) instanceof SaveResult.Saved);
+
+        cn.anecansaitin.free_camera_api_tripod_v2.api.storage.ResourceListing two = service.list(2);
+        assertEquals(2, two.entries().size());
+        assertTrue(two.truncated());
+        assertEquals("a.json", two.entries().get(0).resource().value());
+
+        cn.anecansaitin.free_camera_api_tripod_v2.api.storage.ResourceListing all = service.list(3);
+        assertEquals(3, all.entries().size());
+        assertFalse(all.truncated());
+
+        cn.anecansaitin.free_camera_api_tripod_v2.api.storage.ResourceListing none = service.list(0);
+        assertTrue(none.entries().isEmpty());
+        assertTrue(none.truncated());
+    }
+
+    @Test
     void missingResourceIsRejectedWithFileScopedDiagnostic() {
         ResourceId id = new ResourceId("animations/missing.json");
 
