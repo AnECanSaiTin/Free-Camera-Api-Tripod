@@ -74,6 +74,33 @@ public final class CoreRotationMath {
         return extract(result);
     }
 
+    /// 求逆旋转：`inverse(r) * r = 单位`。
+    ///
+    /// 用于把宿主基础姿态转换到文档参考系（主设计 §6.4）：局部机位先用锚点掩码旋转的逆
+    /// 变换基础位置与姿态，补全未编写分量后再正变换回世界。欧拉角不能简单取反，
+    /// 因为 YXZ 顺序下逆变换不是三轴同时取负；这里通过矩阵转置后重新提取欧拉角。
+    ///
+    /// @param rotation 旋转
+    /// @return 逆旋转
+    public static Rotation inverse(Rotation rotation) {
+        double[] m = matrix(rotation);
+
+        return extract(new double[]{
+                m[0], m[3], m[6],
+                m[1], m[4], m[7],
+                m[2], m[5], m[8]
+        });
+    }
+
+    /// 按旋转的逆变换一个向量：`inverse(rotation) * vector`。
+    ///
+    /// @param rotation 旋转
+    /// @param vector   世界向量
+    /// @return 参考系内的向量
+    public static Vec3 rotateInverse(Rotation rotation, Vec3 vector) {
+        return rotate(inverse(rotation), vector);
+    }
+
     /// 把世界方向转换为 Yaw/Pitch。方向按相机前向 `(0, 0, -1)` 解释。
     ///
     /// @param direction 非零方向

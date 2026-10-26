@@ -42,6 +42,12 @@ class CurveContractTest {
     }
 
     @Test
+    void duplicateKeyIdsAtDifferentTimesAreRejected() {
+        assertThrows(IllegalArgumentException.class, () -> new Curve(
+                List.of(key("same", 0f), key("same", 1f)), Curve.Wrap.CLAMP, Curve.Wrap.CLAMP));
+    }
+
+    @Test
     void duplicateTimesAreRejectedEvenWhenZeroSignDiffers() {
         assertThrows(IllegalArgumentException.class, () -> new Curve(
                 List.of(key("a", 1f), key("b", 1f)), Curve.Wrap.CLAMP, Curve.Wrap.CLAMP));

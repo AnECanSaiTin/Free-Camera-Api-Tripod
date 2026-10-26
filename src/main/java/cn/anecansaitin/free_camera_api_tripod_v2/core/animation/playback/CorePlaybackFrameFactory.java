@@ -34,8 +34,10 @@ import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.playback.Playback
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.playback.PreparedFrame;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.playback.ResolvedRect;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.playback.RigPose;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.playback.RigPlaybackOverrides;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.spatial.AimState;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.spatial.AimTarget;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.spatial.ObstacleSettings;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.spatial.ResolvedAnchor;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.spatial.Rotation;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.spatial.RotationMask;
@@ -134,12 +136,51 @@ public final class CorePlaybackFrameFactory implements PlaybackFrameFactory {
                                  PlaybackRequest request,
                                  PlaybackClock clock,
                                  float fromTime,
+                                 float toTime,
                                  long frameIndex,
                                  EventBudget eventBudget) {
+        Objects.requireNonNull(eventBudget, "eventBudget");
+        requireFiniteNonNegative(fromTime, "fromTime");
+        requireFiniteNonNegative(toTime, "toTime");
+
+        if (toTime < fromTime) {
+            throw new IllegalArgumentException(
+                    "toTime must not be smaller than fromTime: " + fromTime + " > " + toTime);
+        }
+
+        return prepareInternal(snapshot, request, clock, fromTime, toTime, frameIndex,
+                eventBudget, true);
+    }
+
+    @Override
+    public List<Diagnostic> prepareStart(AnimationSnapshot snapshot,
+                                         PlaybackRequest request,
+                                         PlaybackClock clock) {
         Objects.requireNonNull(snapshot, "snapshot");
         Objects.requireNonNull(request, "request");
         Objects.requireNonNull(clock, "clock");
-        Objects.requireNonNull(eventBudget, "eventBudget");
+
+        // 启动准备不推进时间、不展开事件：只求值初始相位上的实际依赖。
+        PreparedFrame prepared = prepareInternal(snapshot, request, clock,
+                clock.time(), clock.time(), 0L, null, false);
+        return prepared.diagnostics();
+    }
+
+    private PreparedFrame prepareInternal(AnimationSnapshot snapshot,
+                                          PlaybackRequest request,
+                                          PlaybackClock clock,
+                                          float fromTime,
+                                          float toTime,
+                                          long frameIndex,
+                                          @Nullable EventBudget eventBudget,
+                                          boolean expandEvents) {
+        Objects.requireNonNull(snapshot, "snapshot");
+        Objects.requireNonNull(request, "request");
+        Objects.requireNonNull(clock, "clock");
+
+        if (frameIndex < 0) {
+            throw new IllegalArgumentException("frameIndex must be non-negative: " + frameIndex);
+        }
 
         FrameEnvironment env = environment.get();
         List<Diagnostic> diagnostics = new ArrayList<>();
@@ -169,7 +210,7 @@ public final class CorePlaybackFrameFactory implements PlaybackFrameFactory {
         try {
             facts = factsProvider.prepare(new FrameFactsRequest(
                     snapshot, time, env.dimension(), env.worldInstanceId(), env.gameTick(),
-                    env.partialTick(), plan, session));
+                    env.partialTick(), env.worldTime(), plan, session));
         } catch (RuntimeException exception) {
             diagnostics.add(error(snapshot, null, "Frame facts failed: " + messageOf(exception)));
             return frame(clock, snapshot, CameraSource.player(), List.of(), List.of(),
@@ -198,28 +239,39 @@ public final class CorePlaybackFrameFactory implements PlaybackFrameFactory {
         List<RigPose> poses = new ArrayList<>();
 
         for (CameraRig rig : active) {
-            RigPose pose = evaluateRig(rig, snapshot, context, session, time, env, base, facts, diagnostics);
+            RigPlaybackOverrides overrides = request.rigOverrides().getOrDefault(
+                    rig.id(), RigPlaybackOverrides.INHERIT);
+            RigPose pose = evaluateRig(rig, snapshot, context, session, time, env, base, facts,
+                    overrides, diagnostics);
             poses.add(pose);
         }
 
-        EventExpansion expansion;
+        List<PreparedFrame.Event> events = List.of();
 
-        try {
-            expansion = eventExpander.expand(snapshot, fromTime, time, request.loop(),
-                    document.duration(), eventBudget);
-        } catch (IllegalArgumentException exception) {
-            diagnostics.add(error(snapshot, null, "Event expansion failed: " + exception.getMessage()));
-            expansion = EventExpansion.success(List.of(), 0);
-        }
+        if (expandEvents) {
+            Objects.requireNonNull(eventBudget, "eventBudget");
+            EventExpansion expansion;
 
-        if (!expansion.succeeded()) {
-            diagnostics.addAll(expansion.failure().diagnostics());
-
-            if (expansion.failure().message() != null) {
-                diagnostics.add(error(snapshot, null, expansion.failure().message().toString()));
+            try {
+                expansion = eventExpander.expand(snapshot, fromTime, toTime, request.loop(),
+                        document.duration(), eventBudget);
+            } catch (IllegalArgumentException exception) {
+                diagnostics.add(error(snapshot, null, "Event expansion failed: " + exception.getMessage()));
+                expansion = EventExpansion.success(List.of(), 0);
             }
 
-            return frame(clock, snapshot, document.cameraSourceAt(time), List.of(), List.of(), facts, diagnostics);
+            if (!expansion.succeeded()) {
+                diagnostics.addAll(expansion.failure().diagnostics());
+
+                if (expansion.failure().message() != null) {
+                    diagnostics.add(error(snapshot, null, expansion.failure().message().toString()));
+                }
+
+                return frame(clock, snapshot, document.cameraSourceAt(time), List.of(), List.of(),
+                        facts, diagnostics);
+            }
+
+            events = expansion.events();
         }
 
         CameraSource source = document.cameraSourceAt(time);
@@ -236,7 +288,7 @@ public final class CorePlaybackFrameFactory implements PlaybackFrameFactory {
             }
         }
 
-        return frame(clock, snapshot, source, poses, expansion.events(), facts, diagnostics);
+        return frame(clock, snapshot, source, poses, events, facts, diagnostics);
     }
 
     private RigPose evaluateRig(CameraRig rig,
@@ -247,6 +299,7 @@ public final class CorePlaybackFrameFactory implements PlaybackFrameFactory {
                                 FrameEnvironment env,
                                 WorldPose base,
                                 FrameFacts facts,
+                                RigPlaybackOverrides override,
                                 List<Diagnostic> diagnostics) {
         List<Diagnostic> poseDiagnostics = new ArrayList<>();
 
@@ -262,10 +315,43 @@ public final class CorePlaybackFrameFactory implements PlaybackFrameFactory {
         DocumentPose documentPose = new DocumentPose(x, y, z, pitch, yaw, roll, fovSample, poseDiagnostics);
         diagnostics.addAll(poseDiagnostics);
 
-        Vec3 position = new Vec3(
-                value(x, base.position().x()),
-                value(y, base.position().y()),
-                value(z, base.position().z()));
+        boolean local = rig.space() instanceof Space.Local;
+        RotationMask followMask = followMask(rig, override);
+        ResolvedAnchor anchor = null;
+
+        if (local) {
+            Optional<ResolvedAnchor> resolved = resolvedAnchor(facts, rig.id());
+
+            if (resolved.isEmpty()) {
+                diagnostics.add(error(snapshot, rig.id(),
+                        "Local rig " + rig.id() + " requires a resolved anchor"));
+            } else {
+                anchor = resolved.get();
+            }
+        }
+
+        // 文档参考系：局部空间使用锚点位置与**按跟随掩码归零后**的锚点旋转；
+        // 世界空间使用单位参考系（主设计 §6.4）。
+        Vec3 frameOrigin = anchor == null ? Vec3.ZERO : anchor.position();
+        Rotation frameRotation = anchor == null
+                ? Rotation.NONE
+                : anchor.rotation().masked(followMask);
+
+        // 基础姿态先逆变换到文档参考系，未编写的分量在这里补全，随后才正变换回世界。
+        Vec3 localBasePosition = base.position();
+        Rotation localBaseRotation = base.rotation();
+
+        if (local && anchor != null) {
+            localBasePosition = CoreRotationMath.rotateInverse(
+                    frameRotation, base.position().subtract(frameOrigin));
+            localBaseRotation = CoreRotationMath.compose(
+                    CoreRotationMath.inverse(frameRotation), base.rotation());
+        }
+
+        Vec3 localPosition = new Vec3(
+                value(x, localBasePosition.x()),
+                value(y, localBasePosition.y()),
+                value(z, localBasePosition.z()));
 
         if (rig.onPath()) {
             ChannelSample distance = sample(rig, CameraChannel.PATH_DISTANCE, context, session, time);
@@ -279,7 +365,7 @@ public final class CorePlaybackFrameFactory implements PlaybackFrameFactory {
                         rig.path(), rig.distanceMode(), distance.value());
 
                 if (result instanceof CorePathSampler.Result.Success success) {
-                    position = success.position();
+                    localPosition = success.position();
                 } else {
                     CorePathSampler.Result.Failure failure = (CorePathSampler.Result.Failure) result;
                     diagnostics.add(error(snapshot, rig.id(),
@@ -288,34 +374,31 @@ public final class CorePlaybackFrameFactory implements PlaybackFrameFactory {
             }
         }
 
-        Rotation rotation = new Rotation(
-                value(yaw, base.rotation().yaw()),
-                value(pitch, base.rotation().pitch()),
-                value(roll, base.rotation().roll()));
+        Rotation localRotation = new Rotation(
+                value(yaw, localBaseRotation.yaw()),
+                value(pitch, localBaseRotation.pitch()),
+                value(roll, localBaseRotation.roll()));
 
-        Vec3 obstacleOrigin = base.position();
-
-        if (rig.space() instanceof Space.Local) {
-            Optional<ResolvedAnchor> anchor = resolvedAnchor(facts, rig.id());
-
-            if (anchor.isEmpty()) {
-                diagnostics.add(error(snapshot, rig.id(),
-                        "Local rig " + rig.id() + " requires a resolved anchor"));
-            } else {
-                obstacleOrigin = anchor.get().position();
-                position = anchor.get().position().add(
-                        CoreRotationMath.rotate(anchor.get().rotation(), position));
-                rotation = CoreRotationMath.compose(anchor.get().rotation(), rotation);
-            }
-        }
+        Vec3 position = local && anchor != null
+                ? frameOrigin.add(CoreRotationMath.rotate(frameRotation, localPosition))
+                : localPosition;
+        Rotation rotation = local && anchor != null
+                ? CoreRotationMath.compose(frameRotation, localRotation)
+                : localRotation;
 
         AimState aim = facts.rig(rig.id())
                 .map(FrameFacts.RigFacts::aim)
                 .orElse(AimState.off());
         rotation = applyAim(rig, snapshot, rotation, position, aim, facts, diagnostics);
 
-        if (rig.obstacle().enabled()) {
-            position = applyObstacle(rig, snapshot, obstacleOrigin, position, diagnostics);
+        ObstacleSettings obstacle = override.obstacle() != null
+                ? override.obstacle()
+                : rig.obstacle();
+
+        if (obstacle.enabled()) {
+            Vec3 obstacleOrigin = local && anchor != null ? anchor.position() : base.position();
+            position = applyObstacle(rig, snapshot, obstacleOrigin, position, obstacle.margin(),
+                    diagnostics);
         }
 
         float fov = fovSample.isValue() ? fovSample.value() : base.fov();
@@ -327,7 +410,7 @@ public final class CorePlaybackFrameFactory implements PlaybackFrameFactory {
 
         LayoutEvalInput layoutInput = new LayoutEvalInput(
                 context, session, rig.id(), cn.anecansaitin.free_camera_api_tripod_v2.api.animation.eval.ExpressionSource.LayoutField.X,
-                time, progress(time, snapshot.document().duration()), env.gameTick() + env.partialTick(),
+                time, progress(time, snapshot.document().duration()), facts.worldTime().progress(),
                 SpatialReadings.EMPTY, env.gameTick(), curveSampler);
 
         ResolvedRect rect;
@@ -350,6 +433,7 @@ public final class CorePlaybackFrameFactory implements PlaybackFrameFactory {
                                AnimationSnapshot snapshot,
                                Vec3 origin,
                                Vec3 expected,
+                               double margin,
                                List<Diagnostic> diagnostics) {
         if (obstacleResolver == null) {
             diagnostics.add(error(snapshot, rig.id(),
@@ -361,7 +445,7 @@ public final class CorePlaybackFrameFactory implements PlaybackFrameFactory {
 
         try {
             result = obstacleResolver.resolve(new ObstacleResolver.Request(
-                    rig.id(), origin, expected, rig.obstacle().margin()));
+                    rig.id(), origin, expected, margin));
         } catch (RuntimeException exception) {
             diagnostics.add(error(snapshot, rig.id(),
                     "Obstacle resolver failed: " + messageOf(exception)));
@@ -460,6 +544,15 @@ public final class CorePlaybackFrameFactory implements PlaybackFrameFactory {
         return sample instanceof AxisSample.Value value ? value.value() : fallback;
     }
 
+    /// 生效的锚点旋转跟随掩码：请求覆盖优先，其次局部空间文档设置；世界空间不跟随。
+    private static RotationMask followMask(CameraRig rig, RigPlaybackOverrides override) {
+        if (override.followMask() != null) {
+            return override.followMask();
+        }
+
+        return rig.space() instanceof Space.Local local ? local.followMask() : RotationMask.NONE;
+    }
+
     private static Optional<ResolvedAnchor> resolvedAnchor(FrameFacts facts, RigId rigId) {
         return facts.rig(rigId)
                 .map(FrameFacts.RigFacts::anchor)
@@ -474,6 +567,12 @@ public final class CorePlaybackFrameFactory implements PlaybackFrameFactory {
                 .filter(SpatialResolution.Resolved.class::isInstance)
                 .map(SpatialResolution.Resolved.class::cast)
                 .map(SpatialResolution.Resolved::anchor);
+    }
+
+    private static void requireFiniteNonNegative(float value, String name) {
+        if (!Float.isFinite(value) || value < 0f) {
+            throw new IllegalArgumentException(name + " must be finite and non-negative: " + value);
+        }
     }
 
     private static float progress(float time, float duration) {
@@ -496,7 +595,7 @@ public final class CorePlaybackFrameFactory implements PlaybackFrameFactory {
 
     private static FrameFacts emptyFacts(AnimationSnapshot snapshot, FrameEnvironment env) {
         return new FrameFacts(snapshot, env.dimension(), env.worldInstanceId(), env.gameTick(),
-                env.partialTick(), 0L, Map.of(), Map.of(), false);
+                env.partialTick(), env.worldTime(), 0L, Map.of(), Map.of(), false);
     }
 
     private static Diagnostic error(AnimationSnapshot snapshot, @Nullable RigId rigId, String message) {

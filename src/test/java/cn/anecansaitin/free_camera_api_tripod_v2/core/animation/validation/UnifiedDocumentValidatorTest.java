@@ -18,6 +18,7 @@ import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field.Constant;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field.Curve;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field.CustomFunction;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field.Formula;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field.Keyframe;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field.TrackRef;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field.Variable;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.Symbols;
@@ -220,6 +221,51 @@ class UnifiedDocumentValidatorTest {
         List<Diagnostic> diagnostics = validator(emptyRegistries()).validate(document);
 
         assertTrue(hasMessage(diagnostics, "unknown variable"));
+    }
+
+    @Test
+    void rejectsUnreferencedVariableCycle() {
+        CameraRig rig = CameraRig.create(new RigId("rig"), "rig", List.of(),
+                new TrackId("aim"), new TrackId("active"));
+        CameraAnimation document = CameraAnimation.create("doc", rig, new TrackId("source"))
+                .withSymbols(new Symbols(List.of(
+                        new Variable("a", new Formula("a"))), List.of()));
+
+        List<Diagnostic> diagnostics = validator(emptyRegistries()).validate(document);
+
+        assertTrue(hasMessage(diagnostics, "Variable cycle"), () -> "unexpected: " + diagnostics);
+    }
+
+    @Test
+    void rejectsUnreferencedFunctionCycle() {
+        CameraRig rig = CameraRig.create(new RigId("rig"), "rig", List.of(),
+                new TrackId("aim"), new TrackId("active"));
+        CameraAnimation document = CameraAnimation.create("doc", rig, new TrackId("source"))
+                .withSymbols(new Symbols(List.of(), List.of(
+                        new CustomFunction("f", List.of(), "f()"))));
+
+        List<Diagnostic> diagnostics = validator(emptyRegistries()).validate(document);
+
+        assertTrue(hasMessage(diagnostics, "Function cycle"), () -> "unexpected: " + diagnostics);
+    }
+
+    @Test
+    void rejectsTrackCycleHiddenByFunctionParameterScope() {
+        CurveTrack track = CurveTrack.ofCurve(new TrackId("track"), "track",
+                Curve.of(new Keyframe(new KeyId("track-key"), 0f, new Formula("f(1)"),
+                        0f, 0f, 1f, 1f, Curve.Interpolation.LINEAR)));
+        CameraRig rig = CameraRig.create(new RigId("rig"), "rig", List.of(track),
+                new TrackId("aim"), new TrackId("active"));
+        CameraAnimation document = CameraAnimation.create("doc", rig, new TrackId("source"))
+                .withSymbols(new Symbols(
+                        List.of(new Variable("v", new Formula("x")),
+                                new Variable("x", new TrackRef(track.id()))),
+                        List.of(new CustomFunction("f", List.of("x"), "v"))));
+
+        List<Diagnostic> diagnostics = validator(emptyRegistries()).validate(document);
+
+        assertTrue(hasMessage(diagnostics, "Track dependency cycle"),
+                () -> "unexpected: " + diagnostics);
     }
 
     @Test

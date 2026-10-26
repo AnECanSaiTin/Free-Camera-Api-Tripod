@@ -3,11 +3,13 @@ package cn.anecansaitin.free_camera_api_tripod_v2.core.editor;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.CameraAnimation;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.AnimationDocumentStore;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.AnimationSnapshot;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.DocumentListener;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.EditSubmission;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.EditTarget;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.EditTransaction;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.PreviewState;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.Revision;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.SessionSwitch;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.Diagnostic;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.DiagnosticCode;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.DiagnosticScope;
@@ -54,6 +56,14 @@ import java.util.Objects;
 /// [snapshot] / [close] 外的方法返回拒绝、空值或空操作；[beginEdit] 仍返回事务值，但不会登记，
 /// 后续 [draft] / [commit] 会拒绝。
 ///
+/// ## 整份换档
+///
+/// 会话订阅 [AnimationDocumentStore] 的发布通知。普通编辑、撤销与重做只改变文档内容，
+/// 会话状态保留；[DocumentListener#onSessionSwitched] 触发的整份换档则清空草稿、当前事务、
+/// 选择 / 视图状态、交互请求与已记录选择（主设计 §3.3、§4.5）。旧事务随后按“未知事务”
+/// 拒绝，旧交互请求不再出现在新文档中。通知在宿主线程外发生时先挂起，下一次宿主线程调用
+/// 前统一应用，避免跨线程修改会话容器。
+///
 /// ## 第一版边界
 ///
 /// - [updateDraftText] 只保留字段原文并产生 `INVALID_EDIT` 诊断：结构化字段解析尚未实现，
@@ -77,12 +87,35 @@ public final class CoreEditorSession implements EditorSession {
     private final Map<InteractionId, InteractionRequest> interactions = new LinkedHashMap<>();
     private final List<InteractionChoice> interactionChoices = new ArrayList<>();
 
+    /// 换档发生在宿主线程之外时挂起，下一次宿主线程调用前应用。
+    private volatile boolean resetPending;
+
     private long nextTransactionId;
     private long currentTransactionId = NO_TRANSACTION;
     private SessionViewState viewState = SessionViewState.initial();
     private boolean closed;
 
-    /// 建立会话并记录当前线程为宿主线程。
+    private final DocumentListener documentListener = new DocumentListener() {
+        @Override
+        public void onDocumentChanged(AnimationSnapshot snapshot) {
+            // 普通编辑不清理会话：草稿、选择与交互仍属于同一份文档。
+        }
+
+        @Override
+        public void onSessionSwitched(AnimationSnapshot snapshot, SessionSwitch reason) {
+            if (closed) {
+                return;
+            }
+
+            if (Thread.currentThread() == ownerThread) {
+                clearSessionState();
+            } else {
+                resetPending = true;
+            }
+        }
+    };
+
+    /// 建立会话、登记换档监听并记录当前线程为宿主线程。
     ///
     /// @param store    文档存储；所有写入委托给它
     /// @param playback 播放服务；为空时播放控制为空操作，状态固定为 `IDLE`
@@ -90,6 +123,7 @@ public final class CoreEditorSession implements EditorSession {
         this.store = Objects.requireNonNull(store, "store");
         this.playback = playback;
         this.ownerThread = Thread.currentThread();
+        store.addListener(documentListener);
     }
 
     @Override
@@ -494,10 +528,8 @@ public final class CoreEditorSession implements EditorSession {
         }
 
         closed = true;
-        drafts.clear();
-        currentTransactionId = NO_TRANSACTION;
-        interactions.clear();
-        interactionChoices.clear();
+        store.removeListener(documentListener);
+        clearSessionState();
     }
 
     // region 包内扩展点
@@ -614,6 +646,33 @@ public final class CoreEditorSession implements EditorSession {
     private void requireHostThread() {
         if (Thread.currentThread() != ownerThread) {
             throw new IllegalStateException("CoreEditorSession must be called on its owner thread");
+        }
+
+        applyPendingReset();
+    }
+
+    /// 整份换档后清理会话内状态：草稿、当前事务、选择 / 视图、交互请求与已记录选择。
+    ///
+    /// 不清空 [nextTransactionId]，只清空映射与当前指针；旧事务对象之后按未知事务拒绝，
+    /// 不会误命中新文档。
+    private void clearSessionState() {
+        drafts.clear();
+        currentTransactionId = NO_TRANSACTION;
+        interactions.clear();
+        interactionChoices.clear();
+        viewState = SessionViewState.initial();
+    }
+
+    /// 应用宿主线程之外挂起的换档清理。
+    private void applyPendingReset() {
+        if (!resetPending) {
+            return;
+        }
+
+        resetPending = false;
+
+        if (!closed) {
+            clearSessionState();
         }
     }
 

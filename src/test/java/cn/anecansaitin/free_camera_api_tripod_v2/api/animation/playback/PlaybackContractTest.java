@@ -44,7 +44,9 @@ class PlaybackContractTest {
     }
 
     private static FrameFacts facts() {
-        return new FrameFacts(snapshot(), DIMENSION, 7L, 1L, 0f, 1L, Map.of(), Map.of(), true);
+        return new FrameFacts(snapshot(), DIMENSION, 7L, 1L, 0f,
+                new cn.anecansaitin.free_camera_api_tripod_v2.api.animation.eval.WorldTime(12000, 24000),
+                1L, Map.of(), Map.of(), true);
     }
 
     private static RigQualityStatus quality() {

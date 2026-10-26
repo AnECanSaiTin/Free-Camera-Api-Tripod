@@ -45,7 +45,7 @@ import java.util.Objects;
 /// @param field      当前求值的矩形分量，非空
 /// @param time       文档时间，秒；有限且非负，`-0.0` 规范化为 `0.0`
 /// @param progress   动画进度，`[0, 1]`
-/// @param worldTime  世界时间，有限
+/// @param worldTime  内建量 `wt`：世界日进度，`[0, 1)`；来自 [cn.anecansaitin.free_camera_api_tripod_v2.api.animation.eval.WorldTime#progress]
 /// @param spatial    本帧已准备的空间读数，非空；没有读数时使用 [SpatialReadings#EMPTY]
 /// @param randomSeed `random()` 的种子；同一帧由调用方固定
 /// @param sampler    曲线采样器，非空；供公式里的 `TrackRef` 使用
@@ -80,9 +80,9 @@ public record LayoutEvalInput(
                     "LayoutEvalInput progress must be finite and in [0, 1]: " + progress);
         }
 
-        if (!Float.isFinite(worldTime)) {
+        if (!Float.isFinite(worldTime) || worldTime < 0f || worldTime >= 1f) {
             throw new IllegalArgumentException(
-                    "LayoutEvalInput worldTime must be finite: " + worldTime);
+                    "LayoutEvalInput worldTime must be finite and in [0, 1): " + worldTime);
         }
 
         // -0.0 规范化；其余有效时间不变（与 ExpressionInputs / CurveSampleRequest 一致）

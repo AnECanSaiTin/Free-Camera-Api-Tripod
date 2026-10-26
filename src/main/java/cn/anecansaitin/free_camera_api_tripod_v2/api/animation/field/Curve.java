@@ -10,7 +10,9 @@ import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /// 一条曲线：严格递增的关键帧序列 + 首尾之外的 wrap 模式。
 ///
@@ -19,6 +21,10 @@ import java.util.List;
 /// 键时间**严格递增且唯一**（主设计 §4.4 / D17）：同一轨道内不允许两个键落在同一时刻，
 /// 也不自动量化、不静默覆盖冲突键。构造时按键时间升序整理并校验唯一性；
 /// 键本身是不可变 `Keyframe`，因此只复制容器，不复制元素。
+///
+/// `KeyId` 是稳定编辑身份（主设计 §3.1）：同一条曲线内必须唯一，否则“按 ID 改值”会
+/// 只命中第一个同名键，编辑目标出现歧义。该约束在构造期与统一校验 L2 双重执行；
+/// 全文档作用域的 `KeyId` 复用仍留待后续统一裁决。
 ///
 /// 时间冲突的处理属于**编辑层**：移动或粘贴撞到已有时刻时，整个候选被拒绝，
 /// 并提供覆盖、合并或跳过的显式操作（主设计 §4.4）。构造器抛异常只用于兜底，
@@ -78,6 +84,17 @@ public record Curve(List<Keyframe> keys, Wrap preMode, Wrap postMode) {
                 if (current == previous) {
                     throw new IllegalArgumentException(
                             "Keyframe times must be unique within a curve; duplicate at " + current + "s");
+                }
+            }
+
+            // 稳定身份也要唯一：同轨同 KeyId 会让按 ID 定位 / 改值出现歧义（主设计 §3.1）。
+            Set<KeyId> keyIds = new HashSet<>(sorted.size());
+
+            for (Keyframe key : sorted) {
+                if (!keyIds.add(key.keyId())) {
+                    throw new IllegalArgumentException(
+                            "Keyframe key ids must be unique within a curve; duplicate key id "
+                                    + key.keyId());
                 }
             }
         }

@@ -9,6 +9,7 @@ import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.EditTarg
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.EditTransaction;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.PreviewState;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.Revision;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.SessionSwitch;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.Diagnostic;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.DiagnosticCode;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.EditOp;
@@ -354,6 +355,50 @@ class CoreEditorSessionTest {
     }
 
     @Test
+    void switchDocumentClearsDraftsSelectionAndInteractions() {
+        CameraAnimation first = document("first", 10f);
+        CameraAnimation second = document("second", 10f);
+        CoreAnimationDocumentStore store = store(first);
+        CoreEditorSession session = new CoreEditorSession(store, null);
+
+        SessionViewState initial = session.viewState();
+        SessionViewState modified = new SessionViewState(
+                2.5f,
+                initial.selection(),
+                initial.timeline(),
+                initial.snapping(),
+                null,
+                initial.trackVisibility(),
+                EditorToolState.SELECT,
+                new RigId("rig"),
+                Map.of());
+        session.updateViewState(modified);
+        EditTransaction transaction = session.beginEdit(new EditTarget.Document(), LABEL);
+        session.updateDraftOperation(transaction, new EditOp.RenameDocument("draft"));
+        session.addInteraction(interaction(1L, "ok", "cancel"));
+
+        EditResult switched = store.switchDocument(
+                second, store.snapshot().revision(), SessionSwitch.SWITCH);
+
+        assertTrue(switched instanceof EditResult.Applied);
+        // 整份换档清空旧草稿、选择 / 视图、交互请求与已记录选择。
+        assertEquals(SessionViewState.initial(), session.viewState());
+        assertTrue(session.interactions().isEmpty());
+        assertTrue(session.interactionChoices().isEmpty());
+        assertNull(session.draft(transaction).candidate());
+        assertEquals(DiagnosticCode.TARGET_NOT_FOUND,
+                session.draft(transaction).diagnostics().getFirst().code());
+        EditResult commit = session.commit(transaction);
+        assertTrue(commit instanceof EditResult.Rejected);
+        assertEquals(DiagnosticCode.TARGET_NOT_FOUND,
+                ((EditResult.Rejected) commit).diagnostics().getFirst().code());
+        assertEquals(Revision.INITIAL.next(), session.snapshot().revision());
+        assertEquals("second", session.snapshot().document().name());
+
+        session.close();
+    }
+
+    @Test
     void chooseRequiresExistingRequestAndValidOption() {
         CoreEditorSession session = new CoreEditorSession(store("doc"), null);
         InteractionRequest request = interaction(1L, "ok", "cancel");
@@ -486,8 +531,26 @@ class CoreEditorSessionTest {
         CameraAnimation document = document("doc", 10f);
         CoreAnimationDocumentStore store = store(document);
         CorePlaybackService playback = new CorePlaybackService(store,
-                (snapshot, request, clock, fromTime, index, budget) -> {
-                    throw new AssertionError("prepareFrame is not expected in this test");
+                new cn.anecansaitin.free_camera_api_tripod_v2.core.animation.playback.PlaybackFrameFactory() {
+                    @Override
+                    public PreparedFrame prepare(
+                            cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.AnimationSnapshot snapshot,
+                            PlaybackRequest request,
+                            PlaybackClock clock,
+                            float fromTime,
+                            float toTime,
+                            long frameIndex,
+                            EventBudget eventBudget) {
+                        throw new AssertionError("prepareFrame is not expected in this test");
+                    }
+
+                    @Override
+                    public List<Diagnostic> prepareStart(
+                            cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.AnimationSnapshot snapshot,
+                            PlaybackRequest request,
+                            PlaybackClock clock) {
+                        return List.of();
+                    }
                 });
         CoreEditorSession session = new CoreEditorSession(store, playback);
 

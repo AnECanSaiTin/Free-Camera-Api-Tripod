@@ -91,6 +91,104 @@ class CoreDependencyGraphTest {
     }
 
     @Test
+    void unreferencedVariableCycleIsReported() {
+        CameraAnimation document = document(
+                constantTrack(A),
+                constantTrack(B),
+                new Symbols(List.of(new Variable("a", new Formula("a"))), List.of()));
+
+        CoreDependencyGraph graph = graph(document);
+
+        assertTrue(graph.cycleDiagnostics().stream().anyMatch(diagnostic ->
+                diagnostic.message().toString().contains("Variable cycle")),
+                () -> "unexpected: " + graph.cycleDiagnostics());
+    }
+
+    @Test
+    void unreferencedFunctionCycleIsReported() {
+        CameraAnimation document = document(
+                constantTrack(A),
+                constantTrack(B),
+                new Symbols(List.of(), List.of(new CustomFunction("f", List.of(), "f()"))));
+
+        CoreDependencyGraph graph = graph(document);
+
+        assertTrue(graph.cycleDiagnostics().stream().anyMatch(diagnostic ->
+                diagnostic.message().toString().contains("Function cycle")),
+                () -> "unexpected: " + graph.cycleDiagnostics());
+    }
+
+    @Test
+    void globalVariableFormulaDoesNotSeeFunctionParameters() {
+        CameraAnimation document = document(
+                formulaTrack(A, "f(1)"),
+                constantTrack(B),
+                new Symbols(
+                        List.of(new Variable("v", new Formula("x")),
+                                new Variable("x", new TrackRef(B))),
+                        List.of(new CustomFunction("f", List.of("x"), "v"))));
+
+        CoreDependencyGraph graph = graph(document);
+
+        assertEquals(java.util.Set.of(B), graph.dependenciesOf(A));
+        assertTrue(graph.diagnostics().isEmpty(), () -> "unexpected: " + graph.diagnostics());
+    }
+
+    @Test
+    void trackCycleHiddenByFunctionParameterIsReported() {
+        CameraAnimation document = document(
+                formulaTrack(A, "f(1)"),
+                constantTrack(B),
+                new Symbols(
+                        List.of(new Variable("v", new Formula("x")),
+                                new Variable("x", new TrackRef(A))),
+                        List.of(new CustomFunction("f", List.of("x"), "v"))));
+
+        CoreDependencyGraph graph = graph(document);
+
+        assertEquals(java.util.Set.of(A), graph.dependenciesOf(A));
+        assertTrue(graph.cycleDiagnostics().stream().anyMatch(diagnostic ->
+                        diagnostic.message().toString().contains("Track dependency cycle")),
+                () -> "unexpected: " + graph.cycleDiagnostics());
+    }
+
+    @Test
+    void calleeBodyDoesNotInheritCallerParameters() {
+        CameraAnimation document = document(
+                formulaTrack(A, "f(1)"),
+                constantTrack(B),
+                new Symbols(
+                        List.of(new Variable("x", new TrackRef(B))),
+                        List.of(new CustomFunction("f", List.of("x"), "g(x)"),
+                                new CustomFunction("g", List.of("y"), "x"))));
+
+        CoreDependencyGraph graph = graph(document);
+
+        assertEquals(java.util.Set.of(B), graph.dependenciesOf(A));
+        assertTrue(graph.diagnostics().isEmpty(), () -> "unexpected: " + graph.diagnostics());
+    }
+
+    @Test
+    void callArgumentsStayInCallerScope() {
+        CameraAnimation document = document(
+                formulaTrack(A, "f(1)"),
+                constantTrack(B),
+                new Symbols(
+                        List.of(new Variable("a", new TrackRef(A)),
+                                new Variable("c", new TrackRef(B))),
+                        List.of(new CustomFunction("f", List.of("a"), "g(a)"),
+                                new CustomFunction("g", List.of("b"), "c"))));
+
+        CoreDependencyGraph graph = graph(document);
+
+        // 实参 a 是 f 的形参：若误按 g 的作用域展开，会读到全局 a 并形成 A → A 环。
+        assertEquals(java.util.Set.of(B), graph.dependenciesOf(A));
+        assertTrue(graph.cycleDiagnostics().isEmpty(),
+                () -> "unexpected cycle: " + graph.cycleDiagnostics());
+        assertTrue(graph.diagnostics().isEmpty(), () -> "unexpected: " + graph.diagnostics());
+    }
+
+    @Test
     void functionArityMismatchIsReported() {
         CameraAnimation document = document(
                 formulaTrack(A, "f(1, 2)"),

@@ -7,6 +7,7 @@ import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.SessionS
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.Diagnostic;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.EditResult;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.LocalizedMessage;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.Severity;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.playback.EventBudget;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.playback.PlaybackClock;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.playback.PlaybackFailure;
@@ -92,20 +93,40 @@ public final class CorePlaybackService implements PlaybackService {
         List<Diagnostic> requestDiagnostics = PlaybackRequestValidator.validate(request, expectedRevision);
 
         if (!requestDiagnostics.isEmpty()) {
-            return new StartResult(false, new PlaybackFailure(
-                    PlaybackFailure.Reason.EVALUATION_ERROR,
-                    LocalizedMessage.literal("Playback request validation failed"),
-                    started.clock().time(), requestDiagnostics));
+            return startRejected(started, "Playback request validation failed", requestDiagnostics);
         }
 
-        if (!store.snapshot().document().equals(request.animation())) {
-            EditResult switched = store.switchDocument(request.animation(), expectedRevision, SessionSwitch.LOAD);
+        AnimationSnapshot current = store.snapshot();
+        boolean needsSwitch = !current.document().equals(request.animation());
+
+        // 候选快照只用于启动准备，尚未发布；若需要换档，其序号与 switchDocument 将产生的一致。
+        AnimationSnapshot candidate = needsSwitch
+                ? new AnimationSnapshot(current.revision().next(), request.animation())
+                : current;
+
+        List<Diagnostic> preparationDiagnostics;
+
+        try {
+            preparationDiagnostics = frameFactory.prepareStart(candidate, request, started.clock());
+        } catch (RuntimeException exception) {
+            return startRejected(started,
+                    "Initial playback preparation failed: " + messageOf(exception), List.of());
+        }
+
+        if (hasError(preparationDiagnostics)) {
+            return startRejected(started, "Initial playback preparation failed",
+                    preparationDiagnostics);
+        }
+
+        // 初始事实、锚点、姿态与来源全部通过后才换档；失败时原文档、序号与播放状态不变。
+        if (needsSwitch) {
+            EditResult switched = store.switchDocument(
+                    request.animation(), current.revision(), SessionSwitch.LOAD);
 
             if (switched instanceof EditResult.Rejected rejected) {
-                return new StartResult(false, new PlaybackFailure(
-                        PlaybackFailure.Reason.EVALUATION_ERROR,
-                        LocalizedMessage.literal("Playback request document was rejected by the document store"),
-                        started.clock().time(), rejected.diagnostics()));
+                return startRejected(started,
+                        "Playback request document was rejected by the document store",
+                        rejected.diagnostics());
             }
         }
 
@@ -114,6 +135,15 @@ public final class CorePlaybackService implements PlaybackService {
         this.state = PlaybackState.PLAYING;
         this.failure = null;
         return new StartResult(true, null);
+    }
+
+    private static StartResult startRejected(PlaybackTimeline started,
+                                             String message,
+                                             List<Diagnostic> diagnostics) {
+        return new StartResult(false, new PlaybackFailure(
+                PlaybackFailure.Reason.EVALUATION_ERROR,
+                LocalizedMessage.literal(message),
+                started.clock().time(), diagnostics));
     }
 
     @Override
@@ -174,13 +204,17 @@ public final class CorePlaybackService implements PlaybackService {
             return null;
         }
 
-        float fromTime = timeline.time();
+        // 使用未取模终点作为事件区间边界：循环跨多个周期时，只比较两个已取模相位会丢失
+        // 完整周期的事件（主设计 §7.4）。
+        float fromTime = timeline.advancedTime();
         timeline = timeline.advance(deltaSeconds);
+        float toTime = timeline.advancedTime();
         PreparedFrame frame;
 
         try {
             frame = frameFactory.prepare(
-                    store.snapshot(), request, timeline.clock(), fromTime, frameIndex, eventBudget);
+                    store.snapshot(), request, timeline.clock(),
+                    fromTime, toTime, frameIndex, eventBudget);
         } catch (RuntimeException exception) {
             halt(failure(PlaybackFailure.Reason.EVALUATION_ERROR,
                     "Frame preparation failed: " + messageOf(exception), timeline.time(), List.of()));
@@ -206,6 +240,10 @@ public final class CorePlaybackService implements PlaybackService {
     private StartResult startFailure(PlaybackFailure.Reason reason, String message) {
         PlaybackFailure failure = failure(reason, message, timeline.time(), List.of());
         return new StartResult(false, failure);
+    }
+
+    private static boolean hasError(List<Diagnostic> diagnostics) {
+        return diagnostics.stream().anyMatch(diagnostic -> diagnostic.severity() == Severity.ERROR);
     }
 
     private static PlaybackFailure failure(PlaybackFailure.Reason reason,

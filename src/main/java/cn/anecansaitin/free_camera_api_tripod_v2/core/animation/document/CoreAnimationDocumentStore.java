@@ -18,6 +18,7 @@ import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.Severity;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.registry.DocumentRegistries;
 import cn.anecansaitin.free_camera_api_tripod_v2.core.animation.validation.UnifiedDocumentValidator;
 import org.jspecify.annotations.NullMarked;
+import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -149,7 +150,7 @@ public final class CoreAnimationDocumentStore implements AnimationDocumentStore 
         undoStack.clear();
         redoStack.clear();
         undoStack.push(new UndoHistory.Entry(next, LocalizedMessage.literal("switch: " + reason.name())));
-        notifyListeners(next);
+        notifyListeners(next, reason);
 
         return new EditResult.Applied(next, diagnostics);
     }
@@ -296,11 +297,22 @@ public final class CoreAnimationDocumentStore implements AnimationDocumentStore 
     }
 
     private void notifyListeners(AnimationSnapshot next) {
+        notifyListeners(next, null);
+    }
+
+    /// 同一次通知周期内先发布变更，再（仅换档时）通知会话清理；期间同步提交仍被拒绝。
+    private void notifyListeners(AnimationSnapshot next, @Nullable SessionSwitch reason) {
         notifying = true;
 
         try {
             for (DocumentListener listener : listeners) {
                 listener.onDocumentChanged(next);
+            }
+
+            if (reason != null) {
+                for (DocumentListener listener : listeners) {
+                    listener.onSessionSwitched(next, reason);
+                }
             }
         } finally {
             notifying = false;
@@ -364,6 +376,10 @@ public final class CoreAnimationDocumentStore implements AnimationDocumentStore 
 
     private static DiagnosticCode classify(IllegalArgumentException exception) {
         String message = messageOf(exception).toLowerCase();
+
+        if (message.contains("key id") || message.contains("keyid")) {
+            return DiagnosticCode.DUPLICATE_KEY_ID;
+        }
 
         if (message.contains("unique") || message.contains("duplicate")) {
             return DiagnosticCode.DUPLICATE_KEY_TIME;

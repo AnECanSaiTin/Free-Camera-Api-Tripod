@@ -21,6 +21,8 @@ import java.util.Objects;
 ///   `SPATIAL_CONTEXT_MISSING` 错误，而不是猜一个机位。`TrackRef` 不使用本字段——
 ///   它切到被引用轨道所属机位（主设计 §6.1）。
 /// - `time` / `progress` / `worldTime`：内建量 `t` / `p` / `wt` 的本帧取值。
+///   `wt` 是**世界日进度** `[0,1)`，唯一来源是 [FrameFacts#worldTime] 的
+///   [WorldTime#progress]；不能把游戏刻或秒数直接塞进本字段。
 /// - `spatial`：本帧已准备的空间读数；只读外部锚点/目标事实，不反读待求值相机。
 /// - `randomSeed`：`random()` 的唯一随机来源。`random()` 明确非确定；需要确定性的公式
 ///   必须使用 `noise(seed, t)`。
@@ -36,7 +38,7 @@ import java.util.Objects;
 /// @param rigId      空间上下文机位；无上下文时为空
 /// @param time       内建量 `t`：文档时间，秒，有限且非负
 /// @param progress   内建量 `p`：动画进度，`[0, 1]`
-/// @param worldTime  内建量 `wt`：世界时间读数，有限
+/// @param worldTime  内建量 `wt`：世界日进度，`[0, 1)`
 /// @param spatial    本帧空间读数
 /// @param randomSeed `random()` 的随机种子
 /// @param session    本帧共享执行会话；非空
@@ -69,8 +71,9 @@ public record ExpressionInputs(
             throw new IllegalArgumentException("ExpressionInputs progress must be finite and in [0, 1]: " + progress);
         }
 
-        if (!Float.isFinite(worldTime)) {
-            throw new IllegalArgumentException("ExpressionInputs worldTime must be finite: " + worldTime);
+        if (!Float.isFinite(worldTime) || worldTime < 0f || worldTime >= 1f) {
+            throw new IllegalArgumentException(
+                    "ExpressionInputs worldTime must be finite and in [0, 1): " + worldTime);
         }
     }
 }

@@ -171,6 +171,7 @@ public final class CoreFrameFactsProvider implements FrameFactsProvider {
                 request.worldInstanceId(),
                 request.gameTick(),
                 request.partialTick(),
+                request.worldTime(),
                 version,
                 rigs,
                 table.readings(),

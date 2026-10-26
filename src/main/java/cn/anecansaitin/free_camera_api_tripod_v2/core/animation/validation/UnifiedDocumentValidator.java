@@ -8,6 +8,7 @@ import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.CameraRig;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.CameraSource;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.CameraSourceTrack;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.CurveTrack;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.RigView;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.ValueKeyframe;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.Revision;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.Diagnostic;
@@ -17,11 +18,14 @@ import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.DocumentVali
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.LocalizedMessage;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.Severity;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit.ValidationLayer;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field.AnimatedNumber;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field.Curve;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field.CustomFunction;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field.Keyframe;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field.TrackRef;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field.Variable;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.DocumentObjectId;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.KeyId;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.PathNodeId;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.RigId;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.TrackId;
@@ -36,6 +40,7 @@ import cn.anecansaitin.free_camera_api_tripod_v2.api.spatial.AimState;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.spatial.AimTarget;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.spatial.Anchor;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.spatial.Space;
+import cn.anecansaitin.free_camera_api_tripod_v2.core.animation.eval.CoreDependencyGraph;
 import net.minecraft.resources.Identifier;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
@@ -51,9 +56,10 @@ import java.util.function.Supplier;
 ///
 /// ## 当前覆盖
 ///
-/// - L2：稳定 ID 唯一性、世界采样名称唯一、相机来源机位存在、`TrackRef` 目标存在且为曲线轨道、
-///   注册类型存在、类型校验器分派。
-/// - L3：注视掩码不得包含 Roll、来源机位在全部阶跃区间内活动。
+/// - L2：稳定 ID 唯一性、同轨 `KeyId` 唯一、世界采样名称唯一、相机来源机位存在、
+///   `TrackRef` 目标存在且为曲线轨道、注册类型存在、类型校验器分派。
+/// - L3：注视掩码不得包含 Roll、来源机位在全部阶跃区间内活动、表达式引用绑定，
+///   以及在完整候选上构建的依赖环诊断（含未被轨道引用的变量 / 函数与布局公式）。
 /// - L4：曲线曲柄长度范围。
 ///
 /// 表达式语法、资源规模、真实世界查询和跨文档引用不在本类范围；它们分别属于表达式编译器、
@@ -267,6 +273,7 @@ public final class UnifiedDocumentValidator implements DocumentValidator {
         checkDocumentIds(document, diagnostics);
         checkSymbolNames(document, diagnostics);
         checkSampleNames(document, diagnostics);
+        checkKeyIds(document, diagnostics);
         checkReferences(document, diagnostics);
     }
 
@@ -388,6 +395,92 @@ public final class UnifiedDocumentValidator implements DocumentValidator {
         }
     }
 
+    /// 同一条曲线 / 状态轨道内 `KeyId` 必须唯一（主设计 §3.1 的稳定 ID 约束）。
+    ///
+    /// 构造期已经拒绝重复，这里在发布校验再核对一次：编辑层按 ID 改值时必须只有一个命中，
+    /// 不能让“同 KeyId、不同时间”的两个键同时进入候选。全文档作用域复用仍留待后续统一裁决。
+    private void checkKeyIds(CameraAnimation document, List<Diagnostic> diagnostics) {
+        for (int rigIndex = 0; rigIndex < document.rigs().size(); rigIndex++) {
+            CameraRig rig = document.rigs().get(rigIndex);
+            String prefix = "rigs[" + rigIndex + "]";
+
+            for (int channelIndex = 0; channelIndex < rig.channels().size(); channelIndex++) {
+                CurveTrack channel = rig.channels().get(channelIndex);
+                checkCurveKeyIds(channel.curve(), channel.id(),
+                        prefix + ".channels[" + channelIndex + "].curve", diagnostics);
+            }
+
+            checkStateKeyIds(rig.aim().keys(), rig.aim().id(),
+                    prefix + ".aim.keys", diagnostics);
+            checkStateKeyIds(rig.view().active().keys(), rig.view().active().id(),
+                    prefix + ".view.active.keys", diagnostics);
+            checkRectKeyIds(rig.view().rect(), rig.id(),
+                    prefix + ".view.rect", diagnostics);
+        }
+
+        checkStateKeyIds(document.cameraSource().keys(), document.cameraSource().id(),
+                "camera_source.keys", diagnostics);
+    }
+
+    private void checkCurveKeyIds(Curve curve,
+                                  DocumentObjectId objectId,
+                                  String fieldPath,
+                                  List<Diagnostic> diagnostics) {
+        Set<KeyId> ids = new HashSet<>();
+
+        for (Keyframe key : curve.keys()) {
+            if (!ids.add(key.keyId())) {
+                diagnostics.add(error(DiagnosticCode.DUPLICATE_KEY_ID,
+                        "Duplicate key id " + key.keyId() + " in " + fieldPath,
+                        objectId, fieldPath));
+            }
+        }
+    }
+
+    private void checkStateKeyIds(List<? extends ValueKeyframe<?>> keys,
+                                  DocumentObjectId objectId,
+                                  String fieldPath,
+                                  List<Diagnostic> diagnostics) {
+        Set<KeyId> ids = new HashSet<>();
+
+        for (ValueKeyframe<?> key : keys) {
+            if (!ids.add(key.keyId())) {
+                diagnostics.add(error(DiagnosticCode.DUPLICATE_KEY_ID,
+                        "Duplicate key id " + key.keyId() + " in " + fieldPath,
+                        objectId, fieldPath));
+            }
+        }
+    }
+
+    private void checkRectKeyIds(RigView.Rect rect,
+                                 DocumentObjectId objectId,
+                                 String fieldPath,
+                                 List<Diagnostic> diagnostics) {
+        switch (rect) {
+            case RigView.Rect.Normalized normalized -> {
+                checkAnimatedKeyIds(normalized.x(), objectId, fieldPath + ".x", diagnostics);
+                checkAnimatedKeyIds(normalized.y(), objectId, fieldPath + ".y", diagnostics);
+                checkAnimatedKeyIds(normalized.width(), objectId, fieldPath + ".width", diagnostics);
+                checkAnimatedKeyIds(normalized.height(), objectId, fieldPath + ".height", diagnostics);
+            }
+            case RigView.Rect.Anchored anchored -> {
+                checkAnimatedKeyIds(anchored.x(), objectId, fieldPath + ".x", diagnostics);
+                checkAnimatedKeyIds(anchored.y(), objectId, fieldPath + ".y", diagnostics);
+                checkAnimatedKeyIds(anchored.width(), objectId, fieldPath + ".width", diagnostics);
+                checkAnimatedKeyIds(anchored.height(), objectId, fieldPath + ".height", diagnostics);
+            }
+        }
+    }
+
+    private void checkAnimatedKeyIds(AnimatedNumber number,
+                                     DocumentObjectId objectId,
+                                     String fieldPath,
+                                     List<Diagnostic> diagnostics) {
+        if (number instanceof AnimatedNumber.Keyed keyed) {
+            checkCurveKeyIds(keyed.curve(), objectId, fieldPath + ".curve", diagnostics);
+        }
+    }
+
     private void checkReferences(CameraAnimation document, List<Diagnostic> diagnostics) {
         checkCameraSource(document, document.cameraSource().defaultValue(),
                 document.cameraSource().id(), "camera_source.default", diagnostics);
@@ -431,6 +524,9 @@ public final class UnifiedDocumentValidator implements DocumentValidator {
         checkAimMasks(document, diagnostics);
         checkSourceActivity(document, diagnostics);
         diagnostics.addAll(new ExpressionValidation(document, revision).validate());
+        // 独立依赖图的环诊断进入强制校验；未定义引用 / arity 由 ExpressionValidation 报告，
+        // 这里只取环，避免同一条问题重复两遍（主设计 §4.2 L3）。
+        diagnostics.addAll(CoreDependencyGraph.build(document, revision).cycleDiagnostics());
     }
 
     private void checkAimMasks(CameraAnimation document, List<Diagnostic> diagnostics) {

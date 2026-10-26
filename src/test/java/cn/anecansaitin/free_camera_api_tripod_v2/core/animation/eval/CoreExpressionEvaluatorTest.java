@@ -102,9 +102,9 @@ class CoreExpressionEvaluatorTest {
 
     @Test
     void builtinQuantitiesUseTheExplicitInputs() {
-        // time = 1.5, progress = 0.5, worldTime = 20。
-        assertEquals(11.5f, value("t + p * wt", EMPTY_SCENE, 1.5f), EPSILON);
-        assertEquals(18.5f, value("wt - t", EMPTY_SCENE, 1.5f), EPSILON);
+        // time = 1.5, progress = 0.5, worldTime = 0.5（世界日进度）。
+        assertEquals(1.75f, value("t + p * wt", EMPTY_SCENE, 1.5f), EPSILON);
+        assertEquals(-1.0f, value("wt - t", EMPTY_SCENE, 1.5f), EPSILON);
         assertEquals(0.5f, value("p"), EPSILON);
     }
 
@@ -231,6 +231,20 @@ class CoreExpressionEvaluatorTest {
         assertEquals(new ExpressionSource.Function("f"), failure.innermost().source());
         assertEquals(0, failure.innermost().diagnostic().start());
         assertEquals(5, failure.innermost().diagnostic().end());
+    }
+
+    @Test
+    void variableFormulaDoesNotSeeCallerFunctionParameters() {
+        Symbols symbols = new Symbols(List.of(
+                Variable.constant("x", 7f),
+                new Variable("v", new Formula("x + 1"))
+        ), List.of(
+                new CustomFunction("f", List.of("x"), "v")
+        ));
+        Scene scene = Scene.of(document(symbols));
+
+        // 形参 x 只对函数体直接可见；v 的公式回到文档作用域读取全局 x。
+        assertEquals(8f, value("f(2)", scene), EPSILON);
     }
 
     // endregion
@@ -499,15 +513,16 @@ class CoreExpressionEvaluatorTest {
         EvaluationSession session = EvaluationSession.create(workQuota, maxDepth);
         EvaluationContext context = context(scene);
         ExpressionInputs inputs = new ExpressionInputs(context, ENTRY_SOURCE, RIG, time,
-                0.5f, 20f, SpatialReadings.EMPTY, seed, session, new ConstantCurveSampler());
+                0.5f, 0.5f, SpatialReadings.EMPTY, seed, session, new ConstantCurveSampler());
 
         return new Run(EVALUATOR.evaluate(expression, inputs), session);
     }
 
     private static EvaluationContext context(Scene scene) {
         AnimationSnapshot snapshot = new AnimationSnapshot(REVISION, scene.document());
-        FrameFacts facts = new FrameFacts(snapshot, DIMENSION, 1L, 2L, 0.5f, 1L,
-                Map.of(), scene.readings(), true);
+        FrameFacts facts = new FrameFacts(snapshot, DIMENSION, 1L, 2L, 0.5f,
+                new cn.anecansaitin.free_camera_api_tripod_v2.api.animation.eval.WorldTime(12000, 24000),
+                1L, Map.of(), scene.readings(), true);
         TrackLookup lookup = scene.document()::curveTrack;
         TrackIndex index = new FixedTrackIndex(snapshot, scene.entries());
 

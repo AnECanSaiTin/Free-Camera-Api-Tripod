@@ -17,6 +17,8 @@ import java.util.Objects;
 /// - `dimension` / `worldInstanceId`：世界身份；同维度重进世界必须是新的世界实例身份，
 ///   解析与采样缓存都据此失效（主设计 §3.4）；
 /// - `gameTick` / `partialTick`：采样时间元数据与实体空间插值；
+/// - `worldTime`：世界日时刻与昼夜长度。公式内建量 `wt` 只由这里归一化一次，
+///   通道与布局共用同一值；昼夜长度可由数据包修改，不能写死 24000；
 /// - `plan`：宿主按动画时间、播放覆盖与实际依赖算出的[FrameFactsPlan]，
 ///   逐机位给出锚点 / 目标需求与生效注视状态。请求不再用一个 `Set<RigId>` 表示“需要这个机位”：
 ///   它无法区分“只需要锚点”与“锚点加目标”，也无法说明生效的覆盖结果；
@@ -33,6 +35,7 @@ import java.util.Objects;
 /// @param worldInstanceId 世界实例身份，非负
 /// @param gameTick        采集时的游戏刻，非负
 /// @param partialTick     帧内插值比例，`[0, 1)`
+/// @param worldTime       世界日时刻与昼夜长度；`wt` 的入口事实
 /// @param plan            本帧空间准备计划；机位必须存在于快照
 /// @param session         本帧共享执行会话
 @NullMarked
@@ -43,12 +46,14 @@ public record FrameFactsRequest(
         long worldInstanceId,
         long gameTick,
         float partialTick,
+        WorldTime worldTime,
         FrameFactsPlan plan,
         EvaluationSession session) {
 
     public FrameFactsRequest {
         Objects.requireNonNull(snapshot, "snapshot");
         Objects.requireNonNull(dimension, "dimension");
+        Objects.requireNonNull(worldTime, "worldTime");
         Objects.requireNonNull(plan, "plan");
         Objects.requireNonNull(session, "session");
 

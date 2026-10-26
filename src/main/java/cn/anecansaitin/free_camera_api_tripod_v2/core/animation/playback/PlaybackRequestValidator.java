@@ -49,6 +49,7 @@ public final class PlaybackRequestValidator {
                     "startTime " + request.startTime() + " is outside [0, " + duration + "]"));
         }
 
+        // 覆盖必须先指向存在的机位；未知 RigId 不能被隐式忽略。
         for (var entry : request.rigOverrides().entrySet()) {
             RigId rigId = entry.getKey();
             RigPlaybackOverrides overrides = entry.getValue();
@@ -65,12 +66,23 @@ public final class PlaybackRequestValidator {
                 diagnostics.add(error(revision, rigId,
                         "Playback aim override must not enable Roll (z mask)"));
             }
+        }
 
-            if (rig.space() instanceof Space.Local local
-                    && overrides.anchor() == null
-                    && local.defaultAnchor() == null) {
-                diagnostics.add(error(revision, rigId,
-                        "Local rig " + rigId + " requires an anchor from the document or playback request"));
+        // 局部空间是否在启动前有有效锚点，不能只看覆盖条目：请求可能完全没有列出该机位，
+        // 而文档默认锚点也为空。这里遍历**全部机位**，按生效优先级判断（主设计 §6.3、§7.1）。
+        for (CameraRig rig : document.rigs()) {
+            if (!(rig.space() instanceof Space.Local local)) {
+                continue;
+            }
+
+            RigPlaybackOverrides overrides = request.rigOverrides().getOrDefault(
+                    rig.id(), RigPlaybackOverrides.INHERIT);
+            boolean hasAnchor = (overrides.anchor() != null || local.defaultAnchor() != null);
+
+            if (!hasAnchor) {
+                diagnostics.add(error(revision, rig.id(),
+                        "Local rig " + rig.id()
+                                + " requires an anchor from the document or playback request"));
             }
         }
 

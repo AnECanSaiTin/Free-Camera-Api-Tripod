@@ -26,10 +26,12 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -106,16 +108,62 @@ class CorePlaybackServiceTest {
     }
 
     @Test
+    void startPreparationFailureKeepsOldDocumentAndPlaybackState() {
+        CameraAnimation first = document("first", 10f);
+        CameraAnimation second = document("second", 10f);
+        CoreAnimationDocumentStore store = store(first);
+        Diagnostic preparationError = new Diagnostic(DiagnosticCode.INVALID_EDIT, Severity.ERROR,
+                LocalizedMessage.literal("anchor could not be resolved"),
+                new DiagnosticScope.Document(new Revision(1)), null, null);
+        AtomicBoolean failPreparation = new AtomicBoolean(false);
+        CorePlaybackService service = new CorePlaybackService(store, new PlaybackFrameFactory() {
+            @Override
+            public PreparedFrame prepare(AnimationSnapshot snapshot,
+                                         PlaybackRequest request,
+                                         PlaybackClock clock,
+                                         float fromTime,
+                                         float toTime,
+                                         long frameIndex,
+                                         EventBudget eventBudget) {
+                throw new AssertionError("prepare must not be reached after a rejected start");
+            }
+
+            @Override
+            public List<Diagnostic> prepareStart(AnimationSnapshot snapshot,
+                                                 PlaybackRequest request,
+                                                 PlaybackClock clock) {
+                return failPreparation.get() ? List.of(preparationError) : List.of();
+            }
+        });
+
+        assertTrue(service.start(request(first, 0f), Revision.INITIAL).accepted());
+        assertEquals(PlaybackState.PLAYING, service.state());
+        PlaybackClock previousClock = service.clock();
+        failPreparation.set(true);
+
+        PlaybackService.StartResult rejected = service.start(
+                request(second, 0f), Revision.INITIAL);
+
+        assertFalse(rejected.accepted());
+        assertEquals(PlaybackState.PLAYING, service.state());
+        assertEquals(previousClock, service.clock());
+        assertEquals(Revision.INITIAL, store.snapshot().revision());
+        assertEquals(first, store.snapshot().document());
+        assertTrue(rejected.failure().diagnostics().contains(preparationError));
+    }
+
+    @Test
     void prepareFrameAdvancesClockAndPassesBudget() {
         CameraAnimation document = document("doc", 10f);
         CoreAnimationDocumentStore store = store(document);
         AtomicReference<PlaybackClock> seenClock = new AtomicReference<>();
         AtomicReference<EventBudget> seenBudget = new AtomicReference<>();
-        CorePlaybackService service = new CorePlaybackService(store, (snapshot, request, clock, fromTime, index, budget) -> {
-            seenClock.set(clock);
-            seenBudget.set(budget);
-            return frame(clock, snapshot, List.of());
-        });
+        CorePlaybackService service = new CorePlaybackService(store,
+                frameFactory((snapshot, request, clock, fromTime, toTime, index, budget) -> {
+                    seenClock.set(clock);
+                    seenBudget.set(budget);
+                    return frame(clock, snapshot, List.of());
+                }));
 
         service.start(request(document, 0f), Revision.INITIAL);
         PreparedFrame frame = service.prepareFrame(7L, 2f, BUDGET);
@@ -126,14 +174,36 @@ class CorePlaybackServiceTest {
     }
 
     @Test
+    void loopAdvancePassesUnwrappedIntervalToFrameFactory() {
+        CameraAnimation document = document("doc", 10f);
+        CoreAnimationDocumentStore store = store(document);
+        AtomicReference<Float> seenFrom = new AtomicReference<>();
+        AtomicReference<Float> seenTo = new AtomicReference<>();
+        CorePlaybackService service = new CorePlaybackService(store,
+                frameFactory((snapshot, request, clock, fromTime, toTime, index, budget) -> {
+                    seenFrom.set(fromTime);
+                    seenTo.set(toTime);
+                    return frame(clock, snapshot, List.of());
+                }));
+
+        PlaybackRequest looped = new PlaybackRequest(document, Map.of(), 1f, true, 2f);
+        assertTrue(service.start(looped, Revision.INITIAL).accepted());
+
+        assertNotNull(service.prepareFrame(0L, 20f, BUDGET));
+        assertEquals(2f, seenFrom.get(), 1e-5f);
+        assertEquals(22f, seenTo.get(), 1e-5f);
+    }
+
+    @Test
     void errorDiagnosticHaltsAndReturnsNoFrame() {
         CameraAnimation document = document("doc", 10f);
         CoreAnimationDocumentStore store = store(document);
         Diagnostic error = new Diagnostic(DiagnosticCode.INVALID_EDIT, Severity.ERROR,
                 LocalizedMessage.literal("bad"), new DiagnosticScope.Document(Revision.INITIAL),
                 null, null);
-        CorePlaybackService service = new CorePlaybackService(store, (snapshot, request, clock, fromTime, index, budget) ->
-                frame(clock, snapshot, List.of(error)));
+        CorePlaybackService service = new CorePlaybackService(store,
+                frameFactory((snapshot, request, clock, fromTime, toTime, index, budget) ->
+                        frame(clock, snapshot, List.of(error))));
 
         service.start(request(document, 0f), Revision.INITIAL);
 
@@ -146,9 +216,10 @@ class CorePlaybackServiceTest {
     void factoryExceptionHalts() {
         CameraAnimation document = document("doc", 10f);
         CoreAnimationDocumentStore store = store(document);
-        CorePlaybackService service = new CorePlaybackService(store, (snapshot, request, clock, fromTime, index, budget) -> {
-            throw new IllegalStateException("boom");
-        });
+        CorePlaybackService service = new CorePlaybackService(store,
+                frameFactory((snapshot, request, clock, fromTime, toTime, index, budget) -> {
+                    throw new IllegalStateException("boom");
+                }));
 
         service.start(request(document, 0f), Revision.INITIAL);
 
@@ -193,12 +264,48 @@ class CorePlaybackServiceTest {
     }
 
     private static PlaybackFrameFactory frameFactory(CameraAnimation document) {
-        return (snapshot, request, clock, fromTime, index, budget) -> frame(clock, snapshot, List.of());
+        return frameFactory((snapshot, request, clock, fromTime, toTime, index, budget) ->
+                frame(clock, snapshot, List.of()));
+    }
+
+    private static PlaybackFrameFactory frameFactory(PrepareFrame prepareFrame) {
+        return new PlaybackFrameFactory() {
+            @Override
+            public PreparedFrame prepare(AnimationSnapshot snapshot,
+                                         PlaybackRequest request,
+                                         PlaybackClock clock,
+                                         float fromTime,
+                                         float toTime,
+                                         long frameIndex,
+                                         EventBudget eventBudget) {
+                return prepareFrame.prepare(snapshot, request, clock, fromTime, toTime,
+                        frameIndex, eventBudget);
+            }
+
+            @Override
+            public List<Diagnostic> prepareStart(AnimationSnapshot snapshot,
+                                                 PlaybackRequest request,
+                                                 PlaybackClock clock) {
+                return List.of();
+            }
+        };
+    }
+
+    @FunctionalInterface
+    private interface PrepareFrame {
+        PreparedFrame prepare(AnimationSnapshot snapshot,
+                              PlaybackRequest request,
+                              PlaybackClock clock,
+                              float fromTime,
+                              float toTime,
+                              long frameIndex,
+                              EventBudget eventBudget);
     }
 
     private static PreparedFrame frame(PlaybackClock clock, AnimationSnapshot snapshot, List<Diagnostic> diagnostics) {
-        FrameFacts facts = new FrameFacts(snapshot, DIMENSION, 1L, 0L, 0.5f, 1L,
-                Map.of(), Map.of(), true);
+        FrameFacts facts = new FrameFacts(snapshot, DIMENSION, 1L, 0L, 0.5f,
+                new cn.anecansaitin.free_camera_api_tripod_v2.api.animation.eval.WorldTime(12000, 24000),
+                1L, Map.of(), Map.of(), true);
         return new PreparedFrame(clock, snapshot, CameraSource.player(), List.of(), List.of(), facts, diagnostics);
     }
 

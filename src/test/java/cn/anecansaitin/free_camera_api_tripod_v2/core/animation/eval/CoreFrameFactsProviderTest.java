@@ -731,7 +731,9 @@ class CoreFrameFactsProviderTest {
                                              float partialTick,
                                              long quota) {
         return new FrameFactsRequest(snapshot, 0f, DIMENSION, worldInstanceId, gameTick,
-                partialTick, plan, EvaluationSession.create(quota, MAX_DEPTH));
+                partialTick,
+                new cn.anecansaitin.free_camera_api_tripod_v2.api.animation.eval.WorldTime(12000, 24000),
+                plan, EvaluationSession.create(quota, MAX_DEPTH));
     }
 
     private static WorldSample sample(String name, Identifier kind, float argument, int resampleEveryTicks) {

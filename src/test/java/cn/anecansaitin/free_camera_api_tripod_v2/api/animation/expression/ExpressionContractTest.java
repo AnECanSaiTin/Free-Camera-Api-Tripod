@@ -139,7 +139,7 @@ class ExpressionContractTest {
         EvaluationSession session = EvaluationSession.create(128L, 64);
         ExpressionSource source = new ExpressionSource.Channel(new TrackId("track"), null);
 
-        ExpressionInputs valid = new ExpressionInputs(context, source, null, 1.5f, 0.5f, 20f,
+        ExpressionInputs valid = new ExpressionInputs(context, source, null, 1.5f, 0.5f, 0.5f,
                 SpatialReadings.EMPTY, 7L, session, unusedSampler());
 
         assertEquals(64, valid.session().maxDepth());
@@ -147,15 +147,19 @@ class ExpressionContractTest {
         assertEquals(source, valid.source());
 
         assertThrows(IllegalArgumentException.class, () -> new ExpressionInputs(
-                context, source, null, -1f, 0.5f, 20f, SpatialReadings.EMPTY, 0L, session, unusedSampler()));
+                context, source, null, -1f, 0.5f, 0.5f, SpatialReadings.EMPTY, 0L, session, unusedSampler()));
         assertThrows(IllegalArgumentException.class, () -> new ExpressionInputs(
-                context, source, null, 1f, 1.5f, 20f, SpatialReadings.EMPTY, 0L, session, unusedSampler()));
+                context, source, null, 1f, 1.5f, 0.5f, SpatialReadings.EMPTY, 0L, session, unusedSampler()));
         assertThrows(IllegalArgumentException.class, () -> new ExpressionInputs(
                 context, source, null, 1f, 0.5f, Float.NaN, SpatialReadings.EMPTY, 0L, session, unusedSampler()));
+        assertThrows(IllegalArgumentException.class, () -> new ExpressionInputs(
+                context, source, null, 1f, 0.5f, 1f, SpatialReadings.EMPTY, 0L, session, unusedSampler()));
+        assertThrows(IllegalArgumentException.class, () -> new ExpressionInputs(
+                context, source, null, 1f, 0.5f, -0.1f, SpatialReadings.EMPTY, 0L, session, unusedSampler()));
         assertThrows(NullPointerException.class, () -> new ExpressionInputs(
-                context, source, null, 1f, 0.5f, 20f, SpatialReadings.EMPTY, 0L, null, unusedSampler()));
+                context, source, null, 1f, 0.5f, 0.5f, SpatialReadings.EMPTY, 0L, null, unusedSampler()));
         assertThrows(NullPointerException.class, () -> new ExpressionInputs(
-                context, null, null, 1f, 0.5f, 20f, SpatialReadings.EMPTY, 0L, session, unusedSampler()));
+                context, null, null, 1f, 0.5f, 0.5f, SpatialReadings.EMPTY, 0L, session, unusedSampler()));
     }
 
     @Test
@@ -249,7 +253,9 @@ class ExpressionContractTest {
         FrameFacts facts = new FrameFacts(
                 snapshot,
                 Identifier.fromNamespaceAndPath("minecraft", "overworld"),
-                1L, 0L, 0.5f, 0L, Map.of(), Map.of(), true);
+                1L, 0L, 0.5f,
+                new cn.anecansaitin.free_camera_api_tripod_v2.api.animation.eval.WorldTime(12000, 24000),
+                0L, Map.of(), Map.of(), true);
 
         TrackLookup lookup = trackId -> Optional.empty();
         TrackIndex index = new TrackIndex() {

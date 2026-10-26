@@ -232,7 +232,7 @@ class LayoutEvaluatorTest {
         assertEquals(RIG, inputs.rigId());
         assertEquals(5f, inputs.time());
         assertEquals(0.25f, inputs.progress());
-        assertEquals(12.5f, inputs.worldTime());
+        assertEquals(0.25f, inputs.worldTime());
         assertSame(input.context(), inputs.context());
         assertSame(CURVE_SAMPLER, inputs.sampler());
     }
@@ -262,6 +262,10 @@ class LayoutEvaluatorTest {
         assertThrows(IllegalArgumentException.class, () -> new LayoutEvalInput(
                 context(), EvaluationSession.create(64L, 8), RIG,
                 ExpressionSource.LayoutField.X, Float.NaN, 0f, 0f,
+                SpatialReadings.EMPTY, 0L, CURVE_SAMPLER));
+        assertThrows(IllegalArgumentException.class, () -> new LayoutEvalInput(
+                context(), EvaluationSession.create(64L, 8), RIG,
+                ExpressionSource.LayoutField.X, 0f, 0f, 1f,
                 SpatialReadings.EMPTY, 0L, CURVE_SAMPLER));
     }
 
@@ -359,8 +363,9 @@ class LayoutEvaluatorTest {
                 new TrackId("aim"), new TrackId("active"));
         AnimationSnapshot snapshot = new AnimationSnapshot(REVISION,
                 CameraAnimation.create("doc", rig, new TrackId("source")));
-        FrameFacts facts = new FrameFacts(snapshot, DIMENSION, 1L, 10L, 0.5f, 1L,
-                Map.of(), Map.of(), true);
+        FrameFacts facts = new FrameFacts(snapshot, DIMENSION, 1L, 10L, 0.5f,
+                new cn.anecansaitin.free_camera_api_tripod_v2.api.animation.eval.WorldTime(12000, 24000),
+                1L, Map.of(), Map.of(), true);
         TrackLookup lookup = trackId -> Optional.empty();
         TrackIndex index = new TrackIndex() {
             @Override
@@ -390,7 +395,7 @@ class LayoutEvaluatorTest {
                                          float time,
                                          float progress) {
         return new LayoutEvalInput(context(), EvaluationSession.create(4096L, 16), RIG, field,
-                time, progress, 12.5f, SpatialReadings.EMPTY, 12345L, CURVE_SAMPLER);
+                time, progress, 0.25f, SpatialReadings.EMPTY, 12345L, CURVE_SAMPLER);
     }
 
     private static LayoutValue.Success success(LayoutValue value) {

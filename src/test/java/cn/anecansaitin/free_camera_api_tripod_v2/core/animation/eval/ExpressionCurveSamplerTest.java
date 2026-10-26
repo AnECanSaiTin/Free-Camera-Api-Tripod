@@ -157,8 +157,9 @@ class ExpressionCurveSamplerTest {
                 new TrackId("aim"), new TrackId("active"));
         AnimationSnapshot snapshot = new AnimationSnapshot(REVISION,
                 CameraAnimation.create("doc", rig, new TrackId("source")));
-        FrameFacts facts = new FrameFacts(snapshot, DIMENSION, 1L, 10L, 0.5f, 1L,
-                Map.of(), Map.of(), true);
+        FrameFacts facts = new FrameFacts(snapshot, DIMENSION, 1L, 10L, 0.5f,
+                new cn.anecansaitin.free_camera_api_tripod_v2.api.animation.eval.WorldTime(3000, 12000),
+                1L, Map.of(), Map.of(), true);
         TrackIndex index = new TrackIndex() {
             @Override
             public AnimationSnapshot snapshot() {

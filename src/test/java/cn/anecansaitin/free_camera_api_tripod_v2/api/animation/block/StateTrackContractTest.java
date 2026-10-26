@@ -130,6 +130,14 @@ class StateTrackContractTest {
     }
 
     @Test
+    void duplicateKeyIdsAtDifferentTimesAreRejectedInStateTracks() {
+        assertThrows(IllegalArgumentException.class, () -> ActiveTrack.of(
+                track("active"), "active", true, List.of(
+                        ValueKeyframe.at(key("same"), 0f, Boolean.TRUE),
+                        ValueKeyframe.at(key("same"), 1f, Boolean.FALSE))));
+    }
+
+    @Test
     void trackSortsKeysWithoutMutatingInput() {
         List<ValueKeyframe<Boolean>> input = new ArrayList<>(List.of(
                 ValueKeyframe.at(key("late"), 5f, Boolean.TRUE),

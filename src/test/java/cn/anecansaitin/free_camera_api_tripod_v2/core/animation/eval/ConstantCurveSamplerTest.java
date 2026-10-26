@@ -16,6 +16,7 @@ import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.eval.FrameFacts;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.eval.SampleStatus;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.eval.TrackIndex;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.eval.TrackLookup;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.eval.WorldTime;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field.Constant;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field.Curve;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field.Formula;
@@ -272,8 +273,8 @@ class ConstantCurveSamplerTest {
             }
         };
 
-        FrameFacts facts = new FrameFacts(snapshot, DIMENSION, 1L, 2L, 0.5f, 1L,
-                Map.of(), Map.of(), true);
+        FrameFacts facts = new FrameFacts(snapshot, DIMENSION, 1L, 2L, 0.5f,
+                new WorldTime(12000, 24000), 1L, Map.of(), Map.of(), true);
 
         return EvaluationContext.bind(11L, snapshot, facts, lookup, index);
     }

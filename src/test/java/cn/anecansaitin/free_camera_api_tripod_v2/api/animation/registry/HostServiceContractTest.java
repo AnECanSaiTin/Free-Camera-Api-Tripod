@@ -13,6 +13,7 @@ import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.eval.EvaluationSe
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.eval.FrameFactsPlan;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.eval.FrameFactsRequest;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.eval.SpatialResolution;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.eval.WorldTime;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.RigId;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.TrackId;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.playback.AimOverride;
@@ -48,6 +49,7 @@ class HostServiceContractTest {
     private static final Identifier ANCHOR_TYPE =
             Identifier.fromNamespaceAndPath("free_camera_api_tripod", "test_anchor");
     private static final RigId RIG = new RigId("rig");
+    private static final WorldTime WORLD_TIME = new WorldTime(12000, 24000);
 
     private static final Anchor ANCHOR_A = () -> ANCHOR_TYPE;
     private static final Anchor ANCHOR_B = () -> ANCHOR_TYPE;
@@ -134,7 +136,7 @@ class HostServiceContractTest {
                 FrameFactsPlan.RigDemand.anchoredAndAiming(ANCHOR_A, TARGET_A, AimState.target(TARGET_A))));
 
         FrameFactsRequest request = new FrameFactsRequest(
-                snapshot, 9f, DIMENSION, 5L, 10L, 0.5f, plan, session);
+                snapshot, 9f, DIMENSION, 5L, 10L, 0.5f, WORLD_TIME, plan, session);
 
         assertEquals(9f, request.animationTime());
         assertEquals(10L, request.gameTick());
@@ -144,21 +146,21 @@ class HostServiceContractTest {
         assertSameSnapshot(snapshot, request.snapshot());
 
         assertThrows(IllegalArgumentException.class, () -> new FrameFactsRequest(
-                snapshot, Float.NaN, DIMENSION, 5L, 10L, 0.5f, plan, session));
+                snapshot, Float.NaN, DIMENSION, 5L, 10L, 0.5f, WORLD_TIME, plan, session));
         assertThrows(IllegalArgumentException.class, () -> new FrameFactsRequest(
-                snapshot, -1f, DIMENSION, 5L, 10L, 0.5f, plan, session));
+                snapshot, -1f, DIMENSION, 5L, 10L, 0.5f, WORLD_TIME, plan, session));
         assertThrows(IllegalArgumentException.class, () -> new FrameFactsRequest(
-                snapshot, 9f, DIMENSION, -1L, 10L, 0.5f, plan, session));
+                snapshot, 9f, DIMENSION, -1L, 10L, 0.5f, WORLD_TIME, plan, session));
         assertThrows(IllegalArgumentException.class, () -> new FrameFactsRequest(
-                snapshot, 9f, DIMENSION, 5L, -1L, 0.5f, plan, session));
+                snapshot, 9f, DIMENSION, 5L, -1L, 0.5f, WORLD_TIME, plan, session));
         assertThrows(IllegalArgumentException.class, () -> new FrameFactsRequest(
-                snapshot, 9f, DIMENSION, 5L, 10L, 1.0f, plan, session));
+                snapshot, 9f, DIMENSION, 5L, 10L, 1.0f, WORLD_TIME, plan, session));
         assertThrows(NullPointerException.class, () -> new FrameFactsRequest(
-                snapshot, 9f, DIMENSION, 5L, 10L, 0.5f, null, session));
+                snapshot, 9f, DIMENSION, 5L, 10L, 0.5f, WORLD_TIME, null, session));
         assertThrows(NullPointerException.class, () -> new FrameFactsRequest(
-                snapshot, 9f, DIMENSION, 5L, 10L, 0.5f, plan, null));
+                snapshot, 9f, DIMENSION, 5L, 10L, 0.5f, WORLD_TIME, plan, null));
         assertThrows(NullPointerException.class, () -> new FrameFactsRequest(
-                null, 9f, DIMENSION, 5L, 10L, 0.5f, plan, session));
+                null, 9f, DIMENSION, 5L, 10L, 0.5f, WORLD_TIME, plan, session));
     }
 
     @Test
@@ -167,7 +169,7 @@ class HostServiceContractTest {
                 FrameFactsPlan.RigDemand.aiming(AimState.off())));
 
         assertThrows(IllegalArgumentException.class, () -> new FrameFactsRequest(
-                snapshot(), 9f, DIMENSION, 5L, 10L, 0.5f, plan,
+                snapshot(), 9f, DIMENSION, 5L, 10L, 0.5f, WORLD_TIME, plan,
                 EvaluationSession.create(16L, 4)));
     }
 
@@ -176,10 +178,10 @@ class HostServiceContractTest {
         AnimationSnapshot snapshot = snapshot();
         EvaluationSession session = EvaluationSession.create(64L, 8);
 
-        FrameFactsRequest atNine = new FrameFactsRequest(snapshot, 9f, DIMENSION, 5L, 10L, 0.5f,
+        FrameFactsRequest atNine = new FrameFactsRequest(snapshot, 9f, DIMENSION, 5L, 10L, 0.5f, WORLD_TIME,
                 new FrameFactsPlan(Map.of(RIG, FrameFactsPlan.RigDemand.aiming(AimState.target(TARGET_A)))),
                 session);
-        FrameFactsRequest atTen = new FrameFactsRequest(snapshot, 10f, DIMENSION, 5L, 10L, 0.5f,
+        FrameFactsRequest atTen = new FrameFactsRequest(snapshot, 10f, DIMENSION, 5L, 10L, 0.5f, WORLD_TIME,
                 new FrameFactsPlan(Map.of(RIG, FrameFactsPlan.RigDemand.aiming(AimState.target(TARGET_B)))),
                 session);
 

@@ -62,6 +62,25 @@ class CoreRotationMathTest {
     }
 
     @Test
+    void inverseRotationRoundTripsVectorAndComposition() {
+        Rotation rotation = new Rotation(0.5, 0.25, 0.1);
+        Vec3 original = new Vec3(10, 20, 30);
+
+        Vec3 local = CoreRotationMath.rotateInverse(rotation, original);
+        Vec3 restored = CoreRotationMath.rotate(rotation, local);
+
+        assertEquals(original.x(), restored.x(), EPS);
+        assertEquals(original.y(), restored.y(), EPS);
+        assertEquals(original.z(), restored.z(), EPS);
+
+        Rotation identity = CoreRotationMath.compose(
+                CoreRotationMath.inverse(rotation), rotation);
+        assertEquals(0, identity.yaw(), EPS);
+        assertEquals(0, identity.pitch(), EPS);
+        assertEquals(0, identity.roll(), EPS);
+    }
+
+    @Test
     void lookRotationMatchesForwardDirection() {
         Rotation forward = CoreRotationMath.lookRotation(new Vec3(0, 0, -1));
 

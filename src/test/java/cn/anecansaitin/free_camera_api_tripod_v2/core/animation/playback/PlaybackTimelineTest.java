@@ -35,6 +35,32 @@ class PlaybackTimelineTest {
     }
 
     @Test
+    void loopKeepsUnwrappedAdvanceEndpointForEventExpansion() {
+        PlaybackTimeline timeline = PlaybackTimeline.start(10f, 1f, true, 2f);
+
+        PlaybackTimeline advanced = timeline.advance(20f);
+        assertEquals(2f, advanced.time());
+        assertEquals(22f, advanced.advancedTime());
+
+        PlaybackTimeline again = advanced.advance(3f);
+        assertEquals(5f, again.time());
+        assertEquals(25f, again.advancedTime());
+
+        // 定位重置未取模终点，避免把定位前的推进量带入下一帧区间。
+        assertEquals(3f, advanced.seek(3f).advancedTime());
+    }
+
+    @Test
+    void nonLinearClampAlsoKeepsAdvancedEndpointAtDuration() {
+        PlaybackTimeline timeline = PlaybackTimeline.start(10f, 1f, false, 2f);
+
+        PlaybackTimeline clamped = timeline.advance(20f);
+        assertEquals(10f, clamped.time());
+        assertEquals(10f, clamped.advancedTime());
+        assertEquals(10f, clamped.advance(5f).advancedTime());
+    }
+
+    @Test
     void zeroDurationStaysAtZero() {
         PlaybackTimeline timeline = PlaybackTimeline.start(0f, 1f, false, 0f);
 

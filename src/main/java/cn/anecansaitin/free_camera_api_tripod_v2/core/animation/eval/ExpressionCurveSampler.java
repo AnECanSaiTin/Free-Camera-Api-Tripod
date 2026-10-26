@@ -181,8 +181,8 @@ public final class ExpressionCurveSampler implements CurveSampler {
     private ExpressionInputs inputs(CurveSampleRequest request, Keyframe key, int index) {
         float duration = request.context().snapshot().document().duration();
         float progress = duration <= 0f ? 0f : Math.clamp(request.sampleTime() / duration, 0f, 1f);
-        float worldTime = (request.context().facts().gameTick()
-                + request.context().facts().partialTick()) / 20f;
+        // `wt` 只从帧事实的世界日进度读取：与布局入口共用同一来源与单位（主设计 §6.1）。
+        float worldTime = request.context().facts().worldTime().progress();
 
         return new ExpressionInputs(
                 request.context(),

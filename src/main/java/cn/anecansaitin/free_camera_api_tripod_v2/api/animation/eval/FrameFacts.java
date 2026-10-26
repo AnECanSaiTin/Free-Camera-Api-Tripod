@@ -31,6 +31,7 @@ import java.util.Optional;
 /// @param worldInstanceId    世界实例身份，非负；同维度重进世界也会变化
 /// @param gameTick           采集时的游戏刻，非负
 /// @param partialTick        帧内插值比例，`[0, 1)`
+/// @param worldTime          世界日时刻与昼夜长度；公式内建量 `wt` 的唯一来源
 /// @param sampleTableVersion 采样表版本；读数、有效性或采样时间变化时递增
 /// @param rigs               本帧实际需要的机位空间事实
 /// @param samples            本帧采样读数表
@@ -42,6 +43,7 @@ public record FrameFacts(
         long worldInstanceId,
         long gameTick,
         float partialTick,
+        WorldTime worldTime,
         long sampleTableVersion,
         Map<RigId, RigFacts> rigs,
         Map<SampleId, SampleReading> samples,
@@ -50,6 +52,7 @@ public record FrameFacts(
     public FrameFacts {
         Objects.requireNonNull(sourceSnapshot, "sourceSnapshot");
         Objects.requireNonNull(dimension, "dimension");
+        Objects.requireNonNull(worldTime, "worldTime");
 
         if (worldInstanceId < 0) {
             throw new IllegalArgumentException(

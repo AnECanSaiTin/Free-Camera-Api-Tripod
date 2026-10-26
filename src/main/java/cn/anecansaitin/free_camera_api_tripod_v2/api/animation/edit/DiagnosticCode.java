@@ -31,6 +31,10 @@ public record DiagnosticCode(String value) implements Comparable<DiagnosticCode>
     public static final DiagnosticCode ILLEGAL_KEY_TIME =
             new DiagnosticCode("free_camera_api_tripod:illegal_key_time");
 
+    /// 同一条曲线 / 状态轨道内 `KeyId` 重复，按 ID 定位会出现歧义。
+    public static final DiagnosticCode DUPLICATE_KEY_ID =
+            new DiagnosticCode("free_camera_api_tripod:duplicate_key_id");
+
     /// 引用完整性失败（轨道 / 机位 / 样本 / 符号等）。
     public static final DiagnosticCode BROKEN_REFERENCE =
             new DiagnosticCode("free_camera_api_tripod:broken_reference");

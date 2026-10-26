@@ -143,7 +143,9 @@ class CoreEventDispatcherTest {
         AnimationSnapshot snapshot = new AnimationSnapshot(new Revision(2), document);
         FrameFacts facts = new FrameFacts(snapshot,
                 Identifier.fromNamespaceAndPath("minecraft", "overworld"),
-                7L, 10L, 0.5f, 1L, Map.of(), Map.of(), true);
+                7L, 10L, 0.5f,
+                new cn.anecansaitin.free_camera_api_tripod_v2.api.animation.eval.WorldTime(12000, 24000),
+                1L, Map.of(), Map.of(), true);
 
         return new PreparedFrame(
                 new PlaybackClock(3f, 1f, false, 10f),

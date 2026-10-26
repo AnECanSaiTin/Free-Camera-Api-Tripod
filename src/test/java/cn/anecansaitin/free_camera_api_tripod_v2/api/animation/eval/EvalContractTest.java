@@ -46,7 +46,8 @@ class EvalContractTest {
     }
 
     private static FrameFacts emptyFacts(AnimationSnapshot source) {
-        return new FrameFacts(source, DIMENSION, 7L, 1L, 0.5f, 1L, Map.of(), Map.of(), true);
+        return new FrameFacts(source, DIMENSION, 7L, 1L, 0.5f,
+                new WorldTime(12000, 24000), 1L, Map.of(), Map.of(), true);
     }
 
     private static FrameFacts emptyFacts() {
@@ -80,19 +81,40 @@ class EvalContractTest {
                 new SpatialResolution.Resolved(ResolvedAnchor.at(() -> ANCHOR_TYPE, Vec3.ZERO)),
                 new SpatialResolution.NotRequired(), AimState.off()));
 
-        FrameFacts facts = new FrameFacts(snapshot(), DIMENSION, 7L, 10L, 0.25f, 3L, rigs, Map.of(), true);
+        WorldTime worldTime = new WorldTime(12000, 24000);
+        FrameFacts facts = new FrameFacts(snapshot(), DIMENSION, 7L, 10L, 0.25f,
+                worldTime, 3L, rigs, Map.of(), true);
         rigs.clear();
 
         assertTrue(facts.rig(new RigId("rig")).isPresent());
         assertEquals(0.25f, facts.partialTick());
+        assertEquals(0.5f, facts.worldTime().progress());
         assertThrows(IllegalArgumentException.class,
-                () -> new FrameFacts(snapshot(), DIMENSION, 7L, 0L, 1f, 0L, Map.of(), Map.of(), true));
+                () -> new FrameFacts(snapshot(), DIMENSION, 7L, 0L, 1f,
+                        worldTime, 0L, Map.of(), Map.of(), true));
         assertThrows(IllegalArgumentException.class,
-                () -> new FrameFacts(snapshot(), DIMENSION, 7L, -1L, 0f, 0L, Map.of(), Map.of(), true));
+                () -> new FrameFacts(snapshot(), DIMENSION, 7L, -1L, 0f,
+                        worldTime, 0L, Map.of(), Map.of(), true));
         assertThrows(IllegalArgumentException.class,
-                () -> new FrameFacts(snapshot(), DIMENSION, -1L, 0L, 0f, 0L, Map.of(), Map.of(), true));
+                () -> new FrameFacts(snapshot(), DIMENSION, -1L, 0L, 0f,
+                        worldTime, 0L, Map.of(), Map.of(), true));
         assertThrows(NullPointerException.class,
-                () -> new FrameFacts(null, DIMENSION, 7L, 0L, 0f, 0L, Map.of(), Map.of(), true));
+                () -> new FrameFacts(null, DIMENSION, 7L, 0L, 0f,
+                        worldTime, 0L, Map.of(), Map.of(), true));
+        assertThrows(NullPointerException.class,
+                () -> new FrameFacts(snapshot(), DIMENSION, 7L, 0L, 0f,
+                        null, 0L, Map.of(), Map.of(), true));
+    }
+
+    @Test
+    void worldTimeNormalizesAgainstVariableDayLength() {
+        // 昼夜长度可由数据包修改，不能写死 24000。
+        assertEquals(0.25f, new WorldTime(3000, 12000).progress(), 1e-6f);
+        assertEquals(0.5f, new WorldTime(12000, 24000).progress(), 1e-6f);
+        // floorMod：负累计时刻也落到合法相位。
+        assertEquals(0.5f, new WorldTime(-12000, 24000).progress(), 1e-6f);
+        assertThrows(IllegalArgumentException.class, () -> new WorldTime(0, 0));
+        assertThrows(IllegalArgumentException.class, () -> new WorldTime(0, -1));
     }
 
     @Test
