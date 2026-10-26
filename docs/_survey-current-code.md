@@ -1,5 +1,7 @@
 # 现状代码勘察报告（不可变文档重构前）
 
+> 历史资料导航（2026-10-26 同步）：本报告仅描述重构前旧根包，以下“当前”、文件数、行号及阻塞项均指勘察当时，不适用于 v2 当前完成度。`4a08774` 加 C22 已有不可变模型及文档/编辑/求值/播放准备/存储恢复 core 实现，真实宿主接线和完整验收仍未完成。目标行为见[主设计](<design-animation-editor-framework.md>)、[UI 设计](<design-editor-ui-framework.md>)与[音频设计](<design-spatial-audio-api.md>)；当前批次与 R68/R69 审核边界见 [P1 契约、实施与验收](<refactor/P1-contract-plan.md>)和 [P1 审核记录](<refactor/P1-review.md>)。保留下文原始证据供迁移追溯，不将旧实现缺陷自动归到 v2。
+
 范围：`src/main/java/cn/anecansaitin/free_camera_api_tripod/`（137 个 Java 文件，约 1.15 MB）。
 本报告只做事实陈述：字段、可变性、身份、调用链、阻塞项。所有行号取自当前工作区文件。
 路径一律相对仓库根，例如 `api/animation/CameraAnimation.java:88` 实际位于
@@ -645,7 +647,7 @@ UTF-8 明文，IO 异常内部消化（93-97、165-175），文件名非法字�
 
 ---
 
-## 9. 不可变性阻塞项（"已发布文档深不可变"当前不可能成立）
+## 9. 重构前旧模型的不可变性阻塞项（不作为 v2 现状结论）
 
 按类别列出具体 API。**括号内是可复现的最小路径**。
 

@@ -1,6 +1,8 @@
 # 相机动画编辑与播放系统 UML：类图与活动图
 
-> 更新：2026-10-22。源码基线：`7095284`（C5，P1 最后一项代码提交）；本文编写时工作树为 `3f676c9` 之后的文档同步提交。P1 的 `_v2` 主源码为 220 个 Java 文件，全部公开契约位于 `api`，`core` / `editor` 仅保留空包占位。
+> 更新：2026-10-26。当前实现基线为 `4a08774` 加工作树 C22；下列契约图保留原 C5 图结构，实施状态已按当前 core 更新。文档存储、编辑器会话、表达式、播放准备、资源 IO 与恢复调度已有 core 实现，真实客户端 UI、世界适配、多机位 renderer 与网络接线尚未完成。
+>
+> 审核边界：R68 在原问题范围关闭 C22 修复；R69 整体审核确认监听异常、采样类型校验参数、路径弧长反算、事件预算检查时机及共享DAG指数展开五项缺陷。源码存在不等于全部行为通过验收；具体证据及关闭状态以 [P1 审核记录](<refactor/P1-review.md>)为准。
 >
 > 行为依据：[动画、播放与编辑器重构设计](<design-animation-editor-framework.md>)、[编辑器 UI 框架设计](<design-editor-ui-framework.md>)、[独立空间音频 API 设计](<design-spatial-audio-api.md>) 与 [P1 实现总结与契约计划](<refactor/P1-contract-plan.md>)。本文只把设计中的**已确认规则**画成图和表，不新增产品裁决。
 
@@ -8,22 +10,22 @@
 
 ### 0.1 本文描述什么
 
-P1 交付的是**编译期可用的公开契约**：不可变文档、轨道与值源、编辑意图与校验结果、求值上下文、播放帧、存储/恢复、编辑器会话，以及开放类型注册表。它**不是**一个已经能播放动画的运行时：
+P1 已交付公开契约及多批 core 实现：不可变文档、轨道与值源、编辑发布、表达式求值、播放准备与执行端口、存储/恢复、编辑器会话和开放类型注册表。当前尚未完成真实客户端动画运行链路的整体接线与验收：
 
 | 层 | P1 状态 | 本文处理方式 |
 | --- | --- | --- |
 | `api.*` 契约 | 已交付并参与编译/测试 | 类图中的实线类、接口、record、sealed 分支 |
-| `core.*` 宿主实现 | 未实现，无源码 | 活动图中以“宿主（待实现）”泳道/虚线框标记 |
-| `editor.*` 界面实现 | 未实现，只有 `package-info` | 只画契约与会话生命周期，不画不存在的面板类 |
+| `core.*` 纯内核与宿主端口实现 | 文档、编辑、求值、播放准备/执行、资源与恢复等已有源码和测试；仍有审核缺陷 | §1.1 与 §11 区分已实现部件和待接线边界 |
+| `editor.*` 客户端界面 | UI 路由、面板与真实屏幕挂载尚未实现；`CoreEditorSession` / `CoreEditorUiHost` 位于 core | 保留契约与生命周期图，不把 core 会话等同完整 UI |
 | 旧根包 `free_camera_api_tripod` | 保留但未接线 | 不纳入本文；P1 不以其行为为准 |
 | 音频后端 | 仅保留 `AudioRef` / `AudioRefId` 身份边界 | 只画文档字段，不展开音频服务 |
 | 叠加成片 O1–O3 | 只有 `OverlayElement` 暂存与拒绝非空编码 | 标注“分期实现”，不画最终渲染路径 |
 
 因此：
 
-- **类图**描述 P1 真实存在的类型及其静态关系；不为了“看起来完整”而虚构 `core` 类。
-- **活动图**描述设计规定的运行流程；其中宿主/渲染/IO 步骤不是 P1 已验收行为，统一用黄色虚线样式标出。
-- 图里的中文步骤若带“（待实现）”，表示该步骤需要 `core` / `editor` 接线，不能从 P1 类型存在推导出已运行。
+- **类图**以公开契约及静态关系为主；现有 core 实现见映射表，图不逐类展开实现细节。
+- **活动图**描述规范流程；黄色虚线强调宿主装配、流程约束或接线尚未完整验收，不能据其颜色判断某个 core 算法没有实现。
+- 保留图中的宿主泳道表示目标运行链路；具体步骤是否已有 core 实现，以 §1.1、§11 与实施记录为准，客户端/渲染接线须单独验收。
 
 ### 0.2 图例
 
@@ -36,7 +38,7 @@ P1 交付的是**编译期可用的公开契约**：不可变文档、轨道与�
 | `A --> B` | 关联/调用依赖 |
 | `A ..> B` | 单向依赖（参数、返回值或宿主装配） |
 | `"1"` / `"0..*"` / `"1..*"` | 基数；文档集合的顺序由集合自身表达，不另画顺序字段 |
-| 黄色虚线框 | 设计中的宿主实现步骤，P1 未交付 |
+| 黄色虚线框 | 规范流程、宿主装配或接线尚未完整验收；其中部分 core 步骤已有实现，颜色不表示源码缺失 |
 
 **标识约定**：`RigId`、`TrackId`、`KeyId`、`PathNodeId`、`MarkerId`、`SampleId`、`AudioRefId`、`OverlayId` 都是独立的 record，字段为 `String value`，实现 `DocumentObjectId`。类图中只在字段类型处出现，不逐个展开，以免掩盖真正的结构关系。
 
@@ -255,15 +257,15 @@ classDiagram
 
 | 端口 | 设计实现方 | P1 状态 | 本文对应图 |
 | --- | --- | --- | --- |
-| `AnimationDocumentStore` | `core`（文档存储/发布/历史） | 只有接口 | C5、A1、A2 |
-| `PlaybackService` | `core.playback` | 只有接口 | C9、A4、A5、A7 |
-| `FrameFactsProvider` | `core.playback` | 只有接口 | C7a、A4 |
-| `CameraCompositionService` | `core.render` | 只有接口 | C9、A5 |
-| `CameraControlClaims` / `CameraProbe` | `core` + 编辑器登记 | 只有接口 | C9、A5 |
-| `AnimationResourceService` / `RecoveryService` | `core.storage` | 只有接口 | C11、A1、A9 |
-| `EditorUiHost` / `EditorUiBackend` / `EditorSession` | `editor` + `editor.spi` | 只有接口 | C10、A10 |
-| `DocumentRegistries` / 三类 `*TypeRegistry` | common 注册；客户端执行部件单独注册 | 契约/校验钩子已交付，注册表实现未交付 | C12 |
-| `ExpressionCompiler` / `ExpressionEvaluator` | 表达式实现 + `core` 求值 | 接口已交付，编译器/解释器未实现 | C8、A6 |
+| `AnimationDocumentStore` | `core.animation.document` | `CoreAnimationDocumentStore` 已实现提交、队列、历史与换档；R69 监听异常缺陷待修 | C5、A1、A2 |
+| `PlaybackService` | `core.animation.playback` | `CorePlaybackService` 已实现时间与状态、启动准备；宿主帧循环待接 | C9、A4、A5、A7 |
+| `FrameFactsProvider` | `core.animation.eval` | `CoreFrameFactsProvider` 已实现事实编排与缓存；真实世界采集适配待接 | C7a、A4 |
+| `CameraCompositionService` | 宿主 renderer | 合成/质量契约已交付；多机位 renderer 与质量策略未实现 | C9、A5 |
+| `CameraControlClaims` / `CameraProbe` | `core` + 宿主登记/捕获 | `CoreCameraControlClaims` 仲裁已实现；真实相机捕获、登记生命周期待接 | C9、A5 |
+| `AnimationResourceService` / `RecoveryService` | `core.storage` | JSON / NBT / GZIP NBT 资源、JSON 恢复槽与恢复调度已实现；SavedData 与恢复 UI 待接 | C11、A1、A9 |
+| `EditorUiHost` / `EditorUiBackend` / `EditorSession` | `core.editor` + 客户端 UI | `CoreEditorUiHost` 后端编排、`CoreEditorSession` 与文本草稿解析已实现；屏幕/控件/接管待接 | C10、A10 |
+| `DocumentRegistries` / 三类 `*TypeRegistry` | common 注册；客户端执行部件单独注册 | 冻结注册表、类型校验分派与能力服务已有实现；R69 采样校验实参缺陷待修 | C12 |
+| `ExpressionCompiler` / `ExpressionEvaluator` | `core.expression` + `core.animation.eval` | 编译器、有界编译缓存、解释器、索引和依赖图已实现；真实宿主事实接线待验收 | C8、A6 |
 | 音频服务 | 独立音频 mod | 未实施；只有 `AudioRef` 身份 | 不展开 |
 
 ### 1.2 分层与依赖门禁
@@ -3422,7 +3424,7 @@ classDiagram
 
 ## 10. 活动图
 
-> 活动图把**设计规定的行为**画成流程，不代表这些步骤已在 P1 运行验收。黄色虚线步骤是 `core` / `editor` 实现，P1 只有端口或值类型；绿色是成功终点，红色是拒绝/失败终点。
+> 活动图把**设计规定的行为**画成流程，不代表完整宿主链路已通过运行验收。黄色虚线表示规范流程或宿主装配/接线边界，其中多项 core 已实现（见 §1.1、§11）；绿色是成功终点，红色是拒绝/失败终点。图中的成功分支是规范要求，不覆盖审核记录中仍待修复的实现缺陷。
 > 所有“失败”分支都遵守同一条原则：**不发布部分结果、不静默回退、不吞掉诊断**。
 
 ### A1 资源载入、两阶段解码与发布
@@ -3476,7 +3478,7 @@ flowchart TD
 - 结构失败（字段缺失、未知类型、版本不匹配、构造异常）→ `StructureFailed`；没有候选，validator 不参与。
 - 结构成功但 validator 报任一 `ERROR` → `ValidationFailed`；`Accepted` 不得携带 `ERROR`。
 - 载入成功后以 `SessionSwitch.LOAD` 换档；换档失败（旧基版本）仍是拒绝，不得先改内存再回滚。
-- 诊断报告限定单一资源与 File 作用域；路径安全、真实磁盘/网络 Ops 与 `fieldPath` 填充仍待实现。
+- 诊断报告限定单一资源与 File 作用域；当前已有路径解析、真实磁盘 IO、JSON/NBT 编解码及部分 `fieldPath` 定位。TOCTOU、完整路径追踪与真实网络接线仍保留验收边界。
 
 ### A2 编辑提交、撤销与重做
 
@@ -3875,7 +3877,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    subgraph SAVE[正式保存 core.storage 待实现]
+    subgraph SAVE[正式保存 core.storage 已实现 / 宿主待接]
         A([save/saveAsync]) --> B[资源根/路径越界/身份检查]
         B --> C{通过?}
         C -- 否 --> D[SaveResult.Rejected：File 诊断]
@@ -3890,7 +3892,7 @@ flowchart TD
         K --> L([Saved entry / 异步完成回调])
     end
 
-    subgraph RECOVERY[自动恢复 core.storage 待实现]
+    subgraph RECOVERY[自动恢复 core.storage 已实现 / 生命周期与 UI 待接]
         M([capture snapshot resource]) --> N[防抖/周期触发；不阻塞编辑]
         N --> O[编码 + 写独立恢复槽：临时文件 + 原子替换]
         O --> P{成功?}
@@ -3977,25 +3979,27 @@ flowchart TD
 
 ## 11. 契约覆盖与缺口
 
-### 11.1 P1 已交付 vs 运行待实现
+### 11.1 当前 core 交付与宿主验收边界
 
-| 领域 | P1 已交付（本文类图） | 运行待实现（活动图中的宿主步骤） |
+| 领域 | 当前已交付 | 未完成或待验收 |
 | --- | --- | --- |
-| 文档模型 | 不可变 `CameraAnimation` / `CameraRig` / 轨道 / 路径 / 符号 / 标记 / 采样声明 / 音频与叠加身份 | 全文档唯一 ID、跨对象引用与领域规则的统一校验执行 |
-| 布局 | `AnimatedNumber`、可动画矩形、`ResolvedRect` | 几何算法、锚点解析、逐帧求值与姿态合成 |
-| 编辑与发布 | `EditOp`、`EditSubmission`、`Revision`、快照、store/历史/事务/预览契约 | store 发布、通知队列、撤销重做、编辑执行、统一 validator、试算与工具算法 |
-| 表达式与求值 | 编译器接口、不透明编译产物、引用/诊断、显式输入、共享执行会话、索引/缓存接口 | 编译器、解释器、索引构建、依赖图、实际缓存及候选隔离 |
-| 开放类型 | 自有 `TypeRegistry`、类型描述/Codec、`TypeValidator`、客户端 resolver/collector 与能力服务契约 | 注册表实现/冻结时序、类型校验分派、客户端执行部件与受控世界查询 |
-| 编解码 | 成员 Codec、`DocumentRegistries`、根文档组合、严格整数、两阶段 `DocumentCodec` | Codec 实际填充 `fieldPath`、NBT/网络 Ops 往返、深度/数量/字节限制及兼容矩阵 |
-| 播放与渲染 | 请求/覆盖/时钟/准备帧、事件预算/执行器注册、相机接管、合成与质量状态、网络动作/来源/限额 | 时间推进、事件展开与执行、仲裁、真实网络协议、来源解析、多机位 renderer 与质量策略 |
-| 存储 | `ResourceId`、资源服务、载入/保存结果、文件诊断报告、恢复槽与选择契约 | 资源根/路径安全、IO、原子替换、恢复调度 |
-| 编辑器 | 会话、草稿、选择/视图、按 `RigId` 预览覆盖、交互请求、后端选择与 open 契约 | 会话实现、后端装配、草稿恢复、UI/输入/生命周期及预览执行 |
-| 叠加与音频 | `OverlayElement` 暂存不透明内容；`AudioRef` / `AudioRefId` 仅身份与边界 | O1–O3 与音频整体最后实施 |
+| 文档模型与校验 | 不可变模型、全文档 KeyId/对象身份及引用校验、分层统一 validator | 第三方不透明数据仍靠 SPI；R69 采样类型校验参数待修 |
+| 布局与空间 | 布局求值、姿态合成、局部空间/注视与路径采样 core | 真实锚点/碰撞适配；R69 路径弧长反算待修 |
+| 编辑与发布 | store、延迟队列、历史、换档、EditOp、缓动/批量/烘焙/注视捕获 | R69 监听异常待修；历史内存双限、完整试算与客户端确认流程 |
+| 表达式与求值 | 编译器、解释器、有界编译缓存、快照索引与依赖图 | 编译缓存统一注入及性能优化待评估；真实宿主事实接线 |
+| 开放类型 | 冻结注册表、类型校验分派、能力服务与 resolver/collector 注册部件 | 实际客户端执行部件和启动装配；改名可选能力方案仅待讨论 |
+| 编解码 | 根/成员 Codec、JSON/NBT/GZIP NBT、载荷限制及部分字段路径 | 完整字段路径/兼容矩阵、真实网络包注册/收包/授权 |
+| 播放与渲染 | 时间推进、帧准备、事件展开/分派、相机仲裁、请求接收与帧执行顺序 | R69 事件预算后置待修；真实帧循环、相机应用、多机位 renderer/质量策略 |
+| 存储 | 路径解析、JSON/NBT 文件 IO、原子替换、有界返回枚举、JSON 恢复槽与防抖/周期调度 | TOCTOU、SavedData、恢复体积/保留期与资源生命周期接线；枚举仍全目录扫描 |
+| 编辑器 | core 会话、事务/草稿、文本解析、候选预览与后端选择编排 | 实际 UI/输入/屏幕挂载、预览执行、后端接管与恢复选择界面 |
+| 叠加与音频 | 叠加暂存/拒绝非空编码；音频仅身份边界 | O1–O3 独立分期；音频整体最后实施 |
+
+此表表示代码交付，不将 R68 的原范围关闭扩大为完整 core 验收。R69 五项缺陷及条件性能建议见 [P1 审核记录](<refactor/P1-review.md>)，批次与验证基线见 [P1 契约、实施与验收](<refactor/P1-contract-plan.md>)。
 
 ### 11.2 本文与 P1 文档的对应关系
 
-- 类图层：本文 C1–C12（含 C5b、C7a、C7b）对应 [P1 契约计划](<refactor/P1-contract-plan.md>) §1 的“已交付”列；未交付实现不画成类。
-- 活动图层：A1–A10 对应主设计 §3.3、§4、§5、§6、§7、§8、§9 与 UI 设计 §3、§4、§6、§7；P1 文档 §5 的验收清单是这些“待实现”步骤的具体展开。
+- 类图层：本文 C1–C12（含 C5b、C7a、C7b）保留公开契约结构；当前 core 映射见 §1.1，实施批次见 [P1 契约、实施与验收](<refactor/P1-contract-plan.md>) §4。
+- 活动图层：A1–A10 对应主设计 §3.3、§4、§5、§6、§7、§8、§9 与 UI 设计 §3、§4、§6、§7；其中 core 交付与宿主验收分别记录，不再把全部黄色步骤归为尚无实现。
 - 不在本文展开：旧根包 `free_camera_api_tripod` 的可变实现、`docs/_survey-current-code.md` 的现状勘察、`review-feature-parity.md` 的产品对照；它们不是 P1 目标架构。
 
 ### 11.3 维护规则
@@ -4028,6 +4032,6 @@ flowchart TD
 ## 附录 B：验证记录
 
 - 编写时对全文 Mermaid 块执行 `mermaid.parse`（mermaid 12.2.0 + jsdom），全部通过。
-- 类图/活动图的语义依据 P1 源码（220 个 `_v2` Java 文件）与设计文档；未使用旧根包实现推断新契约。
-- P1 已执行基线：`.\gradlew.bat --offline compileJava test --rerun --console=plain` → BUILD SUCCESSFUL，33 suite / 219 用例，v2 27/153，失败/错误/跳过均为 0（见 P1 文档 §6）。
-- 本文不新增运行验证；活动图中的宿主步骤仍是“待实现/待验收”，不能以本文代替真实 store、时序、世界、渲染或网络测试。
+- 原图编写依据 C5 的 220 个 `_v2` Java 文件与设计文档；该数量是历史基线，当前 core 状态已按 `4a08774` 加 C22 更新，未使用旧根包推断 v2 已接线。
+- 原图编写时的 C5 测试数字属于历史记录，当前测试基线、探针与审核关闭范围统一见 [P1 契约、实施与验收](<refactor/P1-contract-plan.md>)及 [P1 审核记录](<refactor/P1-review.md>)，不在此重复维护。
+- 本次只同步文档状态，未新增客户端、世界、渲染或网络运行验收；活动图不能代替这些验证。

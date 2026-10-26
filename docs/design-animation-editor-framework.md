@@ -12,7 +12,7 @@
 
 允许破坏性修改，不保证旧 API 和旧文件格式兼容，不提供旧格式转换器。本文中的接口示例表达职责与行为，准确签名以已交付 API 为准；实现必须满足所列行为与验收条件。
 
-截至 2026-10-19，`_v2` 的已列 P1 契约及部分结构/Codec 逻辑已交付，C5 两项修复已复核通过；core、客户端和完整运行验收仍未完成。当前交付、裁决与后续验收统一见 [P1 实现总结](<refactor/P1-contract-plan.md>)，不以接口存在或结构测试通过代替运行证明。
+截至 2026-10-26，`_v2` 已交付公开契约和多项纯内核实现：文档存储/编辑、统一校验、表达式、帧准备、事件/接管、资源服务、恢复调度与会话编排。当前基线为 `4a08774` 加工作区 C22；R68 在原范围关闭 C22 修复，R69 整体审查发现待修的纯内核问题与性能风险。当前交付和施工清单见[P1 实施与验收](<refactor/P1-contract-plan.md>)，证据见[审核记录](<refactor/P1-review.md>)，导航见[文档索引](<README.md>)。真实世界查询、碰撞、相机/renderer/UI/网络宿主接线和整体游戏验收尚未完成；测试通过不代表完整运行验收。
 
 ### 1.1 决策表
 
@@ -215,6 +215,24 @@ AnimationTrack
 
 示例：第二机位 active 默认 false，10 秒设 true；矩形在 10 秒为 `(0.70, 0.05, 0.25, 0.25)`，20 秒为 `(0.50, 0, 0.50, 0.50)`，可线性插值得到从右上角小窗到右半屏的变化。相机来源可始终为机位 1，也可在 10 秒显式改为活动的机位 2；这与第二路出现是两个独立创作动作。
 
+#### 3.1.3 轨道改名能力（本轮讨论建议，尚未迁移）
+
+当前源码对内建轨道分别分派 `withName`，并要求所有 ExtensionTrack 实现同名方法。该形态能够保留具体类型与 Codec，但把“轨道可被读取”和“支持通用改名编辑”绑定在一起，不能自然表达固定名称或只读扩展。强制 `withName` 本身不是性能缺陷；如果产品要求所有轨道都可改名，维持现状也成立。
+
+本轮建议把通用改名设计为 **可选、纯派生能力**，位置为 `api.animation.block`，示意如下；本节只记录建议，不把用户讨论自动视为实现裁决：
+
+```java
+public interface RenamableTrack {
+    AnimationTrack withName(String name);
+}
+```
+
+该 mixin 不直接继承 sealed AnimationTrack，不扩大 permits，也不把内建轨道归入 ExtensionTrack。内建 record 和愿意支持改名的扩展显式实现，允许协变返回具体类型。接口统一“能否改名”和调用协议；具体类型仍负责构造不可变副本，不能通过接口自动复制未知载荷。
+
+通用 RenameTrack 保留为纯编辑意图：查找目标 → 检查能力 → 无能力明确拒绝 → 调用能力 → 验证非空、ID/type/具体类不变且名称符合请求 → 按原所属机位/文档轨道位置替换 → 统一校验与发布。界面按同一能力禁用改名入口。不能使用通用命名包装器替换原类型，否则按 type 分派的 Codec 可能无法编码；格式字段不变，不因能力迁移提升 data_version。
+
+迁移需同步删除或过渡 ExtensionTrack 的强制方法、给内建实现能力、补不支持/同名无变化/异常/错误返回/Codec 载荷往返/Batch 原子拒绝与撤销测试。若第三方类无法修改，再考虑显式注册 `TrackRenamer<T>` 适配器，由适配器返回原具体类型；当前不为此增加第二套能力注册和冻结成本。设计待讨论项及后续施工顺序见[P1 实施与验收](<refactor/P1-contract-plan.md>)。
+
 ### 3.2 深不可变规则
 
 - 集合和数组在构造时防御性复制，不保留调用方可变容器。
@@ -251,7 +269,7 @@ public interface AnimationHandle {
 - 发布必须在宿主指定线程执行；客户端使用主线程。纯内核不依赖客户端线程实现。
 - 后台任务只构造候选或执行纯校验，结果回到发布线程后重新检查基版本。
 - 过期提交返回 `STALE_REVISION`，不得自动覆盖当前文档。
-- 文档、历史和发布序号更新完成后才通知监听者。
+- 文档、历史和发布序号更新完成后才通知监听者。监听者属于外部回调：单个监听失败不得把已发布提交表现为未完成，也不得跳过后续监听、换档清理或延迟提交完成回调；错误单独报告，不回滚已经发布的快照。R69 发现当前监听异常隔离缺口，须以独立回调与队列回归验证。
 - 通知期间禁止重入同步写入：同步 submit 返回 REENTRANT_SUBMIT，不修改文档、不隐式排队。延迟提交使用 submitAfterNotifications，在通知结束后按提交顺序执行并重新检查基版本，结果在存储线程恰好回调一次；调用方不能阻塞等待同线程队列。
 - 初始化、编辑、换档、网络载入和历史恢复均通过存储对象。
 
@@ -324,11 +342,11 @@ public sealed interface EditResult {
 
 校验顺序为 L1 → L2 → L3 → L4；前一层失败时不继续依赖其结果的校验。校验器不得修改候选，不得隐式夹取、覆盖或量化输入。可修复问题通过显式修复操作处理。
 
-依赖图从编译后语法树构建，正确处理函数形参作用域。未定义引用与环分别报告。无环不代表调用深度或求值工作量有界；静态检查可判定的最长调用链，运行期继续执行资源上限。
+依赖图从编译后的引用与内部语法结构构建，正确处理函数形参作用域。全局变量使用空局部表，函数体只使用自身形参，实参在调用方作用域分析；不要求把语法树公开到 api。未定义引用与环分别报告。构图应以每个节点/边的已完成状态或依赖闭包复用结果，避免把共享无环子图按调用路径指数展开；每次构图可复用源码编译结果，诊断仍按本次版本和位置生成。无环不代表运行深度/工作量有界，运行期继续执行资源上限。R69 已确认当前共享变量 DAG 有指数重复展开，须修复后再验收规模边界。
 
 内置与第三方校验器在启动阶段注册并冻结。提交、解码完成和收包载入采用同一组强制文档校验规则。
 
-TrackType / AnchorType / SampleType 已提供可选 TypeValidator，接收已解码单实例与 TypeValidationContext（Revision、稳定对象 ID、可选所属机位及字段路径），只报告类型自身约束；跨对象引用和区间规则仍归统一 DocumentValidator。校验器不得读取当前 store 或修改候选；本次版本须由调用方绑定，不能从候选内容猜测。钩子契约已交付，按层分派与上下文传递仍待 core。
+TrackType / AnchorType / SampleType 提供可选 TypeValidator，接收已解码的对应类型实例与 TypeValidationContext（Revision、稳定对象 ID、可选所属机位及字段路径）；SampleType<T extends SampleArgs> 的实例参数是 sample.args()，不是 WorldSample 外壳。跨对象引用和区间规则仍归统一 DocumentValidator。校验器不得读取当前 store 或修改候选；本次版本须由调用方绑定。UnifiedDocumentValidator 已实现分层分派，R69 发现采样参数分派错配，修复前不能把所有类型钩子记为验收通过。
 
 ### 4.3 试算
 
@@ -470,7 +488,7 @@ public sealed interface NumberSource extends ValueSource permits Constant, Formu
 
 采样入口使用 `CurveSampler.sample(CurveSampleRequest)`；请求显式携带 EvaluationContext、TrackId、可空 RigId 和有限非负 sampleTime，不依赖当前编辑机位或采样器隐式环境。EvaluationContext.bind 是统一绑定入口，约定快照、FrameFacts、TrackLookup、TrackIndex 同源；当前构造器按原快照引用身份检查 TrackIndex 与 FrameFacts 绑定（不使用 record equals），Key.from 从 facts 取得表版本；TrackLookup 同源、索引构建及独立身份分配仍由 core 负责。普通曲线须明确空间上下文，只有无机位空间依赖时 RigId 可空；TrackRef 切到被引用轨道所属机位。
 
-表达式编译契约（ExpressionCompiler / CompiledExpression / 引用与轻量诊断）位于 expression；ExpressionEvaluator / ExpressionInputs 位于 eval。输入显式携带必填 ExpressionSource、机位上下文、t/p/wt、空间读数、随机种子、采样器与本帧共享 EvaluationSession。经 TrackRef、曲线公式及变量/函数嵌套时必须传递同一额度与深度，失败前已消耗工作量不退回。失败链按各层源码归属定位，通道和布局来源可带 KeyId；缓存命中按本次来源重新包装，不能继承其他入口的来源链。接口与会话结构已交付，编译器/解释器及端到端缓存仍待实现。
+表达式编译契约（ExpressionCompiler / CompiledExpression / 引用与轻量诊断）位于 expression；ExpressionEvaluator / ExpressionInputs 位于 eval。输入显式携带必填 ExpressionSource、机位上下文、t/p/wt、空间读数、随机种子、采样器与本帧共享 EvaluationSession。经 TrackRef、曲线公式及变量/函数嵌套时必须传递同一额度与深度，失败前已消耗工作量不退回。失败链按各层源码归属定位，通道和布局来源可带 KeyId；缓存命中按本次来源重新包装，不能继承其他入口的来源链。DefaultExpressionCompiler、BoundedExpressionCompiler、CoreExpressionEvaluator 与曲线/布局求值入口已实现并有纯内核测试；空间读数目前仍为空事实，确定性运行结果缓存及真实宿主接线尚未实现。`wt` 统一取 `facts.worldTime().progress()`，由宿主提供 dayTime 与可配置 dayLength，单位均为游戏刻，结果在 `[0,1)`，不能硬编码 24000 或在各入口换单位。
 
 表达式实现还须满足：
 
@@ -576,7 +594,7 @@ PlaybackService.start 先校验请求与 expectedRevision，并准备初始运�
 
 ### 7.2 帧准备与执行
 
-FrameFactsProvider / FrameFactsRequest 已交付契约。宿主传入动画时间与不可变 FrameFactsPlan，逐机位指定覆盖后的生效锚点、AimState 及 anchor/target 的 Required / NotRequired；游戏刻不替代动画时间，提供者不重新读取文档默认配置。结果原样保留 request.snapshot 的同一引用；解析诊断作用域取自本次上下文。真实计划生成、世界查询、采样节奏与提供者接线仍待实现。
+FrameFactsProvider / FrameFactsRequest 已交付契约。宿主传入动画时间与不可变 FrameFactsPlan，逐机位指定覆盖后的生效锚点、AimState 及 anchor/target 的 Required / NotRequired；游戏刻不替代动画时间，提供者不重新读取文档默认配置。结果原样保留 request.snapshot 的同一引用；解析诊断作用域取自本次上下文。FrameFactsPlanBuilder、CoreFrameFactsProvider 已实现计划生成、逐项解析编排、采样周期缓存与表版本；当前查询上下文不读取真实世界，客户端查询、插值和提供者接线仍待游戏场景验证。
 
 每帧只捕获一次正式快照，按以下顺序处理：
 
@@ -617,7 +635,7 @@ FrameFactsProvider / FrameFactsRequest 已交付契约。宿主传入动画时�
 
 ### 7.4 Tick 轨道
 
-轨道只描述事件数据；宿主通过已交付的 EventExecutor / EventExecutorRegistry 按轨道类型注册执行器，拒绝重复和内建保留类型。分派只取原发生序中的连续同类型片段或单事件，可以多次调用同一执行器，不得跨类型/周期聚合重排。文档对象不得包含发指令或访问世界的方法；实际分派、异常与部分执行仍待 core。
+轨道只描述事件数据；宿主通过已交付的 EventExecutor / EventExecutorRegistry 按轨道类型注册执行器，拒绝重复和内建保留类型。分派只取原发生序中的连续同类型片段或单事件，可以多次调用同一执行器，不得跨类型/周期聚合重排。文档对象不得包含发指令或访问世界的方法；CoreEventDispatcher 已实现顺序分派与失败结果，CoreFrameExecutor 编排相机应用后再分派事件；真实宿主副作用、renderer 和重复帧驱动仍待游戏场景验证。
 
 - 正向推进区间为 `(from, to]`。
 - 从零开始播放及进入每个新循环时，单独包含零时刻事件一次。
@@ -625,7 +643,7 @@ FrameFactsProvider / FrameFactsRequest 已交付契约。宿主传入动画时�
 - 事件列表按跨越区间/周期的推进顺序，再按区间内时间递增；仅同一发生时刻跨轨道按文档轨道顺序。EventDispatcher 接收整帧，从 frame.snapshot 解析载荷并原序消费，不重新读取当前 store。
 - 定位、暂停、拖动草稿和试算不触发事件。
 - 编辑器显式播放才执行事件。
-- 每帧限制事件执行数量及区间处理工作量；在展开区间、生成事件时就检查，超限立即停止准备，不能先完整展开再交执行器限流。prepareFrame 已显式接收 EventBudget，接口要求在展开时限额；实际预算检查算法及超限终止仍待 core。
+- 每帧限制事件执行数量及区间处理工作量；在展开区间、生成事件时就检查，超限立即停止准备，不能先完整展开再交执行器限流。prepareFrame 显式接收 EventBudget，PlaybackEventExpander 已实现循环区间规划与失败结果；R69 发现当前 appendRange 在构造/排序全部候选后才检查 maxEvents。修复时须在候选数超过剩余额度时立即停止，或以已排序轨道的区间查找/有界归并展开，使超限拒绝前的临时存储也受预算约束；不能仅限制最终返回列表。
 - 循环、末尾停止、从中途开始和零长度动画均有独立边界测试。
 
 ### 7.5 相机接管
@@ -743,7 +761,7 @@ A2 增加有声同步前，必须验证解码、播放时钟、任意定位、�
 
 文件诊断使用 storage.ResourceId，不再用自由字符串；当前 value 为非空白相对资源标识。资源根、本地路径映射与安全校验由资源服务定义，不能把 ResourceId 仅非空白检查当成绝对路径/越界路径已被拒绝。资源服务、恢复槽及结果类型契约已交付，文档 Codec 已有纯内核实现；资源 IO、路径安全、原子替换、恢复调度与网络压缩仍待相应批次。
 
-诊断模式为只读资源视图，展示文件、字段或对象路径、错误码和消息，不构造可发布的非法文档。JSON 源码行列仅在解析器可提供时展示，不将 DFU 字段路径等同于源码位置。DocumentDecodeResult.StructureFailed 已支持可选 fieldPath，未提供只表示解析器没有给出定位；Codec/存储实际填充字段路径及转换结构化诊断仍待实现，不能吞掉已知字段。
+诊断模式为只读资源视图，展示文件、字段或对象路径、错误码和消息，不构造可发布的非法文档。JSON 源码行列仅在解析器可提供时展示，不将 DFU 字段路径等同于源码位置。DocumentDecodeResult.StructureFailed 已支持可选 fieldPath，未提供只表示解析器没有给出定位；JSON/NBT/GZIP 资源入口已在有证据时补充字段路径，并使用 File 作用域报告；C22 已修复合法数值标签与无关同名字段抢占的已列反例。仍不是完整 DFU 路径追踪，歧义位置不得猜测，源码行列和全部 Codec 兼容矩阵尚未验收。
 
 消息显示经无状态 LocalizedMessageRenderer，每次生成独立 Component，保留翻译键、fallback、参数顺序与嵌套样式；不得先转纯字符串或将结果写回契约/共享可变状态。接口已交付，实际渲染器、语言切换与安全显示缓存待宿主实现和测试。
 
@@ -756,7 +774,7 @@ A2 增加有声同步前，必须验证解码、播放时钟、任意定位、�
 - 播放速度、循环和开始时间。
 - 协议版本及必要的数据规模限制。
 
-PlaybackAction 已定义 Start / Stop，PlaybackSource 分 Embedded（随包文档）与 Local(ResourceId，由接收端解析)。Embedded 转本地 PlaybackRequest 时沿用同一文档实例；解析失败不发布。PlaybackProtocol / PlaybackLimits 已定义版本、文档字节、覆盖数及总负载上限，具体编解码和收包校验仍待实现。
+PlaybackAction 已定义 Start / Stop，PlaybackSource 分 Embedded（随包文档）与 Local(ResourceId，由接收端解析)。Embedded 转本地 PlaybackRequest 时沿用同一文档实例；解析失败不发布。PlaybackProtocol / PlaybackLimits 定义版本、文档字节、覆盖数及总负载上限；FlatPlaybackProtocolCodec 已有纯内核字节编解码，CorePlaybackRequestReceiver 已有 Local/Embedded 接收编排。真实包注册、传输、线程切换、授权与资源信任边界仍待宿主接线。
 
 PlaybackProtocolCodec 提供可报告的 DataResult 编解码入口；encode 成功必须携带非空 net.minecraft.util.Unit.INSTANCE，不能用 Void/null 作为成功哨兵。streamCodec 通过标准 result() 访问结果，失败转 EncoderException / DecoderException；失败缓冲区不保证回滚，调用方丢弃。C5 已修复成功值模型并有标准访问回归，真实字节往返及超限拒绝仍须运行验证。
 
@@ -797,7 +815,7 @@ public record InteractionRequest(
         List<InteractionOption> options) {}
 ```
 
-交互请求的消息采用 LocalizedMessage，沿用不可变消息边界；InteractionRequest / InteractionOption 数据契约已交付，选项非空、ID 唯一且列表防御复制；真实会话派发、过期检查及关闭生命周期仍待实现。会话提供 `choose(requestId, optionId)` 与取消入口。二元确认是普通选项请求；路径新建、绑定及来源选择使用同一协议。过期请求、已关闭请求和无效选项必须拒绝，不能执行旧回调。
+交互请求的消息采用 LocalizedMessage，沿用不可变消息边界；InteractionRequest / InteractionOption 数据契约已交付，选项非空、ID 唯一且列表防御复制；CoreEditorSession 已有选项派发、过期拒绝、换档清理、草稿和关闭的纯内核编排；CoreEditorUiHost 已有后端选择。真实屏幕、输入、后端切换及相机令牌生命周期仍待客户端接线。会话提供 `choose(requestId, optionId)` 与取消入口。二元确认是普通选项请求；路径新建、绑定及来源选择使用同一协议。过期请求、已关闭请求和无效选项必须拒绝，不能执行旧回调。
 
 ### 9.3 后端选择
 
@@ -838,7 +856,7 @@ public record InteractionRequest(
 | P4 空间、预览与失败 | 逐轴采样状态、每机位 local/注视/避障、FrameFacts、草稿预览、运行期失败与事件准备执行 | 相同完整上下文得到相同结果；显式空间依赖正确失效；任一路错误姿态不应用，失败帧不执行事件 |
 | P5 扩展与清理 | 后端配置、交互请求、面板和组件 SPI、默认实现接入；删除旧实现与重复路径 | 外部后端完成编辑、路径绑定、撤销和保存；默认后端可转发；指南同步 |
 
-当前 `_v2` 已提前交付部分 P2–P4 所需数据类型、接口与 Codec，但旧实现尚未接线替换，播放内核、store、validator、客户端宿主与 UI 仍待实现；不能据契约清单完成宣称 P1–P4 阶段整体验收通过。测试基线和后续清单见 [P1 实现总结](<refactor/P1-contract-plan.md>)。
+当前 `_v2` 已实现部分 P2–P4 所需文档/编辑/校验/求值/存储/播放编排，并有纯内核回归；旧实现尚未接线替换，R69 的算法与发布问题仍需修复。真实宿主、renderer 和 UI 待接线，不能据类型清单或全量测试宣称 P1–P4 阶段整体验收通过。实施与游戏场景验收清单见[P1 实施与验收](<refactor/P1-contract-plan.md>)。
 
 P2 内部可按功能切片迁移，但同一阶段完成不可变发布前必须切换全部存量写调用。不得保留直接写方法以通过不可变验收。P3 之前可保留格式适配层，其内部必须通过 P2 的受控操作构造文档。
 
@@ -860,7 +878,15 @@ P2 内部可按功能切片迁移，但同一阶段完成不可变发布前必�
 
 A0–A2 统称最终音频阶段，具体内部顺序见[独立音频 API 设计](<design-spatial-audio-api.md>) §9。本文其余章节的音频字段、行为和测试均在该阶段生效；前期完成条件只覆盖已实施的非音频范围。
 
-### 10.1 必需测试
+### 10.1 实现与性能验收口径
+
+纯内核可验证的问题不以“尚未进入游戏”延期：发布通知异常隔离、类型钩子参数、路径弧长反算、预算检查时机和依赖图复杂度必须先有正确性与规模测试。真实游戏负责相机/碰撞/世界事实、双路提取和状态恢复、窗口缩放、帧时/显存、UI/输入以及网络接线的验收；两类证据分别记录。
+
+实现优化优先消除已知重复成本：每快照复用索引并由索引提供查询；一次帧绑定复用 duration/符号表；路径保存段长与累计弧长表；缓动/批量按完整键列表一次 ReplaceKeys；NBT 元数据使用流式哈希，避免按单文件大小分配数组。构图使用局部 ID 索引与子图已完成状态，编译缓存可共享但必须有文本/总字符边界。运行结果缓存另需确定性、random、预算计费及资源失败树规则，不能直接套用编译缓存。
+
+所有缓存须有容量和释放边界，建议按当前快照/草稿代际单槽或有界维护，不保留全部历史。默认 64 项历史不等于 32 MiB 已实现，返回条数上限也不等于目录遍历/哈希 IO 上限；显存和帧时收益只以真实场景测量确认，不以 Stream 写法或孤立纳秒结果判定。现有性能证据和施工顺序见审核 R69 与实施清单。
+
+### 10.2 必需测试
 
 - 提交拒绝时，文档、发布序号和历史均不变；过期基版本明确拒绝。
 - 一帧内发生后续提交时，当前帧仍只使用捕获的快照。
@@ -896,7 +922,7 @@ A0–A2 统称最终音频阶段，具体内部顺序见[独立音频 API 设计
 - A1 波形与资源版本对应；A2 在能力确认后验证时钟同步及生命周期；O1–O3 资源缺失与合成层序分别验收。
 - 外部后端完成带选项的路径绑定、保存与关闭；后端失败不泄漏会话或相机接管。
 
-### 10.2 完成条件
+### 10.3 完成条件
 
 - 自动依赖检查通过，内置与第三方界面使用同一会话写契约。
 - 求值链不存在隐式运行期 fallback；sample 的显式 UNKNOWN 默认值仅按 §7.7 生效；不存在 NaN 同时表示“未解析”和“错误”的缓存。

@@ -1,5 +1,7 @@
 # 独立三维空间音效 API 的必要性与接口设计
 
+> 状态同步：2026-10-26。相机 v2 在 `4a08774` 加 C22 已有文档、求值、播放准备、资源与恢复等 core 实现，真实客户端接线和完整验收仍未完成；实施与审核分别见 [P1 契约、实施与验收](<refactor/P1-contract-plan.md>)和 [P1 审核记录](<refactor/P1-review.md>)。这不改变[主设计](<design-animation-editor-framework.md>)的音频最终阶段裁决：本文仍是边界与接口草案，不表示独立音频后端、相机适配、波形或有声同步已经实现。
+
 ## 1. 结论与已确认范围
 
 建议建立独立音频 API mod，以客户端音频资源、非空间播放和三维声源为核心，通过可选适配接入相机 mod。相机文档、时间轴编排、音轨面板、波形展示、标记与吸附继续保留在相机 mod。
@@ -24,7 +26,7 @@
 | [主设计 §7.8](<design-animation-editor-framework.md#L580>)规定 A1 波形卡点、A2 有声同步，并将格式、变速与缺失策略留给宿主验证 | 音频后端尚未定型，不能将规划能力当作已有实现 |
 | [主设计 §7.6](<design-animation-editor-framework.md#L540>)规定单一监听器，参考音频为非空间声音 | 三维声源是新增能力；不能直接把参考音轨改成空间声音 |
 | [UI 设计 §6.4](<design-editor-ui-framework.md#L245>)通过资源引用、波形状态和播放时钟使用音频 | 编辑器需要能力契约，不需要直接持有声音引擎对象 |
-| 对 `src` Java 源码中的 audio、sound、音频、音效及常见声音接口搜索均无匹配 | 当前没有可直接抽取的音频播放器、解码器或声源模块 |
+| 初次音频勘察未发现可抽取的播放器、解码器或声源模块；当前 v2 仅保留 `AudioRef` / `AudioRefId` 身份边界 | 历史关键词扫描不代表当前源码零匹配；相机 core 的交付也不等于已有独立音频实现 |
 | [CameraPlayer](<../src/main/java/cn/anecansaitin/free_camera_api_tripod/core/cmd_camera/playback/CameraPlayer.java#L17>)只推进动画时间和分发轨道 | 当前逐帧浮点时间不等于音频设备时间，不能直接承诺同步精度 |
 | [CmdCamera](<../src/main/java/cn/anecansaitin/free_camera_api_tripod/core/cmd_camera/CmdCamera.java#L46>)驱动相机插件更新，未更新声音监听器 | 新的监听器集成必须验证基础相机与 Minecraft 声音系统的实际更新顺序 |
 | [构建依赖](<../build.gradle#L164>)尚未声明独立音频库；[环境版本](<../gradle.properties#L16>)为 Minecraft 26.1.2、NeoForge 26.1.2.36-beta | 本文不认定当前 Minecraft 声音后端已经满足任意定位、变速或独立监听器能力 |

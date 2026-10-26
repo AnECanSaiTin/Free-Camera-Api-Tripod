@@ -1,297 +1,162 @@
 # P1 审核与复核记录
 
-> 更新：2026-10-26。本文件只维护审核 / 复核编号、原问题、关闭边界与证据；契约、实施批次、施工记录与验证基线见[P1 契约、实施与验收](<P1-contract-plan.md>)。
+> 更新：2026-10-26。基线为 **`4a08774` 加工作区 C22**。R68 在原反例范围关闭 R67 两项修复；R69 对已实现部分作整体实现/性能审查，确认 **1项P1、4项P2** 待修，另记录结构性成本和条件优化。当前正式全量70 suite/631用例，v2 64/565，失败/错误0、跳过1；测试通过不表示无缺陷或完整游戏验收。
 >
-> **当前结论：R54 关闭 C5 两项原问题；结合 R56/R57，R55 九项问题在已列原反例范围关闭。本轮 R66 对 `391946a` 的 C8–C16 当前实现作合并审查，确认四项 P2，均已复现、尚未修复：接管令牌跨表误释放、烘焙重复终点及键数误判、注视捕获错误依赖避障、NBT 结构错误字段误定位。正式全量为 68 suite / 611 用例（v2 62 / 545），失败/错误 0、跳过 1。** R58–R65 保留原逐批复核建议，本轮结果统一记录于 §14，不追认每批建议已全部验收；后续审核从 R67 继续。测试通过不表示 core 全部行为、客户端或完整 P1 运行验收完成。
->
-> 审核与提交不是同一编号空间：提交用 C，审核用 R；早期 R7–R48 混合保留历史编号。R1–R12 也曾用于“剩余契约”清单，与审核编号无对应关系。行为规范仍以[动画主设计](<../design-animation-editor-framework.md>)、[UI 设计](<../design-editor-ui-framework.md>)和[音频设计](<../design-spatial-audio-api.md>)为准；本文件不新增产品裁决。
-
-## 1. 审核编号与基线
-
-| 审核 | 对象 | 结论 | 详见 |
-|---|---|---|---|
-| R54 | C5，`7095284` | 两项原问题在原范围关闭，未发现确定回归 | §2 |
-| R55 | `95c3dda` 实现批次 | 发现九项问题 | §3 |
-| R56 | C6（未提交） | 八项关闭，依赖环检查部分关闭（R56-H1） | §4 |
-| R57 | `95c3dda` 加未提交的 C6+C7 | R56-H1 原范围关闭；结合 R56，九项原反例关闭，未发现确定新增回归 | §5 |
-| R58 | C8（未提交） | **尚未执行**；建议独立复核相机接管与类型能力服务 | §6 |
-| R59 | C9（未提交） | **尚未执行**；建议独立复核消息渲染与 EditTools 请求扩展 | §7 |
-| R60 | C10（未提交） | **尚未执行**；建议独立复核播放请求接收入口 | §8 |
-| R61 | C11（未提交） | **尚未执行**；建议独立复核编辑器 UI 后端选择编排 | §9 |
-| R62 | C12（未提交） | **尚未执行**；建议独立复核 NBT 文档编解码与规模限制 | §10 |
-| R63 | C13（未提交） | **尚未执行**；建议独立复核全文档 KeyId 唯一性 | §11 |
-| R64 | C14（未提交） | **尚未执行**；建议独立复核 NBT 文件资源服务 | §12 |
-| R65 | C15（未提交） | **尚未执行**；建议独立复核 NBT 结构字段路径 | §13 |
-| R66 | C8–C16 当前实现，`391946a` | 合并审查确认四项 P2，均已复现、待修复；未将各批次追认为完整验收通过 | §14 |
-
-R58–R65 的“未提交 / 尚未执行”保留为拟定逐批复核时的历史状态；C8–C16 已进入当前基线，本轮不重排这些编号，也不把 R66 共享的全量测试拆成八次独立验证。
-
-### 1.1 历史范围与关闭边界
-
-下表保留历史交付与关闭摘要，便于解释旧编号；审核结论以各 R 节为准。早期 R7–R48 为混合编号，不应与提交 C 编号互换。
-
-| 历史范围      | 最终交付或修复                                                                                                                    | 当前关闭边界                                                                                        |
-|---------------|-----------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------|
-| R1–R7 / A0–A7 | 时间有限性、乱序/冲突、duration 内部遍历、withRig 无变化返回自身、命名与标记说明                                                  | A0/A1/A4/A5 已落地；A7 注释/时长测试完成，事件验证待后续；A2 条件缓存、A3 索引实现、A6 产品裁决保留 |
-| R8–R12        | document/edit/eval 契约；同 store 单调 Revision、sampleTime 缓存身份、不可变消息树、显式诊断作用域                                | 原四项契约关闭，不恢复 Component.copy 或可空版本旧方案；发布/缓存运行另验                           |
-| R13–R22       | playback、Q15 十一项协议、storage；provider 姿态入口、质量冻结、事件快照/顺序、采样身份、索引同源、准备预算与线程约束、单资源报告 | 原问题契约关闭；实际仲裁、事件、队列、IO和试算未验收                                                |
-| R23–R30       | editor、草稿更新/后端 open、EditTools 冻结快照与注视捕获输入                                                                      | E1/E2、T1/T2 原入口问题关闭；会话与工具算法未验收                                                   |
-| R31–R40       | 布局动画、注册表选型、成员/根 Codec与两阶段解码；叠加双向拒绝、精确整数、扩展泛型边界及压缩 JSON 往返修复                         | 原编解码反例关闭；NBT/网络、路径填充、规模保护未验收                                                |
-| R41–R46       | 表达式编译/求值接口、共享额度/深度、失败来源、字段/KeyId 定位及资源失败缓存规则                                                   | 原接口缺口关闭；R1 表达式运行实现仍未完成                                                           |
-| R47–R49、C1   | 帧事实/provider、resolver/collector 与能力服务；补动画时间/逐项空间计划和解析诊断作用域                                           | R49-H1/H2 在 R51 关闭；真实客户端准备未验收                                                         |
-| C2 / 审核 R52 | 扩展时间轴、事件执行器注册、通道描述；C4 统一原序片段说明                                                                         | 契约无确定阻断，显示/编辑/执行待实现                                                                |
-| C3 / 审核 R53 | FrameFacts 持有原快照引用，拒绝同 revision 异源绑定                                                                               | R51-N1 原反例关闭；provider 实际传递待验证                                                          |
-| C4 / 本轮 R54 | 类型校验钩子、结构路径承载、按 RigId 预览覆盖、可见像素质量状态                                                                   | 已列 R9–R12 契约均交付；质量停路残留由 C5 关闭，其余运行分派/路径/预览/renderer 延期                |
-| C5 / 本轮 R54 | 允许可见停路机位 0×0 目标/0 密度；编码成功改非空 Unit                                                                             | 两项原问题复核关闭，未发现确定回归；不代表真实渲染与网络完成                                        |
-| `95c3dda` / R55 | 2026-10-25 core 实现批次                                                                                                          | R55 发现九项问题，见 §3                                                                             |
-| C6 / R56      | R55 九项修复                                                                                                                      | 八项关闭；R56-H1 部分关闭，见 §4                                                                    |
-| C7 / R57      | R56-H1 形参作用域修复                                                                                                             | 独立复核在原问题范围关闭，未发现确定新增回归；验证与保留边界见 §5                                   |
-| C8 / 待 R58   | 相机接管仲裁、类型能力服务、实参作用域测试                                                                                        | 施工方自检通过，独立复核未执行，见实施文档 §4.5 与本文 §6                                           |
-| C9 / 待 R59   | 消息渲染、缓动/批量/烘焙/注视捕获、EditTools 请求扩展                                                                            | 施工方自检通过；独立复核未执行，见实施文档 §4.6 与本文 §7                                                 |
-| C10 / 待 R60  | 播放请求接收入口                                                                                                                  | 施工方自检通过；真实网络包/传输/授权未做；独立复核未执行，见实施文档 §4.7 与本文 §8                       |
-| C11 / 待 R61  | 编辑器 UI 后端选择 / 回退编排                                                                                                     | 施工方自检通过；真实客户端挂载/session 生命周期未做；独立复核未执行，见实施文档 §4.8 与本文 §9             |
-| C12 / 待 R62  | NBT 文档编解码、深度 / 条目 / 字节限制                                                                                            | 施工方自检通过；文件服务/SavedData/压缩未做；独立复核未执行，见实施文档 §4.9 与本文 §10                    |
-| C13 / 待 R63  | 全文档 KeyId 唯一性                                                                                                               | 施工方自检通过；跨文档/非时间轴扩展内部键未覆盖；独立复核未执行，见实施文档 §4.10 与本文 §11               |
-| C14 / 待 R64  | NBT 文件资源服务                                                                                                                  | 施工方自检通过；SavedData/压缩/恢复/网络未做；独立复核未执行，见实施文档 §4.11 与本文 §12                  |
-| C15 / 待 R65  | NBT 结构字段路径                                                                                                                  | 施工方自检通过；仅部分已知字段/类型；独立复核未执行，见实施文档 §4.12 与本文 §13                            |
-
-历史被撤回的论证不作施工依据：不据 Stream 写法或孤立替身微基准判断真实热点、承诺固定倍数/未来帧时间；不把 v1 调用当作 v2 已接线；数值与状态键保留具体类型但可复用公共设施；标记参与时长符合当前设计，不作为缺陷删除。
-
-## 2. R54：C5 修复复核（2026-10-19）
-
-**结论：两项原问题在原问题范围复核通过，未发现确定回归；不代表真实渲染与网络完成。** C5 审核基线为 **33 suite / 219 用例**（v2 27 / 153）。
-
-| 原问题                                                             | 修复与证据                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | 结论                                                             |
-|--------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------|
-| 可见副路停路、释放目标后不能同时表达质量几何和 0×0 实际尺寸        | [RigQualityStatus](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/playback/RigQualityStatus.java>)允许零目标/零密度，拒绝单轴为零及目标/密度矛盾；[RigRenderStatus](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/playback/RigRenderStatus.java>)保留呈现时正目标、可见性与尺寸一致约束。[PlaybackContractTest](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/playback/PlaybackContractTest.java>)覆盖可见 RIG_PAUSED、零目标且 offscreen=false | 原契约反例关闭；释放目标后的几何查询成立，运行 renderer 未验证   |
-| 审核 R50：DataResult<Void> 成功值只能为 null，标准 result() 不安全 | [PlaybackProtocolCodec](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/playback/PlaybackProtocolCodec.java>)改用 net.minecraft.util.Unit，适配器通过 result() 访问；[PlaybackProtocolContractTest](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/playback/PlaybackProtocolContractTest.java>)使用 Unit.INSTANCE 验证标准访问                                                                                                                                                   | 原成功值模型关闭；正式新增用例未执行真实缓冲区或适配器端到端编码 |
-
-未将下列候选升级为缺陷：统一 validator 可由每请求捕获 Revision 的闭包装配；成员 Curve Codec 的构造异常由正式 DocumentCodec 解码边界捕获。上述均不用于扩大两项原问题范围，也不声称任意成员 Codec 独立调用都不会抛异常。
-
-## 3. R55：`95c3dda` 实现批次审核（2026-10-25）
-
-R55 审核 2026-10-25 已提交的 core 实现批次 `95c3dda`，发现九项问题。修复内容与测试证据见实施文档 §4.3；本表只保留问题清单与 R56 复核结论，避免把修复动作写成审核通过。
-
-| 严重度 | R55 原问题 | R56 结论 |
-|---|---|---|
-| 高 | 启动在初始准备成功前就换档 | 原反例关闭 |
-| 高 | 循环推进先取模，完整周期事件丢失 | 原反例关闭；超长会话 float 终点精度边界保留 |
-| 高 | Local 机位用世界姿态补缺失轴后重复应用锚点 | 原反例关闭；万向节附近欧拉往返误差未做长期数值验收 |
-| 高 | 锚点旋转跟随掩码及请求掩码覆盖未应用 | 原反例关闭 |
-| 中 | 避障请求覆盖未生效 | 原反例关闭；真实世界碰撞查询仍由宿主实现 |
-| 高 | 统一校验未接入依赖环 | **部分关闭**：R56-H1 |
-| 高 | 同轨重复 `KeyId` 可构造和发布 | 原反例关闭；全文档跨对象 KeyId 作用域留待后续 |
-| 中 | 同一帧 `wt` 通道与布局相差 20 倍 | 原反例关闭；主设计单位/范围/事实来源待同步 |
-| 中 | 会话不响应换档，旧草稿 / 选择 / 交互残留 | 正常换档反例关闭；真实 UI / 后端切换未验收 |
-
-## 4. R56：C6 修复复核（2026-10-26）
+> 本文维护审核编号、问题证据与关闭边界；当前施工清单见[P1实施与验收](<P1-contract-plan.md>)，行为见[主设计](<../design-animation-editor-framework.md>)，导航见[文档索引](<../README.md>)。提交C与审核R独立编号；下次审核从 **R70** 继续。本轮整理保留有效历史结论，完整早期叙述由Git历史追溯，不把历史“待实现/未提交”当当前状态。
 
-**结论：八项在原问题范围关闭，一项部分关闭；C6 当时不能整体通过。** 基线为 `95c3dda` 加当时未提交的 C6 修改。审核只读源码与测试，未修改实现，也未新增动态反例测试；以下关闭不代表客户端、renderer、世界查询或碰撞适配完成。
+## 1. 审核索引与关闭口径
 
-| R55 原问题 | R56 结论与证据 |
-|---|---|
-| 启动准备失败前已换档 | 原反例关闭。[CorePlaybackService:99](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/playback/CorePlaybackService.java#L99>) 先准备候选，ERROR / 异常时拒绝，成功后才换档和赋播放状态；请求校验已遍历全部 Local 机位。测试覆盖旧文档、Revision、PLAYING 与时钟保持，以及启动锚点成功 / 失败。 |
-| 跨完整周期丢事件 | 原反例关闭。[完整区间传递:209](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/playback/CorePlaybackService.java#L209>) 保留未取模终点；测试验证 `(2,22]` 内 5 秒事件触发两次，seek 同时重置推进终点。超长会话 float 精度边界仍保留。 |
-| Local 缺失轴重复叠加锚点 | 原反例关闭。[参考系转换:333](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/playback/CorePlaybackFrameFactory.java#L333>) 先逆变换基础世界姿态、逐轴补全，再正变换；无通道时保持基础世界位置。 |
-| 跟随掩码与请求覆盖未应用 | 原反例关闭。[掩码应用:338](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/playback/CorePlaybackFrameFactory.java#L338>) 用生效掩码生成参考系旋转，并用于位置和朝向的正逆变换；测试覆盖 NONE、ALL 及请求 NONE 覆盖文档 ALL。 |
-| 避障请求覆盖未生效 | 原反例关闭。[避障设置:394](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/playback/CorePlaybackFrameFactory.java#L394>) 请求优先且使用生效 margin，关闭时不调用 resolver；测试覆盖文档开 / 请求关与文档关 / 请求开。 |
-| 依赖环可进入发布文档 | **部分关闭。** 环诊断已接入 L3，未引用变量自环及函数自调用反例关闭；函数形参作用域仍可隐藏真实轨道环，见 R56-H1。 |
-| 同轨重复 KeyId 可发布 | 原反例关闭。[Curve:90](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/field/Curve.java#L90>) 与 [KeyframeSequences:38](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/block/KeyframeSequences.java#L38>) 在构造期拒绝；统一校验复核通道、布局及状态键，存储分类为 DUPLICATE_KEY_ID。跨对象作用域仍按实施文档 §4.3 留待后续。 |
-| 通道与布局 wt 相差 20 倍 | 原反例关闭。两入口均读 `facts.worldTime().progress()`；测试以 `WorldTime(3000, 12000)` 验证均得到 0.25。世界日进度的单位、范围和事实来源仍须同步主设计，见下文维护项。 |
-| 换档后旧会话状态残留 | 正常换档后的原反例关闭。[会话清理:658](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/editor/CoreEditorSession.java#L658>) 清空草稿、当前事务、选择 / 视图、交互和已记录选择；外线程通知在下一次宿主线程调用前应用。真实 UI / 后端切换未验收。 |
+| 审核 | 对象 | 有效结论 |
+| --- | --- | --- |
+| R1–R7 | 键类型、时间、性能、标记/时长 | 数值/原生状态分工保留；有限性/无变化派生修复。Stream孤立倍数、类型绝不可合并、标记必须退出时长的旧结论被撤回 |
+| R12 | 早期四项契约修复 | 同store单调Revision、sampleTime缓存身份、不可变消息、显式诊断作用域在原范围关闭 |
+| R15/R18/R20/R22 | playback、十一协议、storage | 快照/事件顺序/预算入口/线程/单资源报告等契约闭合，不等于当时运行实现完成 |
+| R24/R26/R28/R30 | editor与工具契约 | 草稿更新/open入口、冻结快照与捕获配置等原缺口关闭；UI/算法随后分期 |
+| R32/R34–R40 | 注册表选型与Codec | O+B已裁决；叠加双向拒绝、精确整数、扩展泛型、压缩JSON反例关闭 |
+| R42/R44/R46 | 表达式契约 | 共享会话、失败来源、资源失败缓存边界等原缺口关闭 |
+| R49/R50/R51–R53 | 宿主/网络/扩展/事实绑定 | 有效空间计划、诊断作用域、快照引用绑定关闭；Void成功值后由C5/R54关闭 |
+| R54 | C5 `7095284` | 停路零目标/几何及非空Unit成功值原范围关闭；33/219，v2 27/153 |
+| R55 | `95c3dda` | 九项问题，见§2；当时未通过 |
+| R56/R57 | C6+C7 | 八项原反例先关闭，形参泄漏残留由C7/R57关闭；60/542，v2 54/476 |
+| R58–R65 | C8–C15拟定逐批复核建议 | 未逐条独立执行，后纳入R66/R67/R69合并核查；不拆分共享测试为多次证明 |
+| R66 | C8–C16，`391946a` | 四项P2，见§3；68/611，v2 62/545 |
+| R67 | C17–C21，`4a08774` | R66-N1–N3关闭；N4数值标签关闭但同名字段残留；新增草稿P1，见§4；70/628，v2 64/562 |
+| R68 | C22工作区 | 草稿旧候选与NBT同名字段原反例关闭；恢复异常加固逻辑成立，真实线程边界保留；70/631，v2 64/565 |
+| R69 | 同一C22工作区整体审查 | 五项新发现及性能审查，见§6；未修源码，不代表无条件通过 |
 
-### 4.1 R56-H1（高，R56 时未关闭；C7 修复，R57 原范围关闭）：函数形参泄漏到全局变量公式，真实轨道环仍可发布
+“原范围关闭”只表示已列触发及对应修复成立；其他边界不自动验收。历史R1–R12剩余契约编号与审核R编号不是同一套。已关闭问题不因新发现自动重开。
 
-[CoreDependencyGraph](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/eval/CoreDependencyGraph.java>) 展开全局变量公式时继续传递调用函数的 `locals`；`resolveFunctionBody` 也累计调用方形参，未建立独立作用域。最小反例：
+## 2. R55–R57：首轮core实现的九项问题
 
-```text
-轨道 T 的键值 = Formula("f(1)")
-函数 f(x) = v
-全局变量 v = Formula("x")
-全局变量 x = TrackRef(T)
-```
+| R55原问题 | 修复与最终关闭范围 |
+| --- | --- |
+| 启动准备成功前先换档 | CorePlaybackService先准备候选、失败不改文档/Revision/旧播放状态；R56原反例关闭 |
+| 循环先取模丢完整周期事件 | 保留未取模推进终点，姿态取相位、事件走完整区间；R56关闭，长时float精度边界保留 |
+| Local缺轴用世界基础值后再次叠加锚点 | 先把基础姿态逆变换到文档参考系，逐轴补全后正变换；R56关闭，真实数值/宿主边界待验 |
+| 跟随掩码与请求覆盖未生效 | 使用有效掩码同时控制参考系位置和旋转正逆变换；R56关闭 |
+| 避障覆盖不生效 | 请求优先，关闭不调用resolver，启用使用有效margin；R56关闭，真实碰撞未接 |
+| 依赖环未进统一校验 | C6接入完整图与符号/布局根，R56发现形参泄漏；C7按词法作用域修正，R57关闭原漏环，不等于复杂度最优 |
+| 同轨重复KeyId可发布 | 数值/状态构造与校验拒绝，后C13扩至框架可见全文档KeyId；R56原反例关闭 |
+| 通道/布局wt相差20倍 | 两者取WorldTime.progress，dayTime/dayLength由宿主提供，非固定24000；R56关闭，主设计已于本次整理同步 |
+| 换档会话旧草稿/选择/交互残留 | DocumentListener换档通知、CoreEditorSession清理；R56正常通知路径关闭，R69另发现监听异常可中断清理 |
 
-解析 `v` 时形参集合仍为 `{x}`，真正的全局 `x` 被当作形参跳过，得到 `dependenciesOf(T) = {}`。符号根扫描从 `v` 找到 T 后丢弃依赖集合，且不沿 TrackRef 回到轨道，不能补获此环。名字与 arity 均合法，[统一校验:529](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/validation/UnifiedDocumentValidator.java#L529>) 因而无法拒绝。
+R56-H1精确反例：`T=Formula("f(1)")`、`f(x)=v`、`v=Formula("x")`、全局`x=TrackRef(T)`。旧图把全局x误作函数形参，实际求值形成T→f→v→x→T。C7对变量使用空locals、被调函数仅自身形参、实参留调用方作用域；图与统一校验现在报告T自环，无环对照指向B得到{B}。图/evaluator的对应测试通过；R57独立clean全量60/542，API386 class的jdeps禁止依赖0。C8补了实参与被调全局分别指向A/B的对照，避免集合去重掩盖作用域。
 
-[实际求值器:540](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/eval/CoreExpressionEvaluator.java#L540>) 在进入全局变量定义时清空局部参数，实际链为 `T → f → v → 全局 x → T`，运行期才递归失败。该作用域错误此前已存在；C6 接入强制校验后仍未完整关闭 R55 原问题，违反[主设计 §4.2](<../design-animation-editor-framework.md#L327>)。
+## 3. R66：C8–C16合并审查（2026-10-26）
 
-修复验收：展开全局变量公式时使用空局部形参集合；函数体仅使用自身形参，调用实参在调用方作用域分析；补充上述图诊断及统一校验拒绝测试。本反例为源码调用链复核结论，R56 未新增或执行专门动态反例测试。
+**基线`391946a`，当时确认四项P2，记录时未修；后续关闭见§4/§5。** 不将客户端/renderer/权限等明确延期报为缺陷。
 
-**后续状态（C7 / R57，2026-10-26）：** C7 修复与施工方自检见实施文档 §4.4；R57 已独立复核，R56-H1 在原问题范围关闭，证据及边界见本文 §5。上述 R56 结论保留为历史审核记录，不回写为“当时已关闭”。
+| 编号 | 原反例、根因与建议 | 后续 |
+| --- | --- | --- |
+| R66-N1 | [接管释放](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/playback/CoreCameraControlClaims.java>)的每表ID从0开始，仅Claim.equals；A/B同owner/priority首令牌相等，A.release(B令牌)移除A；精确复制同样成功。须按原对象/登记身份验证 | C17/R67关闭 |
+| R66-N2 | [烘焙](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/edit/CoreEditTools.java>)用double ceil后转float，0→0.3、步0.1生成[0,.1,.2,.3,.3]并Ready；maxKeys4又误拒绝。须统一严格递增时间计划、终点一次 | C17/R67关闭 |
+| R66-N3 | 捕获用无ObstacleResolver工厂走完整prepareRig；仅启用obstacle就Rejected。规范捕获注视后、避障前旋转，不能依赖碰撞查询 | C17/R67关闭；旋转一致正式断言建议保留 |
+| R66-N4 | [NBT定位](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/storage/NbtStructureFieldPath.java>)只认IntTag；合法DoubleTag(1)版本+非法name，报Not a string却定位data_version。须与strictInt数学语义一致且不让无关同名字段抢路径 | C17修数值，C22/R68修已列同名字段 |
 
-### 4.2 R56 维护与边界
+R66实际重跑compileJava/test，无clean：68/611，v2 62/545，失败/错误0、跳过1。四项用构建目录独立探针复现，不计正式用例；API386 class禁包字节扫描0，未称jdeps。旧探针可能被clean清理，正文输入/输出是持久证据。接收/UI编排/能力/KeyId在核对范围未见其他确定缺陷，不追认R58–R65全部建议。
 
-- 实施文档 §4.2 已提交为 `95c3dda` 且经 R55 审核，须与未提交的 C6 区分；本文 §1.1 保留历史 C5 契约基线，当前实现以实施文档 §4 为准。
-- C6 将 `wt` 明确为世界日进度 `[0,1)`，超出仅统一入口单位的描述；需同步[主设计表达式输入规则](<../design-animation-editor-framework.md#L473>) 的单位、范围与事实来源。R56 只记录审核，不修改主设计；截至 C7 该项仍为文档维护待办。
-- 换档先通知所有 `onDocumentChanged`，再调用 `onSessionSwitched`：普通变更监听期间仍能看到旧会话状态，期间创建的新事务随后也会清除。现有契约未明确保证该阶段可创建草稿，本轮只记录时序边界，不升级为独立确定回归。
+## 4. R67：C17–C21复核（2026-10-26）
 
-## 5. R57：C6+C7 修复复核（2026-10-26）
+**基线`4a08774`。R66-N1–N3原范围关闭，N4部分关闭；新增草稿P1与同名字段P2残留。** C18枚举、C19手动Timer调度、C20执行编排当时核查未见其他确定缺陷，不能扩大为真实线程/场景验收。
 
-**结论：R56-H1 在原问题范围关闭；未发现 C7 引入的确定误报、漏检或其他回归。** 基线为 `95c3dda` 加复核时未提交的 C6+C7 修改。结合 R56 已关闭的八项，R55 九项问题可在已列原反例范围关闭；不表示完整 P1、core 全部行为或客户端运行验收完成。后续审核从 R58 继续。
+### 4.1 R67-N1（P1）：非法矩形文本沿用旧候选
 
-本轮独立读取施工记录、实现及测试，执行清理后的全量编译 / 测试和 API 编译产物依赖检查；未修改实现，未新增测试。施工方临时变异检查见实施文档 §4.4，本轮未重复执行，不将其计为独立复核结果。
+旧[CoreDraftTextParser](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/editor/CoreDraftTextParser.java>)只检查double有限后转float；会话先写fieldTexts再换candidate。事务width先输入2再输入1e100，转Infinity抛异常后原文为1e100、hasCandidate=true、诊断空、candidate仍width2；commit Applied并移除事务，当前原文丢失。x/y/height同路径。
 
-### 5.1 作用域与原反例
+验收要求：float转换后有限检查，任何解析/构造失败清候选并给ERROR，保留原文、commit拒绝且文档不变；改正后可提交。C22/R68原范围关闭，见§5。
 
-| 核查点 | 结果与证据 |
-|---|---|
-| 全局变量公式 | [CoreDependencyGraph:371](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/eval/CoreDependencyGraph.java#L371>) 使用 `Set.of()`，不继承调用函数的形参；与 [CoreExpressionEvaluator:540](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/eval/CoreExpressionEvaluator.java#L540>) 的空局部表一致。 |
-| 被调用函数体 | [依赖图:425](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/eval/CoreDependencyGraph.java#L425>) 仅使用自身 `function.parameters()`；与 [求值器:668](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/eval/CoreExpressionEvaluator.java#L668>) 新建自身参数表一致。 |
-| 调用实参 | [CompiledExpressionImpl:104](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/expression/CompiledExpressionImpl.java#L104>) 收集调用及全部实参引用，[依赖图:308](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/eval/CoreDependencyGraph.java#L308>) 按调用方 `locals` 展开；与 [求值器:629](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/eval/CoreExpressionEvaluator.java#L629>) 使用原 `env` 求实参一致。 |
+### 4.2 R67-N2（P2，R66-N4残留）：同名未知字段抢定位
 
-R56-H1 的精确候选 `T = Formula("f(1)")`、`f(x) = v`、`v = Formula("x")`、`x = TrackRef(T)` 现在得到 `T → T` 依赖并报告轨道环，统一校验产生 ERROR。无环对照 `x = TrackRef(B)` 严格得到 `{B}` 且无诊断。符合[主设计的形参作用域与依赖环要求](<../design-animation-editor-framework.md#L327>)。
+合法文档加入根`update_every_frames="unused"`或`extension={data_version:"unused"}`，DocumentCodec仍Accepted；仅把根name改IntTag(1)，NBT返回Not a string，fieldPath却为无关字段。findInvalidInteger先于消息解析、仅按名全树递归，违反有证据定位。C17修合法Double/Long反例有效，但该残留仍存在；C22限定结构后由R68关闭。
 
-| 测试证据 | 验证内容 |
-|---|---|
-| [CoreDependencyGraphTest:122](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/eval/CoreDependencyGraphTest.java#L122>) | 精确非环对照：全局变量公式不受函数形参遮蔽，依赖为 `{B}` 且无诊断。 |
-| [精确漏环反例:138](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/eval/CoreDependencyGraphTest.java#L138>) | 依赖包含自身 `{A}` 且报告 `Track dependency cycle`。 |
-| [嵌套函数作用域:156](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/eval/CoreDependencyGraphTest.java#L156>) | `f(x) = g(x)`、`g(y) = x`，被调函数体不继承调用方形参，读取全局 `x`。 |
-| [UnifiedDocumentValidatorTest:253](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/validation/UnifiedDocumentValidatorTest.java#L253>) | 同一精确反例进入 L3 强制校验后报告轨道环。 |
-| [CoreExpressionEvaluatorTest:237](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/eval/CoreExpressionEvaluatorTest.java#L237>) | 全局 `x=7`、`v=x+1`、`f(x)=v`，运行结果 `f(2)=8`，与图的词法作用域一致。 |
+R67实际重跑compileJava/test：70/628，v2 64/562，失败/错误0、跳过1；没有修改正式源码/测试。恢复提供者抛异常导致周期停调度当时只是候选，执行探针被自动审批审查拒绝，未运行、不计发现；后C22加入异常保护。正式测试未验证真实调度线程与关闭竞态。
 
-### 5.2 独立验证
+## 5. R68：C22修复复核（2026-10-26）
 
-实际执行：
+**基线`4a08774`加未提交C22。两项已列原反例关闭，未发现该补丁引入的确定回归。**
 
-```powershell
-.\gradlew.bat --offline clean compileJava test --no-build-cache --rerun-tasks --console=plain
-```
+| 项 | 证据与关闭边界 |
+| --- | --- |
+| R67-N1 | [float检查](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/editor/CoreDraftTextParser.java#L274>)在转换后拒绝非有限值；[会话兜底](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/editor/CoreEditorSession.java#L237>)清候选/旧诊断、写ERROR。正式测试与隔离复测x/y/width/height：溢出拒绝、原文保留、Revision不变、改为3后可提交 |
+| R67-N2 | [定位结构](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/storage/NbtStructureFieldPath.java#L118>)仅根data_version、rigs[i].view.update_every_frames、samples[i].resample_every_ticks；原根/extension反例不抢路径，未知真实位置返回空。不是全部DFU路径追踪证明 |
+| 恢复加固 | [异常返回](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/storage/CoreRecoveryScheduler.java#L126>)复位capturing，不把提供者/捕获异常交给周期任务；正式手动Timer测试验证后续再捕获。未验证真实executor周期、并发close或同一资源/快照原子绑定 |
 
-结果 BUILD SUCCESSFUL，清理后重新编译并执行全量测试；按测试结果 XML 独立统计：
+独立执行compileJava/test --no-build-cache --rerun-tasks，无clean：70/631，v2 64/565，失败/错误0、跳过1。隔离探针不计正式用例；未改正式源码/测试，未重跑jdeps。本节补记此前已向用户报告的复核结论，不把它伪装为本轮另跑一次全量。
 
-| 范围 | suite / 用例 | 失败 / 错误 / 跳过 |
-|---|---|---|
-| 全工程 | **60 / 542** | **0 / 0 / 1** |
-| v2 | **54 / 476** | **0 / 0 / 1** |
+## 6. R69：已实现部分的整体实现与性能审查（2026-10-26）
 
-跳过项仍为 Windows 符号链接权限限制，与施工记录一致。全量包含 C6 已关闭八项及 C7 新增五项测试，未见用例回退。
+**基线仍为`4a08774`+C22；本轮不修源码、不迁移接口，仅审核并整理文档。结论：五项确定问题待修（1项P1、4项P2），纯内核即可证明；另有局部优化、资源风险与真实游戏待验。** 审查覆盖document/edit/validation、expression/eval/path/playback、storage/恢复、会话及扩展边界。没有承诺穷尽所有缺陷，不把“下一步进入游戏”当纯内核问题的延期理由。
 
-JDK 25 `jdeps --ignore-missing-deps -verbose:class -filter:none` 独立检查 **386 个 v2 API class**，对旧根、`net.minecraft.client` 及 v2 core / editor 实现包的禁止类型依赖为 **0**。该检查范围为 API；本轮未据此宣称重新检查了全部架构门禁。`git diff --check` 通过。
+### 6.1 R69-N1（P1）：发布监听异常导致已发布却无回执，跳过其他通知与换档清理
 
-### 5.3 保留边界与非阻断建议
+[CoreAnimationDocumentStore:283](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/document/CoreAnimationDocumentStore.java#L283>)先更新快照/历史，再调用notify；[监听循环:308](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/document/CoreAnimationDocumentStore.java#L308>)未逐listener隔离异常。一个监听抛RuntimeException后，submit向调用者抛异常，但文档已发布；后续onDocumentChanged及onSessionSwitched不执行。[延迟队列:333](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/document/CoreAnimationDocumentStore.java#L333>)调用submitInternal也在完成回调try之外，可能跳过回调/后续队列。
 
-- 嵌套函数测试中，调用实参 `x` 与被调函数的全局 `x` 最终都关联 B，集合去重不能独立证明实参作用域；当前实现经源码调用链核对正确，不构成确定缺陷，不阻断关闭。可后续增加两者关联不同轨道的对照测试。C8 已补 `callArgumentsStayInCallerScope`（实参对应 A、被调全局对应 B），待 R58 独立复核；本条保留为 R57 当时的建议。
-- R56 已记录的全文档跨对象 KeyId 作用域、超长会话 float 事件终点、真实宿主锚点解析 / 世界查询 / 碰撞 / 客户端接线继续留待后续验收。
-- `wt` 的主设计单位、范围及事实来源同步仍为维护待办；换档通知顺序仍为 §4.2 的时序边界。本轮不因 C7 自动关闭这些项目。
+实际探针输出：submit threw=listener，但文档after、Revision1、laterChanged=0；submitAfterNotifications发布async但completionCount=0；switch更新Revision3但switchCleanups=0。这是成功发布/观察协议及恰好一次完成的破坏，不要求回滚宿主副作用。
 
-## 6. R58（待执行）：C8 实现复核建议
+验收：逐监听异常隔离、单独报告，继续必要换档清理；发布成功仍给Applied，不回滚快照；排队每项完成恰好一次且一个失败不阻断余项。补监听异常发生在变更、换档、排队提交和完成回调的对照。[隔离探针](<../../build/review-core-readonly/CoreStoreProbe.java>)。
 
-R58 尚未执行。C8 的施工方自检见实施文档 §4.5，不计入审核编号。建议至少覆盖：
+### 6.2 R69-N2（P2）：采样类型校验器收到WorldSample而非参数T
 
-1. **相机接管仲裁**：检查 `CoreCameraControlClaims` 的优先级 / 同优先级顺序、`winner` 不调用 provider、`winningPose` 的捕获冻结、捕获期间释放 / 登记只影响下一次、嵌套捕获拒绝、provider 空返回 / 异常传播、伪造与重复释放、跨线程拒绝。
-2. **类型能力服务**：检查五张注册表冻结前置条件、锚点 / 采样三态、内建轨道与扩展轨道、只有解析器 / 采集器而 common 无类型时仍为 `TYPE_NOT_REGISTERED`、空 ID 拒绝。
-3. **R57 非阻断建议**：检查 `callArgumentsStayInCallerScope` 的实参 A / 被调全局 B 对照，确认若把实参按被调函数作用域展开会出现 `A → A` 环。
-4. **独立验证**：重跑全量，确认 62 suite / 566 用例（v2 56 / 500）、失败 / 错误 0、跳过 1；检查 API class 仍为 386，jdeps 禁止依赖为 0。
-5. **边界**：相机接管未接入编辑器 / renderer / 宿主帧循环；“每帧至多一次 provider”和“provider 不发布文档”仍是宿主契约；能力服务未接 UI / 客户端查询；不得把 core 自检写成完整运行验收。
+[UnifiedDocumentValidator:162](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/validation/UnifiedDocumentValidator.java#L162>)把sample传入TypeValidator；[SampleType<T extends SampleArgs>](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/registry/SampleType.java#L37>)声明validator参数为T。注册正常TypeValidator<Args>，对合法Args(1)校验，bridge cast在进入钩子前抛ClassCastException，safeValidate包装ERROR，合法文档被拒绝。
 
-## 7. R59（待执行）：C9 实现复核建议
+实际输出validator calls=0，诊断含WorldSample cannot be cast to Args；无需raw type或不合规插件。验收：传sample.args()，保持SampleId/owner/字段上下文，合法钩子被调用一次、非法参数保留原诊断、异常仍整体拒绝。建议定位到args字段。[隔离探针](<../../build/review-overall/SampleValidatorProbe.java>)。
 
-R59 尚未执行。C9 的施工方自检见实施文档 §4.6，不计入审核编号。建议至少覆盖：
+### 6.3 R69-N3（P2）：距离比例被直接当曲线参数，路径位置错误
 
-1. **消息渲染**：检查 `CoreLocalizedMessageRenderer` 的 Literal / Translatable / fallback / 参数顺序 / 嵌套消息 / 受限样式；确认每次返回独立组件、不缓存、不回写消息；确认只支持契约列出的颜色、粗体、斜体、下划线。
-2. **请求扩展**：检查 `AimCaptureRequest.basePose` / `session` 与 `BakeRequest.session` 的构造约束、基版本一致性、null 拒绝；确认主设计 §4.7 与 UML 字段已同步，破坏性重编译范围明确。
-3. **工具主体**：检查 `CoreEditTools` 的缓动（插值/曲柄/缺失键/L4 上限）、批量（公式拒绝、时间冲突、值变换顺序、状态轨道限制）、烘焙（机位归属、含端点、maxKeys 前置、ABSENT/ERROR、共享 session）、注视捕获（复用 `CorePlaybackFrameFactory.prepareRig`、basePose 补轴、旋转 XYZ + Off、Replace/Disabled/缺通道拒绝、已有键 WARNING）；确认 C9 不能写成完整客户端编辑器或 P1 完成。
-4. **独立验证**：重跑全量，确认 64 suite / 580 用例（v2 58 / 514）、失败 / 错误 0、跳过 1；检查 API class 仍为 386，jdeps 禁止依赖为 0。
-5. **边界**：渲染器未接语言切换 / UI 宿主 / 显示缓存；注视捕获依赖调用方准备的 LEFT_TARGET 事实与同刻 Off 键；已有键替换只有 WARNING、没有强制确认字段；批量变换顺序、烘焙整轨替换与含端点口径为 C9 固定行为；客户端 renderer、世界查询与真实翻译表仍未验收。
+[CorePathSampler:135](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/path/CorePathSampler.java#L135>)仅计算段总长，local=remaining/length后直接at(local)，没有段内累计弧长→t反查。[帧准备:446](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/playback/CorePlaybackFrameFactory.java#L446>)使用该结果。
 
-## 8. R60（待执行）：C10 实现复核建议
+共线Bezier P0=P1=0、P2=P3=10，单段总长恰好10；ABSOLUTE(2.5)/PERCENT(.25)均返回x=1.5625但distance声称2.5，正确x=2.5。共线单调路径排除64段近似长度误差解释。
 
-R60 尚未执行。C10 的施工方自检见实施文档 §4.7，不计入审核编号。建议至少覆盖：
+验收：每段保存累计弧长样本，按距离反查/插值t；跨段可保存累计长度二分；测25%/75%、非匀速Bezier、Catmull-Rom内部点、零长/多段，距离语义与位置一致。不得只调细分数掩盖错误。[路径/事件探针](<../../build/review-c22/CoreAuditProbe.java>)。
 
-1. **接收入口**：检查 `CorePlaybackRequestReceiver` 的 `Stop` → `stopAndReset`、`Embedded` 同实例、`Local` 经资源服务解析；确认 `Start#toRequest` 仍拒绝异实例 Embedded。
-2. **失败映射**：检查 Local 载入拒绝携带原 File 诊断并返回 `HOST_CAPABILITY_MISSING`；缺少开始序号、未知来源、请求构造失败返回 `EVALUATION_ERROR`；播放服务拒绝原样返回其 `PlaybackFailure`，且不产生部分播放状态。
-3. **校验链路**：确认接收端没有复制文档校验或构造默认锚点；基版本、播放参数、启动准备与 store 统一校验仍由 `PlaybackService.start` / store 执行。
-4. **独立验证**：重跑全量，确认 65 suite / 585 用例（v2 59 / 519）、失败 / 错误 0、跳过 1；检查 API class 仍为 386，jdeps 禁止依赖为 0。
-5. **边界**：真实网络包注册 / 传输 / 收包线程切换、服务端权限与来源授权、Local 异步解析 / 超时仍未实现；接收端不是 `StreamCodec` 处理器；不得写成完整网络链路验收。
+### 6.4 R69-N4（P2）：事件预算在全部临时候选展开与排序后才检查
 
-## 9. R61（待执行）：C11 实现复核建议
+[appendRange:252](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/playback/PlaybackEventExpander.java#L252>)扫描全部键并构造matched，排序后于:270才检查events.size>maxEvents；collectTimelines也复制/排序全部轨道键。maxEvents=1、100000个匹配键，最终失败只输出2项前已构造全部候选。本次JDK线程分配观测3,682,664字节，仅佐证分配存在，不作固定性能倍数。
 
-R61 尚未执行。C11 的施工方自检见实施文档 §4.8，不计入审核编号。建议至少覆盖：
+K个键、I区间、每区间M命中，当前初始化O(Σkᵢlogkᵢ)/O(K)，重复扫描O(IK)，排序O(ΣMᵢlogMᵢ)，预算拒绝前临时空间O(K+M)，不受输出预算B限制。契约要求展开/生成时限制，不只是拒绝输出部分列表。
 
-1. **auto 选择**：检查优先级降序、同优先级 ID 稳定排序、内置始终最后；全部拒绝时调用内置；`canOpen` 异常在 auto 中继续下一个。
-2. **指定选择**：已注册接受直接打开；已注册拒绝报告失败且不调用内置；未注册警告并打开内置；`open` 异常报告失败且不回退。
-3. **构造与边界**：重复后端 ID（含内置）拒绝；`Reporter` 警告/失败回调；确认不关闭会话、不实现客户端屏幕挂载或接管令牌。
-4. **独立验证**：重跑全量，确认 66 suite / 593 用例（v2 60 / 527）、失败 / 错误 0、跳过 1；检查 API class 仍为 386，jdeps 禁止依赖为 0。
-5. **边界**：真实 UI 挂载、后端接管令牌、会话关闭/切换、面板输入与渲染未做；`auto` 中某个后端 `open` 异常当前停止，不继续回退；不得写成编辑器 UI 完成。
+验收：在候选超出剩余额度时立即失败；更好使用已排序每轨区间二分、小根堆归并，保持周期/同刻顺序。区分SPI读取成本与框架自身候选分配，预算失败测试要观测展开量而非只看Result。[同一探针](<../../build/review-c22/CoreAuditProbe.java>)。
 
-## 10. R62（待执行）：C12 实现复核建议
+### 6.5 R69-N5（P2）：合法共享DAG使同步依赖构图指数重复展开
 
-R62 尚未执行。C12 的施工方自检见实施文档 §4.9，不计入审核编号。建议至少覆盖：
+[CoreDependencyGraph:302](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/eval/CoreDependencyGraph.java#L302>)逐引用解析，[变量展开:351](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/eval/CoreDependencyGraph.java#L351>)仅visiting栈防环、退出删除，没有已完成状态/闭包memo；每次还用无缓存DefaultExpressionCompiler重新解析。UnifiedDocumentValidator L3同步调用该图，运行EvaluationSession额度不能保护构图。
 
-1. **NBT 往返**：检查 `NbtDocumentCodec.encode` 经 `NbtOps` / `DocumentCodec` 编码、`decode` 反向解码；确认往返文档相等，结构失败不返回部分文档。
-2. **规模限制**：检查字节上限在读取前与写入后生效；`NbtAccounter` 读取；深度 / 条目守卫在遍历前生效；Compound 键、List 元素、基本数组元素计数口径一致。
-3. **失败语义**：损坏字节、非 Compound 根、超限、Codec 拒绝均转 `StructureFailed` / `DataResult` 错误；NBT 结构失败没有 JSON fieldPath 是有意边界。
-4. **独立验证**：重跑全量，确认 67 suite / 598 用例（v2 61 / 532）、失败 / 错误 0、跳过 1；检查 API class 仍为 386，jdeps 禁止依赖为 0。
-5. **边界**：NBT 文件服务、命名根 / 压缩策略、SavedData 生命周期、原子替换、恢复调度未实现；深度 / 条目检查发生在读取之后，读取阶段仅字节配额；不得写成 NBT 资源服务或 P1 存储完成。
+合法无环`v0=1; vi=Formula("v(i-1)+v(i-1)")`，输入O(n)，末根T(n)=2T(n-1)+O(1)。隔离探针仅把Builder内部变量HashMap换为行为等价计数Map，运行原build：
 
-## 11. R63（待执行）：C13 实现复核建议
+| n | 变量总数 | 变量get次数 | 诊断数 |
+| --- | --- | --- | --- |
+| 8 | 9 | 1,004 | 0 |
+| 12 | 13 | 16,356 | 0 |
+| 16 | 17 | 262,108 | 0 |
 
-R63 尚未执行。C13 的施工方自检见实施文档 §4.10，不计入审核编号。建议至少覆盖：
+次数精确符合`2^(n+2)-2n-4`，不以未预热耗时推导速度倍数。这是算法复杂度缺陷，不是仅凭“缺缓存”猜热点。
 
-1. **全局作用域**：检查通道曲线、注视 / 活动键、布局 `AnimatedNumber.Keyed` 曲线、相机来源键与 `ExtensionTimelineTrack` 键是否共用同一 `KeyId` 表；同轨与跨轨重复都产生 `DUPLICATE_KEY_ID`。
-2. **诊断**：确认第二个位置携带对象 / 字段定位，消息含首次出现路径；不静默覆盖、不只检查单轨。
-3. **兼容性**：确认既有测试文档没有因全局收紧产生误报；非 `ExtensionTimelineTrack` 扩展轨道仍由类型校验器负责，不把不可见键当作已验证。
-4. **独立验证**：重跑全量，确认 67 suite / 600 用例（v2 61 / 534）、失败 / 错误 0、跳过 1；检查 API class 仍为 386，jdeps 禁止依赖为 0。
-5. **边界**：跨文档作用域、第三方轨道内部键、源文件 fieldPath 不在此项；不得写成全类型键身份已完成。
+验收：一次构图用节点完成状态/依赖闭包、编译结果复用，保留C7词法作用域和正确环诊断；重复依赖工作受节点/边和必要闭包输出约束，不按展开路径指数增长。对共享DAG、真环、函数参数/全局变量分别回归。[计数探针](<../../build/review-c22/DependencyDagProbe.java>)。
 
-## 12. R64（待执行）：C14 实现复核建议
+### 6.6 性能成本、条件优化与风险分级
 
-R64 尚未执行。C14 的施工方自检见实施文档 §4.11，不计入审核编号。建议至少覆盖：
+以下不额外计为五项P级缺陷，优先级见实施文档§5。
 
-1. **文件往返**：检查 `NbtAnimationResourceService` 的保存 / 载入 / `entry` / `entries` 往返；SHA-256、大小与修改时间元数据非空且一致。
-2. **路径与规模**：越界 / 符号链接路径拒绝；字节上限在读取前与编码后生效；`NbtAccounter` 读取；`NbtTagGuard` 深度 / 条目检查；损坏 NBT 与结构错误转 File 诊断。
-3. **原子保存**：临时文件、`ATOMIC_MOVE`、失败清理；异步保存回调恰好一次；不得留下部分正式文件。
-4. **独立验证**：重跑全量，确认 68 suite / 604 用例（v2 62 / 538）、失败 / 错误 0、跳过 1；检查 API class 仍为 386，jdeps 禁止依赖为 0。
-5. **边界**：SavedData 生命周期、压缩命名根、恢复槽调度、目录资源数量、网络传输与 TOCTOU 未实现；载入只做结构解码，统一校验仍由 loader/store 执行；不得写成 P1 存储整体完成。
+| 范围 | 证据/成本 | 建议与限制 |
+| --- | --- | --- |
+| 多键缓动 | CoreEditTools每选键2个op，Applier逐op重建N键曲线；M选键至少Ω(MN)复制/扫描 | 一次最终ReplaceKeys；不声称TimSort每次必为NlogN |
+| 索引 | 每帧建SnapshotTrackIndex，但lookup绑定document::curveTrack仍线性；S次采样O(ST) | 快照单槽复用索引并真正用于查询；不永久保留历史 |
+| 构图查轨 | 每T轨道线性document.track，空轨仍O(T²) | 构图局部ID map，无须全局缓存 |
+| 路径表 | 每sample重建64段长度，选段时重算长度 | 正确弧长表顺带保存段长和累计值，有界复用 |
+| duration/符号/样本 | 公式端点重复扫duration；变量/函数/样本每次线性查名字 | 快照绑定派生表；workQuota是抽象工作量，不是CPU时间硬限 |
+| NBT列表 | entry/list逐文件readAllBytes后hash，list(0)仍读全部，元数据入口不走载荷maxBytes | 流式hash减少峰值数组；仍需完整读取，不能承诺总IO有界 |
+| 编译缓存 | 默认256条，同锁解析，多个服务各建一份；4097字符失败输入仍作为完整key保留 | 超长输入绕过/总字符预算；共享无来源编译产物，诊断本次包装 |
+| 预览 | 每preview重新apply完整草稿，尚无代际缓存 | 按base snapshot identity+draftGeneration缓存；只构造预览，不能冒充统一校验通过 |
+| 运行结果缓存 | 目前仅API无EvaluationCache实现，TrackRef可能重复求值 | 先定random/预算/资源失败/来源链，再做确定性缓存 |
+| AST深度 | 二元AST递归未进入会话maxDepth，只有变量/函数/TrackRef进入深度；长度4096仍有限栈风险 | 未复现StackOverflow，保留结构深度/迭代遍历风险，不列P级 |
+| 调度生命周期 | closed/started/句柄为普通字段，发布线程和ScheduledTimer线程无统一同步 | 明确owner线程或同步生命周期，补可控close/onPublished交错；C22异常返回修复不代表并发关闭通过 |
+| 已知内存边界 | 历史仅64项、恢复仅16槽，无完整大小/保留期淘汰 | 保留施工项，不重复当新缺陷，也不称已满足字节预算 |
 
-## 13. R65（待执行）：C15 实现复核建议
+### 6.7 改名能力讨论结论
 
-R65 尚未执行。C15 的施工方自检见实施文档 §4.12，不计入审核编号。建议至少覆盖：
+当前强制ExtensionTrack.withName没有确定性能错误，也不能把过去强制契约误报为违反“可选能力”。推荐讨论独立非泛型RenamableTrack mixin，不extends sealed AnimationTrack：让支持者显式实现、协变返回原类型，无能力明确拒绝；统一入口检查返回ID/type/name/class，再按原owner替换、store校验。接口不能替未知类型自动复制载荷，不用NamedTrack包装器。若产品坚持所有名称都必须可改，维持强制方案合理；需第三方不可改类时才考虑typed注册适配器。方案/迁移测试见[主设计§3.1.3](<../design-animation-editor-framework.md#313-轨道改名能力本轮讨论建议尚未迁移>)及实施文档§3。本轮只建议，未新增裁决或改源码。
 
-1. **路径证据**：检查 `NbtStructureFieldPath` 对 `data_version` 类型 / 版本、`update_every_frames` / `resample_every_ticks` 类型、未知类型与已知字段的定位；找不到时保持空路径，不猜测。
-2. **集成范围**：确认 `NbtDocumentCodec.decode` 只在结构失败且原路径为空时补路径；成功解码、校验失败与直读异常不改变语义。
-3. **独立验证**：重跑全量，确认 68 suite / 605 用例（v2 62 / 539）、失败 / 错误 0、跳过 1；检查 API class 仍为 386，jdeps 禁止依赖为 0。
-4. **边界**：不是完整 DFU 路径追踪；NBT 资源服务 `LoadResult.Rejected` 仍无结构化 fieldPath；JSON 与 NBT 定位逻辑未统一；不得写成 fieldPath 全部完成。
-
-## 14. R66：C8–C16 合并代码审查（2026-10-26）
-
-**基线：`391946a`。结论：确认四项 P2，均通过隔离探针复现，记录时尚未修复。** 审查依据为实施文档 §4.5–§4.13、本文 R58–R65 建议及主设计；未把明确延期的客户端、renderer、世界查询、网络授权或确认 UI 计为缺陷。本轮没有修改实现、正式测试或构建配置；仅在构建目录生成探针与临时 classpath 导出配置，随后按用户要求将结果写入本审核文档。
-
-### 14.1 R66-N1（P2）：其他仲裁表的令牌可以释放本表声明
-
-[CoreCameraControlClaims:66](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/playback/CoreCameraControlClaims.java#L66>) 的登记 ID 在每个实例从 0 开始；[release:78](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/playback/CoreCameraControlClaims.java#L78>) 仅比较 Claim 的值相等性。
-
-同线程创建仲裁表 A、B，各登记相同 priority 与 owner，二者首条 Claim 的字段相等。调用 `A.release(B的令牌)` 实际移除了 A 的声明，`A.winner()` 返回空。使用 `new Claim(real.id(), real.priority(), real.owner())` 精确复制令牌也能释放原声明。
-
-这违反 [CameraControlClaims:35](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/playback/CameraControlClaims.java#L35>) 的“未知令牌不得影响其他声明”，也未满足 C8 对伪造令牌拒绝的施工说明。现有伪造令牌测试改变字段，未覆盖跨表值碰撞及精确复制。
-
-**建议与验收：** 使用原登记令牌引用身份或不可混淆的登记身份验证归属；补跨表、精确复制、重复释放与原令牌正常释放用例，错误释放不得改变获胜声明或调用其 provider。实际复现探针：[ClaimsProbe](<../../build/review-p1-20261026/ClaimsProbe.java>)。
-
-### 14.2 R66-N2（P2）：十进制步长烘焙生成重复终点，并误判 maxKeys
-
-[CoreEditTools:193](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/edit/CoreEditTools.java#L193>) 先以 double 计算 `ceil(span / step)`，再于 [时间生成:207](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/edit/CoreEditTools.java#L207>) 转 float，并无条件追加终点。
-
-最小输入为 `start=0f, end=0.3f, step=0.1f, maxKeys=5`，实际返回 Ready(ReplaceKeys)，时间为 `[0.0, 0.1, 0.2, 0.3, 0.3]`。倒数第二个采样点经 float 舍入已到达终点，最后再次强制写入终点；将结果交给 Curve.withKeys 即抛 `Keyframe times must be unique within a curve; duplicate at 0.3s`。同一输入改 `maxKeys=4` 又提前拒绝，错误报告需要 5 键，实际应为 4 个唯一采样点。
-
-**建议与验收：** 按最终 float 时间语义生成严格递增、端点仅一次的采样计划，用同一计划检查 maxKeys 和执行采样；补普通十进制步长、非零起点及 float 分辨率不足场景，不允许返回无法构造合法曲线的 Ready。现有测试使用 0.25 等可精确表示步长，未覆盖该反例。
-
-### 14.3 R66-N3（P2）：启用避障的机位无法执行注视捕获
-
-[CoreEditTools:328](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/edit/CoreEditTools.java#L328>) 创建没有 ObstacleResolver 的四参帧工厂，并调用完整 prepareRig；[CorePlaybackFrameFactory:480](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/playback/CorePlaybackFrameFactory.java#L480>) 遇启用避障时继续进入 applyObstacle，在解析器为空时产生 ERROR，捕获整体拒绝。
-
-对正式测试中原可成功的 aimSnapshot / aimRequest，仅将机位设为 `ObstacleSettings(true, 0.1)`，实际得到 `Rejected: Obstacle is enabled but no host obstacle resolver is installed`。这不是要求提前实现客户端碰撞查询：[主设计:387](<../design-animation-editor-framework.md#L387>) 明确捕获注视之后、避障位置修正之前的旋转，捕获不应依赖该后续阶段。
-
-**建议与验收：** 提取或复用避障前的姿态求值阶段；同一冻结事实下，开关避障不应阻止旋转捕获或改变所捕获的避障前旋转，并保留真正通道/注视错误的整体拒绝。N2/N3 实际复现探针：[C9EditToolsProbe](<../../build/review-p1-20261026/C9EditToolsProbe.java>)。
-
-### 14.4 R66-N4（P2）：NBT 路径推断把合法数值标签标成错误字段
-
-[NbtStructureFieldPath:106](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/storage/NbtStructureFieldPath.java#L106>) 将已知整数字段的合法 NBT 表示限定为 IntTag，并在分析错误消息前优先返回该路径；实际 strictInt 允许数学上为整数且范围合法的其他数值标签。
-
-探针先把合法文档的 `data_version` 改为 `DoubleTag(1.0)`，直接 DocumentCodec 解码仍为 Accepted；随后仅将 `name` 改成整数，经 NbtDocumentCodec 返回 `StructureFailed(message="Not a string", fieldPath="data_version")`。错误来自 name，却指向合法版本字段。该逻辑也被 C16 的 NBT 资源 File 诊断使用。
-
-**建议与验收：** 复用实际 Codec 的整数语义，而非只认 IntTag；定位证据须对应本次失败，不能让无关同名字段或合法数值表示抢占路径。补合法 Double/Long 等整数标签与另一非法字段的组合反例；无法证明时保留空路径。实际复现探针：[NbtPathProbe](<../../build/review-p1-20261026/NbtPathProbe.java>)。
-
-### 14.5 实际验证、未发现项与边界
+### 6.8 实际验证与证据限制
 
 本轮独立执行：
 
@@ -299,15 +164,16 @@ R65 尚未执行。C15 的施工方自检见实施文档 §4.12，不计入审�
 .\gradlew.bat --offline compileJava test --no-build-cache --rerun-tasks --console=plain
 ```
 
-结果 BUILD SUCCESSFUL，编译与测试任务重新执行，未执行 clean。按 XML 统计全工程 **68 suite / 611 用例**，v2 **62 / 545**；失败/错误为 0，跳过 1（Windows 符号链接权限）。四项反例为构建目录中的独立 Java 探针，不计入正式 611 用例，探针验证当前缺陷存在不等于修复通过。
+BUILD SUCCESSFUL，无clean，编译/测试任务重跑；**70 suite/631用例，v2 64/565，失败/错误0、跳过1**（Windows符号链接权限）。探针不计正式用例，证明缺陷现状不等于修复通过。未启动客户端，不作真实帧率/显存/兼容性结论。
 
-检查 **386 个 v2 API class** 的旧根、net.minecraft.client、v2 core/editor 实现包引用，结果为 0；本轮采用 class 字节中的禁止包名扫描，**未重跑 jdeps**，不将其写成 jdeps 或完整架构门禁证明。git diff --check 通过。
+JDK25 jdeps --ignore-missing-deps -verbose:class -filter:none检查 **387个API class**，旧根、net.minecraft.client、v2 core/editor实现的禁止类型依赖0；editor.spi→internal为0。本轮未宣称全部core/editor相互边界重验。输出在[API依赖证据](<../../build/review-overall/api-jdeps.txt>)与[SPI依赖证据](<../../build/review-overall/spi-jdeps.txt>)，临时文件可被clean清理。
 
-接收入口、UI 后端编排、类型能力服务和全文档 KeyId 检查，在本轮核对范围未发现其他确定缺陷；不据此追认 R58–R65 各条建议全部验收，也不表示 renderer、真实网络协议、SavedData、碰撞适配或完整 P1 完成。此前 R56/R57 的已关闭原问题不因本轮发现自动重开。后续修复复核从 R67 继续，按 R66-N1–N4 分别记录关闭证据。
+本轮仅生成build隔离证据及整理文档，保留用户原有C22源码/测试改动。git diff --check与文档链接检查见整理收尾；Mermaid未修改结构语法，不把旧parse成功视作本轮重跑。
 
-## 15. 审核方法与限制
+## 7. 审核与文档维护规则
 
-- R54–R57 只读源码与测试，不修改实现；R56 未新增动态反例测试，R57 读取并运行施工方新增测试，未新增测试。审核结论只关闭明确列举的问题范围，新增需求另行分期。
-- 测试通过只表示已执行用例通过，不代替真实 store 时序、世界查询、渲染、网络与客户端接线验证。
-- 依赖门禁以编译产物检查为准，源码文本扫描只作辅助；`api` 不依赖旧根、`net.minecraft.client`、v2 core/editor 实现，`editor.spi` 不依赖 `editor.internal`。
-- C7 施工方全量测试与 jdeps 结果见实施文档 §4.4、§6；R57 已独立复跑全量构建 / 测试并检查 API 编译产物依赖，结果见本文 §5.2。施工方自检与独立审核仍分别记录。
+- 每项关闭写清原输入、输出、修复位置与独立证据；施工方自检、独立审核、游戏验收分开。
+- R69五项是当前待修清单；其他成本建议先证明调用频率与规模，再决定优化，不承诺倍数。
+- 真实游戏矩阵见实施文档§5.4；尚未实施的renderer/面板/叠加/音频不写成只差运行测试。
+- 主设计同步行为，实施文档维护状态和顺序，本文维护证据和编号；历史原文在Git，不恢复多份互相矛盾待办。
+- 构建目录探针可能被清理，正文保留可重建反例。新审核从R70继续，提交编号不由审核自动推进。
