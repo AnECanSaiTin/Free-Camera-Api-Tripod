@@ -13,6 +13,7 @@ import cn.anecansaitin.free_camera_api_tripod_v2.api.storage.AnimationResourceSe
 import cn.anecansaitin.free_camera_api_tripod_v2.api.storage.DiagnosticReport;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.storage.LoadResult;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.storage.ResourceId;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.storage.ResourceListing;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.storage.SaveResult;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
@@ -40,6 +41,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.PriorityQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
@@ -356,16 +358,35 @@ public final class FileAnimationResourceService implements AnimationResourceServ
 
     @Override
     public List<AnimationResourceEntry> entries() {
+        return collectEntries(Integer.MAX_VALUE).entries();
+    }
+
+    @Override
+    public ResourceListing list(int maxEntries) {
+        if (maxEntries < 0) {
+            throw new IllegalArgumentException("maxEntries must be non-negative: " + maxEntries);
+        }
+
+        return collectEntries(maxEntries);
+    }
+
+    private ResourceListing collectEntries(int maxEntries) {
         Path root = resolver.root();
 
         try {
             if (!Files.isDirectory(root)) {
-                return List.of();
+                return new ResourceListing(List.of(), false);
             }
 
             // 使用真实根遍历，避免资源根本身是符号链接时 walkFileTree 不进入目录。
             Path realRoot = root.toRealPath();
             List<AnimationResourceEntry> found = new ArrayList<>();
+            PriorityQueue<AnimationResourceEntry> bounded = maxEntries == Integer.MAX_VALUE
+                    ? null
+                    : new PriorityQueue<>(Math.max(1, maxEntries),
+                            Comparator.comparing((AnimationResourceEntry entry) ->
+                                    entry.resource().value()).reversed());
+            int[] seen = {0};
 
             Files.walkFileTree(realRoot, new SimpleFileVisitor<>() {
                 @Override
@@ -390,7 +411,22 @@ public final class FileAnimationResourceService implements AnimationResourceServ
                         return java.nio.file.FileVisitResult.CONTINUE;
                     }
 
-                    readEntry(id, file).ifPresent(found::add);
+                    Optional<AnimationResourceEntry> entry = readEntry(id, file);
+
+                    if (entry.isPresent()) {
+                        seen[0]++;
+
+                        if (bounded == null) {
+                            found.add(entry.get());
+                        } else {
+                            bounded.add(entry.get());
+
+                            if (bounded.size() > maxEntries) {
+                                bounded.poll();
+                            }
+                        }
+                    }
+
                     return java.nio.file.FileVisitResult.CONTINUE;
                 }
 
@@ -401,10 +437,13 @@ public final class FileAnimationResourceService implements AnimationResourceServ
                 }
             });
 
-            found.sort(Comparator.comparing(entry -> entry.resource().value()));
-            return List.copyOf(found);
+            List<AnimationResourceEntry> result = bounded == null
+                    ? found
+                    : new ArrayList<>(bounded);
+            result.sort(Comparator.comparing(entry -> entry.resource().value()));
+            return new ResourceListing(result, seen[0] > maxEntries);
         } catch (IOException | RuntimeException e) {
-            return List.of();
+            return new ResourceListing(List.of(), false);
         }
     }
 

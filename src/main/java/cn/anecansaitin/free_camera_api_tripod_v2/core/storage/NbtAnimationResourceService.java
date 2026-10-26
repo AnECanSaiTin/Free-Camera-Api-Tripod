@@ -11,6 +11,7 @@ import cn.anecansaitin.free_camera_api_tripod_v2.api.storage.AnimationResourceSe
 import cn.anecansaitin.free_camera_api_tripod_v2.api.storage.DiagnosticReport;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.storage.LoadResult;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.storage.ResourceId;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.storage.ResourceListing;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.storage.SaveResult;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.DataResult;
@@ -40,6 +41,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.PriorityQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 import java.util.zip.GZIPInputStream;
@@ -346,13 +348,32 @@ public final class NbtAnimationResourceService implements AnimationResourceServi
 
     @Override
     public List<AnimationResourceEntry> entries() {
+        return collectEntries(Integer.MAX_VALUE).entries();
+    }
+
+    @Override
+    public ResourceListing list(int maxEntries) {
+        if (maxEntries < 0) {
+            throw new IllegalArgumentException("maxEntries must be non-negative: " + maxEntries);
+        }
+
+        return collectEntries(maxEntries);
+    }
+
+    private ResourceListing collectEntries(int maxEntries) {
         Path root = resolver.root();
 
         if (!Files.isDirectory(root)) {
-            return List.of();
+            return new ResourceListing(List.of(), false);
         }
 
-        List<AnimationResourceEntry> entries = new ArrayList<>();
+        List<AnimationResourceEntry> found = new ArrayList<>();
+        PriorityQueue<AnimationResourceEntry> bounded = maxEntries == Integer.MAX_VALUE
+                ? null
+                : new PriorityQueue<>(Math.max(1, maxEntries),
+                        Comparator.comparing((AnimationResourceEntry entry) ->
+                                entry.resource().value()).reversed());
+        int[] seen = {0};
 
         try (var paths = Files.walk(root)) {
             paths.filter(Files::isRegularFile)
@@ -366,17 +387,32 @@ public final class NbtAnimationResourceService implements AnimationResourceServi
 
                         try {
                             resolver.resolveForRead(id);
-                            entries.add(entryFor(id, path, Files.readAllBytes(path)));
+                            AnimationResourceEntry entry = entryFor(
+                                    id, path, Files.readAllBytes(path));
+                            seen[0]++;
+
+                            if (bounded == null) {
+                                found.add(entry);
+                            } else {
+                                bounded.add(entry);
+
+                                if (bounded.size() > maxEntries) {
+                                    bounded.poll();
+                                }
+                            }
                         } catch (IOException | RuntimeException ignored) {
                             // 不可读 / 越界项不暴露给调用方。
                         }
                     });
         } catch (IOException | RuntimeException exception) {
-            return List.of();
+            return new ResourceListing(List.of(), false);
         }
 
-        entries.sort(Comparator.comparing(entry -> entry.resource().value()));
-        return List.copyOf(entries);
+        List<AnimationResourceEntry> result = bounded == null
+                ? found
+                : new ArrayList<>(bounded);
+        result.sort(Comparator.comparing(entry -> entry.resource().value()));
+        return new ResourceListing(result, seen[0] > maxEntries);
     }
 
     private AnimationResourceEntry entryFor(ResourceId resource, Path path, byte[] bytes)

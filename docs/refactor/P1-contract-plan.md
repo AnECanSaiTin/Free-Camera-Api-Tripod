@@ -449,13 +449,13 @@ EditorSession 写文档必须走 EditSubmission/store；播放头、轨道显隐
 
 - 新增 [ResourceListing](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/storage/ResourceListing.java>)：稳定条目的只读列表 + `truncated` 标记。
 - [AnimationResourceService](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/storage/AnimationResourceService.java>) 新增 `list(int maxEntries)` 默认实现：负上限拒绝；超出时截断并明确标记，不把截断列表伪装成完整资源集合；`entries()` 保持原语义。
-- 显式 `ResourceId` 的载入不受列表上限影响；JSON / NBT 文件服务沿用各自稳定排序后截断。默认实现会先完整枚举再截断，尚未在遍历阶段停止，属于后续优化边界。
+- 显式 `ResourceId` 的载入不受列表上限影响；JSON / NBT 文件服务使用大小为 `maxEntries` 的有界堆保留资源身份最小的条目，再稳定排序，内存不随目录资源总数增长；遍历本身仍会走完目录。
 
 测试新增 2 例：JSON 与 NBT 服务的 `list(0/部分/全部)` 截断标记与稳定顺序。
 
 **施工验证。** `.\gradlew.bat --offline clean compileJava test --no-build-cache --rerun-tasks --console=plain`，BUILD SUCCESSFUL；按测试结果 XML 统计 **68 suite / 617 用例**（v2 62 / 551），失败/错误 0、跳过 1（Windows 符号链接权限）。
 
-**关闭边界。** 目前只限制返回条数与显式标记截断，未限制遍历工作量；目录极大时仍应先做流式/索引优化。
+**关闭边界。** 目前限制返回条数与内存占用并显式标记截断，但遍历仍走完整目录；目录极大时仍需目录索引或提前终止策略。
 
 ## 5. 后续实现与验收清单
 
