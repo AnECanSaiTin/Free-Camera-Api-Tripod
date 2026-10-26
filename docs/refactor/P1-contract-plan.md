@@ -144,7 +144,8 @@ EditorSession 写文档必须走 EditSubmission/store；播放头、轨道显隐
 | C15 | 基于 C14，已提交 `dc7c9cc` | NBT 结构失败字段路径 | 施工方自检；独立复核待 R65 |
 | C16 | 基于 C15，已提交 `391946a` | 有界 GZIP NBT、`.nbt.gz` 资源服务、资源诊断字段路径 | 施工方自检；R66 合并审查发现四项 P2 |
 | C17 | 基于 C16，已提交 `4f1a641` | R66-N1–N4 修复：令牌归属、烘焙时间、避障前捕获、NBT 整数语义 | 施工方自检；R67 待执行 |
-| C18 | 基于 C17，未提交 | 有界资源枚举与截断标记 | 施工方自检；独立复核待定 |
+| C18 | 基于 C17，已提交 `bc06d8c` + `ce3e777` | 有界资源枚举、截断标记与有界堆 | 施工方自检；独立复核待定 |
+| C19 | 基于 C18，未提交 | 恢复调度：防抖、周期、在途去重与关闭 | 施工方自检；独立复核待定 |
 
 ### 4.1 历史交付摘要
 
@@ -445,7 +446,7 @@ EditorSession 写文档必须走 EditSubmission/store；播放头、轨道显隐
 
 **关闭边界。** 本轮只关闭 R66-N1–N4 的已列反例；不追认 R58–R65 全部验收，不代表真实 renderer、网络协议、SavedData、碰撞适配或完整 P1 完成。N3 的 no-op resolver 只用于捕获避障前旋转，不执行真实碰撞查询。
 
-### 4.15 C18：有界资源枚举（2026-10-26，未提交）
+### 4.15 C18：有界资源枚举（2026-10-26，已提交 `bc06d8c` + `ce3e777`）
 
 - 新增 [ResourceListing](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/storage/ResourceListing.java>)：稳定条目的只读列表 + `truncated` 标记。
 - [AnimationResourceService](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/storage/AnimationResourceService.java>) 新增 `list(int maxEntries)` 默认实现：负上限拒绝；超出时截断并明确标记，不把截断列表伪装成完整资源集合；`entries()` 保持原语义。
@@ -456,6 +457,22 @@ EditorSession 写文档必须走 EditSubmission/store；播放头、轨道显隐
 **施工验证。** `.\gradlew.bat --offline clean compileJava test --no-build-cache --rerun-tasks --console=plain`，BUILD SUCCESSFUL；按测试结果 XML 统计 **68 suite / 617 用例**（v2 62 / 551），失败/错误 0、跳过 1（Windows 符号链接权限）。
 
 **关闭边界。** 目前限制返回条数与内存占用并显式标记截断，但遍历仍走完整目录；目录极大时仍需目录索引或提前终止策略。
+
+### 4.16 C19：自动恢复调度（2026-10-26，未提交）
+
+- [CoreRecoveryScheduler](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/storage/CoreRecoveryScheduler.java>) 实现已发布快照后的防抖捕获、周期捕获、关闭取消与在途去重：
+  - 连续 [onPublished] 只保留最后一次防抖任务；
+  - 周期捕获可重复 `start` 无副作用；
+  - 上一次异步捕获未完成时，后续触发跳过，完成后再接受；
+  - `close` 幂等并取消未执行任务，不等待在途写入。
+- [ScheduledTimer](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/storage/ScheduledTimer.java>) 提供 `ScheduledExecutorService` 适配；测试使用手动 `Timer`，不依赖真实线程/睡眠。
+- 本类只决定“何时捕获”，编码与写盘仍由 [RecoveryService](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/storage/RecoveryService.java>) 实现。
+
+测试新增 4 例：防抖取消、周期/关闭、在途去重、空快照跳过。
+
+**施工验证。** `.\gradlew.bat --offline clean compileJava test --no-build-cache --rerun-tasks --console=plain`，BUILD SUCCESSFUL；按测试结果 XML 统计 **69 suite / 621 用例**（v2 63 / 555），失败/错误 0、跳过 1（Windows 符号链接权限）。
+
+**关闭边界。** 尚未接真实客户端生命周期、资源身份切换或恢复选择 UI；调度线程池生命周期由宿主管理。
 
 ## 5. 后续实现与验收清单
 
@@ -489,7 +506,7 @@ C12 已交付 `NbtDocumentCodec` 的 NBT 载荷编解码与规模限制，并在
 
 C13 已把 `KeyId` 唯一性收紧到全文档作用域；非时间轴扩展轨道内部键仍由类型校验器负责。
 
-C14 已交付 `NbtAnimationResourceService` 的本地 `.nbt` 文件资源服务；C16 补齐 `.nbt.gz`；SavedData 生命周期、恢复调度与网络传输仍未接。
+C14 已交付 `NbtAnimationResourceService` 的本地 `.nbt` 文件资源服务；C16 补齐 `.nbt.gz`；C19 补齐恢复调度；SavedData 生命周期、真实网络传输与恢复选择 UI 仍未接。
 
 C15 已为 NBT 结构失败补充部分字段路径；C16 已把部分路径写入资源服务的 File 诊断，完整 DFU 路径追踪仍未接。
 
@@ -617,6 +634,14 @@ C5 审核基线实际执行：
 
 结果 BUILD SUCCESSFUL，按测试结果 XML 统计 **68 suite / 617 用例**（v2 62 / 551），失败/错误 0、跳过 1（Windows 无符号链接权限的 JUnit assumption）。C18 新增 2 个用例、suite 数不变。施工方自检命令与证据见 §4.15。
 
+2026-10-26 C19 施工批次执行：
+
+```powershell
+.\gradlew.bat --offline clean compileJava test --no-build-cache --rerun-tasks --console=plain
+```
+
+结果 BUILD SUCCESSFUL，按测试结果 XML 统计 **69 suite / 621 用例**（v2 63 / 555），失败/错误 0、跳过 1（Windows 无符号链接权限的 JUnit assumption）。C19 新增 4 个用例、1 个 suite。施工方自检命令与证据见 §4.16。
+
 必守门禁：api 不依赖旧根、net.minecraft.client、core/editor 实现；editor.spi 不依赖 editor.internal；按 Q13 允许 edit ↔ document。源码文本扫描只作辅助，依赖门禁检查编译产物。测试目前集中于结构不变量、容器隔离、JSON/压缩 JSON Codec 与替身契约，不代替真实 store/时序/世界/渲染/网络验证。
 
 关键基线保留为里程碑，完整历史命令和原始论证由 Git 追溯：
@@ -647,5 +672,6 @@ C5 审核基线实际执行：
 | C16（压缩 NBT 与资源字段路径） | 68/611        | 62/545        |
 | C17（R66 四项修复） | 68/615        | 62/549        |
 | C18（有界资源枚举） | 68/617        | 62/551        |
+| C19（恢复调度） | 69/621        | 63/555        |
 
 后续维护分为两个入口：本文更新契约、实施批次、施工记录与验证基线；[P1 审核与复核记录](<P1-review.md>)更新审核编号、原问题、关闭边界与独立复核结论。行为规则变更同步主设计；审核通过只关闭明确的问题范围，新增需求另行分期。原 R1–R14/R1–R29 归档、协议提案、注册表选型与旧复核日志已并入两份文档；如需原文，可查凝练前提交 `7095284` 的对应路径。
