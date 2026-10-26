@@ -131,6 +131,31 @@ class NbtDocumentCodecTest {
     }
 
     @Test
+    void validDoubleIntegerVersionDoesNotStealPathFromAnotherInvalidField() throws Exception {
+        DocumentCodec documents = DocumentCodec.of(frozenRegistries(), document -> List.of());
+        NbtDocumentCodec codec = new NbtDocumentCodec(documents, NbtResourceLimits.DEFAULT);
+        Tag encoded = CameraAnimation.codec(frozenRegistries())
+                .encodeStart(NbtOps.INSTANCE, document())
+                .result()
+                .orElseThrow();
+        CompoundTag compound = assertType(CompoundTag.class, encoded);
+        compound.putDouble("data_version", 1.0);
+        compound.putInt("name", 1);
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+
+        try (DataOutputStream output = new DataOutputStream(bytes)) {
+            NbtIo.write(compound, output);
+        }
+
+        DocumentDecodeResult result = codec.decode(bytes.toByteArray());
+
+        DocumentDecodeResult.StructureFailed failed = assertType(
+                DocumentDecodeResult.StructureFailed.class, result);
+        assertTrue(!"data_version".equals(failed.fieldPath()),
+                () -> "valid data_version must not steal path: " + failed.fieldPath());
+    }
+
+    @Test
     void malformedBytesBecomeStructureFailure() {
         DocumentCodec documents = DocumentCodec.of(frozenRegistries(), document -> List.of());
         NbtDocumentCodec codec = new NbtDocumentCodec(documents, NbtResourceLimits.DEFAULT);

@@ -5,10 +5,13 @@ import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.playback.CameraCo
 import cn.anecansaitin.free_camera_api_tripod_v2.api.spatial.WorldPose;
 import org.jspecify.annotations.NullMarked;
 
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 /// 相机控制声明的默认仲裁实现（主设计 §7.5）。
 ///
@@ -44,6 +47,7 @@ public final class CoreCameraControlClaims implements CameraControlClaims {
 
     private final Thread ownerThread;
     private final Map<Long, Registration> claims = new LinkedHashMap<>();
+    private final Set<Claim> issuedClaims = Collections.newSetFromMap(new IdentityHashMap<>());
 
     private long nextClaimId;
     private boolean capturing;
@@ -65,6 +69,7 @@ public final class CoreCameraControlClaims implements CameraControlClaims {
 
         Claim claim = new Claim(nextClaimId++, priority, owner);
         claims.put(claim.id(), new Registration(claim, poseProvider));
+        issuedClaims.add(claim);
         return claim;
     }
 
@@ -75,12 +80,17 @@ public final class CoreCameraControlClaims implements CameraControlClaims {
 
         Registration registered = claims.get(claim.id());
 
-        if (registered == null || !registered.claim().equals(claim)) {
+        // 令牌按“本表发出的那个对象”验证归属：值相等的复制品或其它表的首条令牌
+        // 都不能释放本表声明。
+        if (!issuedClaims.contains(claim)
+                || registered == null
+                || registered.claim() != claim) {
             throw new IllegalArgumentException(
                     "Unknown or already released camera control claim: " + claim);
         }
 
         claims.remove(claim.id());
+        issuedClaims.remove(claim);
     }
 
     @Override

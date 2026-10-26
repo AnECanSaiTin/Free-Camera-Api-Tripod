@@ -142,7 +142,8 @@ EditorSession 写文档必须走 EditSubmission/store；播放头、轨道显隐
 | C13 | 基于 C12，已提交 `40abc7e` | 全文档 KeyId 唯一性 | 施工方自检；独立复核待 R63 |
 | C14 | 基于 C13，已提交 `4bffdc0` | NBT 文件资源服务 | 施工方自检；独立复核待 R64 |
 | C15 | 基于 C14，已提交 `dc7c9cc` | NBT 结构失败字段路径 | 施工方自检；独立复核待 R65 |
-| C16 | 基于 C15，未提交 | 有界 GZIP NBT、`.nbt.gz` 资源服务、资源诊断字段路径 | 施工方自检；独立复核待定 |
+| C16 | 基于 C15，已提交 `391946a` | 有界 GZIP NBT、`.nbt.gz` 资源服务、资源诊断字段路径 | 施工方自检；R66 合并审查发现四项 P2 |
+| C17 | 基于 C16，未提交 | R66-N1–N4 修复：令牌归属、烘焙时间、避障前捕获、NBT 整数语义 | 施工方自检；独立复核待定 |
 
 ### 4.1 历史交付摘要
 
@@ -430,6 +431,19 @@ EditorSession 写文档必须走 EditSubmission/store；播放头、轨道显隐
 
 **关闭边界。** 不做 SavedData 生命周期、恢复调度、网络传输、跨版本兼容矩阵；目录资源数量仍未限制；结构路径仍只覆盖有证据的字段；GZIP 只降低字节数，不代表网络协议或压缩族全部完成。
 
+### 4.14 C17：R66 四项 P2 修复（2026-10-26，未提交）
+
+- **N1 仲裁令牌归属**：[CoreCameraControlClaims](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/playback/CoreCameraControlClaims.java>) 记录本表实际发出的 `Claim` 对象集合，`release` 同时要求集合身份与登记映射身份；跨表、精确复制、重复释放均拒绝，不能影响获胜声明或调用 provider。
+- **N2 烘焙时间计划**：[CoreEditTools](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/edit/CoreEditTools.java>) 先按最终 float 语义生成严格递增计划，候选不大于上一采样点时推进到下一个可表示值，终点只补一次；`maxKeys` 用同一计划检查，不允许返回无法构造合法曲线的 Ready。
+- **N3 避障前注视捕获**：同一 [CoreEditTools](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/edit/CoreEditTools.java>) 为捕获注入“返回期望位置”的 `ObstacleResolver`，保留避障前旋转；启用避障不再阻止捕获，通道/注视错误仍整体拒绝。
+- **N4 NBT 整数语义**：[NbtStructureFieldPath](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/storage/NbtStructureFieldPath.java>) 按 `NumericTag` 的数学整数与 `int` 范围判断，不再只认 `IntTag`；合法的 `DoubleTag(1.0)` / `LongTag` 不会被标成错误字段，无法证明时仍可返回空路径。
+
+测试新增 4 例：跨表/精确复制令牌拒绝、十进制步长唯一终点与 maxKeys、启用避障的注视捕获、合法 Double 版本不抢占另一非法字段路径。
+
+**施工验证。** `.\gradlew.bat --offline clean compileJava test --no-build-cache --rerun-tasks --console=plain`，BUILD SUCCESSFUL；按测试结果 XML 统计 **68 suite / 615 用例**（v2 62 / 549），失败/错误 0、跳过 1（Windows 符号链接权限）。
+
+**关闭边界。** 本轮只关闭 R66-N1–N4 的已列反例；不追认 R58–R65 全部验收，不代表真实 renderer、网络协议、SavedData、碰撞适配或完整 P1 完成。N3 的 no-op resolver 只用于捕获避障前旋转，不执行真实碰撞查询。
+
 ## 5. 后续实现与验收清单
 
 <a id="p1-follow-up"></a>
@@ -574,6 +588,14 @@ C5 审核基线实际执行：
 
 结果 BUILD SUCCESSFUL，按测试结果 XML 统计 **68 suite / 611 用例**（v2 62 / 545），失败/错误 0、跳过 1（Windows 无符号链接权限的 JUnit assumption）。C16 新增 6 个用例、suite 数不变。施工方自检命令与证据见 §4.13；独立复核另行编号，当前尚未执行。
 
+2026-10-26 C17 施工批次执行：
+
+```powershell
+.\gradlew.bat --offline clean compileJava test --no-build-cache --rerun-tasks --console=plain
+```
+
+结果 BUILD SUCCESSFUL，按测试结果 XML 统计 **68 suite / 615 用例**（v2 62 / 549），失败/错误 0、跳过 1（Windows 无符号链接权限的 JUnit assumption）。C17 新增 4 个用例、suite 数不变。施工方自检命令与证据见 §4.14；R67 独立复核待执行。
+
 必守门禁：api 不依赖旧根、net.minecraft.client、core/editor 实现；editor.spi 不依赖 editor.internal；按 Q13 允许 edit ↔ document。源码文本扫描只作辅助，依赖门禁检查编译产物。测试目前集中于结构不变量、容器隔离、JSON/压缩 JSON Codec 与替身契约，不代替真实 store/时序/世界/渲染/网络验证。
 
 关键基线保留为里程碑，完整历史命令和原始论证由 Git 追溯：
@@ -602,5 +624,6 @@ C5 审核基线实际执行：
 | C14 / 待 R64（NBT 文件资源服务） | 68/604        | 62/538        |
 | C15 / 待 R65（NBT 字段路径） | 68/605        | 62/539        |
 | C16（压缩 NBT 与资源字段路径） | 68/611        | 62/545        |
+| C17（R66 四项修复） | 68/615        | 62/549        |
 
 后续维护分为两个入口：本文更新契约、实施批次、施工记录与验证基线；[P1 审核与复核记录](<P1-review.md>)更新审核编号、原问题、关闭边界与独立复核结论。行为规则变更同步主设计；审核通过只关闭明确的问题范围，新增需求另行分期。原 R1–R14/R1–R29 归档、协议提案、注册表选型与旧复核日志已并入两份文档；如需原文，可查凝练前提交 `7095284` 的对应路径。

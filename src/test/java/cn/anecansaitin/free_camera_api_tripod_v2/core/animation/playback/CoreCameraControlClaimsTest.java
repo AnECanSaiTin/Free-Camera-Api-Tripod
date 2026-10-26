@@ -85,6 +85,22 @@ class CoreCameraControlClaimsTest {
     }
 
     @Test
+    void equalTokenFromAnotherTableOrExactCopyCannotReleaseClaim() {
+        CoreCameraControlClaims first = new CoreCameraControlClaims();
+        CoreCameraControlClaims second = new CoreCameraControlClaims();
+        CameraControlClaims.Claim firstClaim = first.register(5, OWNER, () -> POSE_A);
+        CameraControlClaims.Claim secondClaim = second.register(5, OWNER, () -> POSE_B);
+        CameraControlClaims.Claim copied = new CameraControlClaims.Claim(
+                firstClaim.id(), firstClaim.priority(), firstClaim.owner());
+
+        assertEquals(firstClaim, secondClaim);
+        assertThrows(IllegalArgumentException.class, () -> first.release(secondClaim));
+        assertThrows(IllegalArgumentException.class, () -> first.release(copied));
+        assertEquals(firstClaim, first.winner().orElseThrow());
+        assertSame(POSE_A, first.winningPose().orElseThrow().pose());
+    }
+
+    @Test
     void forgedOrUnknownReleaseDoesNotAffectOtherClaims() {
         CoreCameraControlClaims claims = new CoreCameraControlClaims();
         CameraControlClaims.Claim real = claims.register(5, OWNER, () -> POSE_A);

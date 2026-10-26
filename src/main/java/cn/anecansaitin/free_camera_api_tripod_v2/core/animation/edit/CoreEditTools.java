@@ -46,6 +46,7 @@ import cn.anecansaitin.free_camera_api_tripod_v2.core.animation.eval.CoreExpress
 import cn.anecansaitin.free_camera_api_tripod_v2.core.animation.eval.ExpressionCurveSampler;
 import cn.anecansaitin.free_camera_api_tripod_v2.core.animation.playback.CorePlaybackFrameFactory;
 import cn.anecansaitin.free_camera_api_tripod_v2.core.animation.playback.FrameEnvironment;
+import cn.anecansaitin.free_camera_api_tripod_v2.core.animation.playback.ObstacleResolver;
 import cn.anecansaitin.free_camera_api_tripod_v2.core.math.CoreRotationMath;
 import org.jspecify.annotations.NullMarked;
 import org.jspecify.annotations.Nullable;
@@ -168,6 +169,47 @@ public final class CoreEditTools implements EditTools {
                 "Track does not exist: " + request.trackId(), request.trackId(), "tracks"));
     }
 
+    /// 按最终 float 时间语义生成严格递增的采样计划，终点只出现一次。
+    ///
+    /// 直接在 double 上取 `start + index * step` 再转 float；若 float 舍入使候选不大于上一
+    /// 采样点，则推进到下一个可表示值，避免重复键。终点在计划末尾单独补一次；非精确步长
+    /// 不会先到达终点又被追加一次。
+    private static List<Float> bakeTimes(BakeRequest request) {
+        float start = request.startTime();
+        float end = request.endTime();
+        List<Float> times = new ArrayList<>();
+        times.add(start);
+        int index = 1;
+
+        while (times.size() <= request.maxKeys()) {
+            double raw = start + index * (double) request.stepSeconds();
+
+            if (raw >= end) {
+                break;
+            }
+
+            float candidate = (float) raw;
+            float last = times.getLast();
+
+            if (candidate <= last) {
+                candidate = Math.nextUp(last);
+            }
+
+            if (!Float.isFinite(candidate) || candidate >= end) {
+                break;
+            }
+
+            times.add(candidate);
+            index++;
+        }
+
+        if (times.getLast() < end) {
+            times.add(end);
+        }
+
+        return times;
+    }
+
     @Override
     public ToolResult bake(BakeRequest request) {
         Objects.requireNonNull(request, "request");
@@ -189,25 +231,18 @@ public final class CoreEditTools implements EditTools {
                     request.trackId(), "curve"));
         }
 
-        double span = (double) request.endTime() - request.startTime();
-        double steps = Math.ceil(span / request.stepSeconds());
-        double plannedKeys = steps + 1d;
+        List<Float> times = bakeTimes(request);
 
-        if (plannedKeys > request.maxKeys()) {
+        if (times.size() > request.maxKeys()) {
             return rejected(error(snapshot, DiagnosticCode.INVALID_EDIT,
-                    "Bake would generate " + (long) plannedKeys
+                    "Bake would generate " + times.size()
                             + " keys, exceeding maxKeys " + request.maxKeys(),
                     request.trackId(), "curve"));
         }
 
-        int count = (int) steps + 1;
-        List<Keyframe> keys = new ArrayList<>(count);
+        List<Keyframe> keys = new ArrayList<>(times.size());
 
-        for (int index = 0; index < count; index++) {
-            float time = index == count - 1
-                    ? request.endTime()
-                    : (float) (request.startTime() + index * (double) request.stepSeconds());
-
+        for (float time : times) {
             if (!Float.isFinite(time) || time < 0f) {
                 return rejected(error(snapshot, DiagnosticCode.ILLEGAL_KEY_TIME,
                         "Bake sample time is invalid: " + time, request.trackId(), "curve"));
@@ -329,7 +364,8 @@ public final class CoreEditTools implements EditTools {
                 new CoreExpressionEvaluator(),
                 ignored -> facts,
                 () -> request.basePose(),
-                () -> environment);
+                () -> environment,
+                obstacleRequest -> new ObstacleResolver.Result.Adjusted(obstacleRequest.expected()));
 
         CorePlaybackFrameFactory.RigPreparation prepared;
 

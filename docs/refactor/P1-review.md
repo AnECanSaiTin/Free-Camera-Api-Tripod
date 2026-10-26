@@ -2,7 +2,7 @@
 
 > 更新：2026-10-26。本文件只维护审核 / 复核编号、原问题、关闭边界与证据；契约、实施批次、施工记录与验证基线见[P1 契约、实施与验收](<P1-contract-plan.md>)。
 >
-> **当前结论：R54 对 C5 两项修复在原问题范围通过；R55 对 `95c3dda` 发现九项问题；R56 复核 C6，八项在原反例范围关闭，依赖环检查因 R56-H1 部分关闭；R57 已独立复核 C6+C7，R56-H1 在原问题范围关闭，未发现 C7 引入的确定误报、漏检或其他回归。结合 R56，R55 九项问题可在已列原反例范围关闭。C8 已实现相机接管仲裁与类型能力服务，待 R58；C9 已实现消息渲染与四个编辑工具，待 R59；C10 已实现播放请求接收入口，待 R60；C11 已实现编辑器 UI 后端选择编排，待 R61；C12 已实现 NBT 文档编解码与规模限制，待 R62；C13 已实现全文档 KeyId 唯一性，待 R63；C14 已实现 NBT 文件资源服务，待 R64；C15 已补齐 NBT 结构失败字段路径，待 R65。** 这不表示 core 全部行为、客户端或完整 P1 运行验收完成。
+> **当前结论：R54 关闭 C5 两项原问题；结合 R56/R57，R55 九项问题在已列原反例范围关闭。本轮 R66 对 `391946a` 的 C8–C16 当前实现作合并审查，确认四项 P2，均已复现、尚未修复：接管令牌跨表误释放、烘焙重复终点及键数误判、注视捕获错误依赖避障、NBT 结构错误字段误定位。正式全量为 68 suite / 611 用例（v2 62 / 545），失败/错误 0、跳过 1。** R58–R65 保留原逐批复核建议，本轮结果统一记录于 §14，不追认每批建议已全部验收；后续审核从 R67 继续。测试通过不表示 core 全部行为、客户端或完整 P1 运行验收完成。
 >
 > 审核与提交不是同一编号空间：提交用 C，审核用 R；早期 R7–R48 混合保留历史编号。R1–R12 也曾用于“剩余契约”清单，与审核编号无对应关系。行为规范仍以[动画主设计](<../design-animation-editor-framework.md>)、[UI 设计](<../design-editor-ui-framework.md>)和[音频设计](<../design-spatial-audio-api.md>)为准；本文件不新增产品裁决。
 
@@ -22,6 +22,9 @@
 | R63 | C13（未提交） | **尚未执行**；建议独立复核全文档 KeyId 唯一性 | §11 |
 | R64 | C14（未提交） | **尚未执行**；建议独立复核 NBT 文件资源服务 | §12 |
 | R65 | C15（未提交） | **尚未执行**；建议独立复核 NBT 结构字段路径 | §13 |
+| R66 | C8–C16 当前实现，`391946a` | 合并审查确认四项 P2，均已复现、待修复；未将各批次追认为完整验收通过 | §14 |
+
+R58–R65 的“未提交 / 尚未执行”保留为拟定逐批复核时的历史状态；C8–C16 已进入当前基线，本轮不重排这些编号，也不把 R66 共享的全量测试拆成八次独立验证。
 
 ### 1.1 历史范围与关闭边界
 
@@ -250,7 +253,59 @@ R65 尚未执行。C15 的施工方自检见实施文档 §4.12，不计入审�
 3. **独立验证**：重跑全量，确认 68 suite / 605 用例（v2 62 / 539）、失败 / 错误 0、跳过 1；检查 API class 仍为 386，jdeps 禁止依赖为 0。
 4. **边界**：不是完整 DFU 路径追踪；NBT 资源服务 `LoadResult.Rejected` 仍无结构化 fieldPath；JSON 与 NBT 定位逻辑未统一；不得写成 fieldPath 全部完成。
 
-## 14. 审核方法与限制
+## 14. R66：C8–C16 合并代码审查（2026-10-26）
+
+**基线：`391946a`。结论：确认四项 P2，均通过隔离探针复现，记录时尚未修复。** 审查依据为实施文档 §4.5–§4.13、本文 R58–R65 建议及主设计；未把明确延期的客户端、renderer、世界查询、网络授权或确认 UI 计为缺陷。本轮没有修改实现、正式测试或构建配置；仅在构建目录生成探针与临时 classpath 导出配置，随后按用户要求将结果写入本审核文档。
+
+### 14.1 R66-N1（P2）：其他仲裁表的令牌可以释放本表声明
+
+[CoreCameraControlClaims:66](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/playback/CoreCameraControlClaims.java#L66>) 的登记 ID 在每个实例从 0 开始；[release:78](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/playback/CoreCameraControlClaims.java#L78>) 仅比较 Claim 的值相等性。
+
+同线程创建仲裁表 A、B，各登记相同 priority 与 owner，二者首条 Claim 的字段相等。调用 `A.release(B的令牌)` 实际移除了 A 的声明，`A.winner()` 返回空。使用 `new Claim(real.id(), real.priority(), real.owner())` 精确复制令牌也能释放原声明。
+
+这违反 [CameraControlClaims:35](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/playback/CameraControlClaims.java#L35>) 的“未知令牌不得影响其他声明”，也未满足 C8 对伪造令牌拒绝的施工说明。现有伪造令牌测试改变字段，未覆盖跨表值碰撞及精确复制。
+
+**建议与验收：** 使用原登记令牌引用身份或不可混淆的登记身份验证归属；补跨表、精确复制、重复释放与原令牌正常释放用例，错误释放不得改变获胜声明或调用其 provider。实际复现探针：[ClaimsProbe](<../../build/review-p1-20261026/ClaimsProbe.java>)。
+
+### 14.2 R66-N2（P2）：十进制步长烘焙生成重复终点，并误判 maxKeys
+
+[CoreEditTools:193](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/edit/CoreEditTools.java#L193>) 先以 double 计算 `ceil(span / step)`，再于 [时间生成:207](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/edit/CoreEditTools.java#L207>) 转 float，并无条件追加终点。
+
+最小输入为 `start=0f, end=0.3f, step=0.1f, maxKeys=5`，实际返回 Ready(ReplaceKeys)，时间为 `[0.0, 0.1, 0.2, 0.3, 0.3]`。倒数第二个采样点经 float 舍入已到达终点，最后再次强制写入终点；将结果交给 Curve.withKeys 即抛 `Keyframe times must be unique within a curve; duplicate at 0.3s`。同一输入改 `maxKeys=4` 又提前拒绝，错误报告需要 5 键，实际应为 4 个唯一采样点。
+
+**建议与验收：** 按最终 float 时间语义生成严格递增、端点仅一次的采样计划，用同一计划检查 maxKeys 和执行采样；补普通十进制步长、非零起点及 float 分辨率不足场景，不允许返回无法构造合法曲线的 Ready。现有测试使用 0.25 等可精确表示步长，未覆盖该反例。
+
+### 14.3 R66-N3（P2）：启用避障的机位无法执行注视捕获
+
+[CoreEditTools:328](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/edit/CoreEditTools.java#L328>) 创建没有 ObstacleResolver 的四参帧工厂，并调用完整 prepareRig；[CorePlaybackFrameFactory:480](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/playback/CorePlaybackFrameFactory.java#L480>) 遇启用避障时继续进入 applyObstacle，在解析器为空时产生 ERROR，捕获整体拒绝。
+
+对正式测试中原可成功的 aimSnapshot / aimRequest，仅将机位设为 `ObstacleSettings(true, 0.1)`，实际得到 `Rejected: Obstacle is enabled but no host obstacle resolver is installed`。这不是要求提前实现客户端碰撞查询：[主设计:387](<../design-animation-editor-framework.md#L387>) 明确捕获注视之后、避障位置修正之前的旋转，捕获不应依赖该后续阶段。
+
+**建议与验收：** 提取或复用避障前的姿态求值阶段；同一冻结事实下，开关避障不应阻止旋转捕获或改变所捕获的避障前旋转，并保留真正通道/注视错误的整体拒绝。N2/N3 实际复现探针：[C9EditToolsProbe](<../../build/review-p1-20261026/C9EditToolsProbe.java>)。
+
+### 14.4 R66-N4（P2）：NBT 路径推断把合法数值标签标成错误字段
+
+[NbtStructureFieldPath:106](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/storage/NbtStructureFieldPath.java#L106>) 将已知整数字段的合法 NBT 表示限定为 IntTag，并在分析错误消息前优先返回该路径；实际 strictInt 允许数学上为整数且范围合法的其他数值标签。
+
+探针先把合法文档的 `data_version` 改为 `DoubleTag(1.0)`，直接 DocumentCodec 解码仍为 Accepted；随后仅将 `name` 改成整数，经 NbtDocumentCodec 返回 `StructureFailed(message="Not a string", fieldPath="data_version")`。错误来自 name，却指向合法版本字段。该逻辑也被 C16 的 NBT 资源 File 诊断使用。
+
+**建议与验收：** 复用实际 Codec 的整数语义，而非只认 IntTag；定位证据须对应本次失败，不能让无关同名字段或合法数值表示抢占路径。补合法 Double/Long 等整数标签与另一非法字段的组合反例；无法证明时保留空路径。实际复现探针：[NbtPathProbe](<../../build/review-p1-20261026/NbtPathProbe.java>)。
+
+### 14.5 实际验证、未发现项与边界
+
+本轮独立执行：
+
+```powershell
+.\gradlew.bat --offline compileJava test --no-build-cache --rerun-tasks --console=plain
+```
+
+结果 BUILD SUCCESSFUL，编译与测试任务重新执行，未执行 clean。按 XML 统计全工程 **68 suite / 611 用例**，v2 **62 / 545**；失败/错误为 0，跳过 1（Windows 符号链接权限）。四项反例为构建目录中的独立 Java 探针，不计入正式 611 用例，探针验证当前缺陷存在不等于修复通过。
+
+检查 **386 个 v2 API class** 的旧根、net.minecraft.client、v2 core/editor 实现包引用，结果为 0；本轮采用 class 字节中的禁止包名扫描，**未重跑 jdeps**，不将其写成 jdeps 或完整架构门禁证明。git diff --check 通过。
+
+接收入口、UI 后端编排、类型能力服务和全文档 KeyId 检查，在本轮核对范围未发现其他确定缺陷；不据此追认 R58–R65 各条建议全部验收，也不表示 renderer、真实网络协议、SavedData、碰撞适配或完整 P1 完成。此前 R56/R57 的已关闭原问题不因本轮发现自动重开。后续修复复核从 R67 继续，按 R66-N1–N4 分别记录关闭证据。
+
+## 15. 审核方法与限制
 
 - R54–R57 只读源码与测试，不修改实现；R56 未新增动态反例测试，R57 读取并运行施工方新增测试，未新增测试。审核结论只关闭明确列举的问题范围，新增需求另行分期。
 - 测试通过只表示已执行用例通过，不代替真实 store 时序、世界查询、渲染、网络与客户端接线验证。

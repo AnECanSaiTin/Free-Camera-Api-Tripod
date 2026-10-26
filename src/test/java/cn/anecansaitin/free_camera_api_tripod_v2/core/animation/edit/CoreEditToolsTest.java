@@ -224,6 +224,51 @@ class CoreEditToolsTest {
     }
 
     @Test
+    void bakeWithDecimalStepProducesUniqueEndpointOnce() {
+        CameraAnimation document = document(curve(0f, 1f));
+        AnimationSnapshot snapshot = new AnimationSnapshot(new Revision(1), document);
+        EvaluationContext context = context(snapshot, document.curveTrack(TRACK).orElseThrow());
+        CoreEditTools tools = new CoreEditTools(type -> "bake",
+                request -> cn.anecansaitin.free_camera_api_tripod_v2.api.animation.eval.ChannelSample
+                        .value(request.sampleTime()));
+
+        ToolResult result = tools.bake(new BakeRequest(
+                RIG, TRACK, 0f, 0.3f, 0.1f, Curve.Interpolation.LINEAR, 4,
+                context, EvaluationSession.create(64, 8)));
+
+        ToolResult.Ready ready = assertType(ToolResult.Ready.class, result);
+        EditOp.ReplaceKeys replace = assertType(EditOp.ReplaceKeys.class, ready.operation());
+        assertEquals(4, replace.keys().size());
+        assertEquals(0f, replace.keys().get(0).time());
+        assertEquals(0.1f, replace.keys().get(1).time());
+        assertEquals(0.2f, replace.keys().get(2).time());
+        assertEquals(0.3f, replace.keys().get(3).time());
+        assertEquals(4L, replace.keys().stream().map(Keyframe::time).distinct().count());
+
+        ToolResult tooSmall = tools.bake(new BakeRequest(
+                RIG, TRACK, 0f, 0.3f, 0.1f, Curve.Interpolation.LINEAR, 3,
+                context, EvaluationSession.create(64, 8)));
+        assertType(ToolResult.Rejected.class, tooSmall);
+    }
+
+    @Test
+    void aimCaptureWorksWhenObstacleIsEnabled() {
+        AnimationSnapshot base = aimSnapshot(true);
+        CameraRig rig = base.document().rigs().getFirst();
+        CameraRig withObstacle = new CameraRig(rig.id(), rig.name(), rig.channels(), rig.path(),
+                rig.motionMode(), rig.distanceMode(), rig.space(), rig.aim(),
+                new cn.anecansaitin.free_camera_api_tripod_v2.api.spatial.ObstacleSettings(true, 0.1),
+                rig.view());
+        AnimationSnapshot snapshot = new AnimationSnapshot(
+                new Revision(1), base.document().withRig(withObstacle));
+
+        ToolResult result = new CoreEditTools().captureAim(
+                aimRequest(snapshot, AimOverride.inherit()));
+
+        assertType(ToolResult.Ready.class, result);
+    }
+
+    @Test
     void bakeRejectsTooManyKeysBeforeSampling() {
         CameraAnimation document = document(curve(0f, 1f));
         AnimationSnapshot snapshot = new AnimationSnapshot(new Revision(1), document);

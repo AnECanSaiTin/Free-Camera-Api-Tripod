@@ -2,8 +2,8 @@ package cn.anecansaitin.free_camera_api_tripod_v2.core.storage;
 
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.CameraAnimation;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.IntTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.NumericTag;
 import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import org.jspecify.annotations.Nullable;
@@ -64,11 +64,6 @@ final class NbtStructureFieldPath {
             }
         }
 
-        if (lower.contains("data_version") && root.contains("data_version")
-                && !(root.get("data_version") instanceof IntTag)) {
-            return "data_version";
-        }
-
         for (String field : KNOWN_FIELDS) {
             if (lower.contains(field.toLowerCase(Locale.ROOT))) {
                 String path = findKeyPath(root, field);
@@ -98,20 +93,33 @@ final class NbtStructureFieldPath {
         return null;
     }
 
+    /// NBT 数值标签的整数语义与 `Codec.INT` 对齐：Int/Long/Short/Byte/Float/Double
+    /// 只要数学上为整数且在 `int` 范围内都合法，不要求必须是 `IntTag`。
+    private static boolean isIntegerValue(Tag value, String key) {
+        if (!(value instanceof NumericTag numeric)) {
+            return false;
+        }
+
+        double number = numeric.doubleValue();
+
+        if (!Double.isFinite(number)
+                || number != Math.rint(number)
+                || number < Integer.MIN_VALUE
+                || number > Integer.MAX_VALUE) {
+            return false;
+        }
+
+        return !"data_version".equals(key)
+                || (int) number == CameraAnimation.CURRENT_DATA_VERSION;
+    }
+
     private static @Nullable String findInvalidInteger(CompoundTag root, String prefix) {
         for (String key : root.keySet()) {
             Tag value = root.get(key);
             String path = join(prefix, key);
 
-            if (INTEGER_FIELDS.contains(key)) {
-                if ("data_version".equals(key)) {
-                    if (!(value instanceof IntTag intTag)
-                            || intTag.value() != CameraAnimation.CURRENT_DATA_VERSION) {
-                        return path;
-                    }
-                } else if (!(value instanceof IntTag)) {
-                    return path;
-                }
+            if (INTEGER_FIELDS.contains(key) && !isIntegerValue(value, key)) {
+                return path;
             }
 
             if (value instanceof CompoundTag compound) {
