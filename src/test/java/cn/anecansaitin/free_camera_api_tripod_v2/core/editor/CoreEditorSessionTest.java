@@ -334,6 +334,30 @@ class CoreEditorSessionTest {
     }
 
     @Test
+    void floatOverflowAfterValidDraftClearsCandidateAndRejectsCommit() {
+        CoreAnimationDocumentStore store = store("doc");
+        CoreEditorSession session = new CoreEditorSession(store, null);
+        EditTransaction transaction = session.beginEdit(
+                new EditTarget.Rig(new RigId("rig")), LABEL);
+
+        session.updateDraftText(transaction, "view.rect.width", "2");
+        assertTrue(session.draft(transaction).hasCandidate());
+
+        session.updateDraftText(transaction, "view.rect.width", "1e100");
+        var draft = session.draft(transaction);
+
+        assertEquals("1e100", draft.fieldTexts().get("view.rect.width"));
+        assertNull(draft.candidate());
+        assertFalse(draft.hasCandidate());
+        assertEquals(DiagnosticCode.INVALID_EDIT, draft.diagnostics().getFirst().code());
+
+        assertTrue(session.commit(transaction) instanceof EditResult.Rejected);
+        assertEquals(Revision.INITIAL, store.snapshot().revision());
+        assertEquals("1e100", session.draft(transaction).fieldTexts().get("view.rect.width"));
+        session.close();
+    }
+
+    @Test
     void documentNameTextDraftCommits() {
         CoreAnimationDocumentStore store = store("doc");
         CoreEditorSession session = new CoreEditorSession(store, null);

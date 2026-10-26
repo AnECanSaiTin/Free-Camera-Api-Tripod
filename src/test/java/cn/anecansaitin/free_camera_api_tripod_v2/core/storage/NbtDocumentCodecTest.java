@@ -156,6 +156,39 @@ class NbtDocumentCodecTest {
     }
 
     @Test
+    void unrelatedSameNameExtensionOrRootFieldDoesNotStealPath() throws Exception {
+        DocumentCodec documents = DocumentCodec.of(frozenRegistries(), document -> List.of());
+        NbtDocumentCodec codec = new NbtDocumentCodec(documents, NbtResourceLimits.DEFAULT);
+        Tag encoded = CameraAnimation.codec(frozenRegistries())
+                .encodeStart(NbtOps.INSTANCE, document())
+                .result()
+                .orElseThrow();
+        CompoundTag compound = assertType(CompoundTag.class, encoded);
+        compound.putDouble("data_version", 1.0);
+        compound.putInt("name", 1);
+        compound.putString("update_every_frames", "unused");
+        CompoundTag extension = new CompoundTag();
+        extension.putString("data_version", "unused");
+        compound.put("extension", extension);
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+
+        try (DataOutputStream output = new DataOutputStream(bytes)) {
+            NbtIo.write(compound, output);
+        }
+
+        DocumentDecodeResult.StructureFailed failed = assertType(
+                DocumentDecodeResult.StructureFailed.class,
+                codec.decode(bytes.toByteArray()));
+
+        assertTrue(!"data_version".equals(failed.fieldPath()),
+                () -> "valid version must not steal path: " + failed.fieldPath());
+        assertTrue(!"extension.data_version".equals(failed.fieldPath()),
+                () -> "extension field must not steal path: " + failed.fieldPath());
+        assertTrue(!"update_every_frames".equals(failed.fieldPath()),
+                () -> "root non-document field must not steal path: " + failed.fieldPath());
+    }
+
+    @Test
     void malformedBytesBecomeStructureFailure() {
         DocumentCodec documents = DocumentCodec.of(frozenRegistries(), document -> List.of());
         NbtDocumentCodec codec = new NbtDocumentCodec(documents, NbtResourceLimits.DEFAULT);

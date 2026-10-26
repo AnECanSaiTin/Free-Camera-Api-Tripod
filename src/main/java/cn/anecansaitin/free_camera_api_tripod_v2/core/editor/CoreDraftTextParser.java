@@ -271,7 +271,14 @@ final class CoreDraftTextParser {
             return null;
         }
 
-        return new AnimatedNumber.Value(new Constant((float) (double) value));
+        float floatValue = (float) (double) value;
+
+        if (!Float.isFinite(floatValue)) {
+            diagnostics.add(error(snapshot, path, "Number is outside the float range: " + text));
+            return null;
+        }
+
+        return new AnimatedNumber.Value(new Constant(floatValue));
     }
 
     private static @Nullable AnimatedNumber parsePositive(AnimationSnapshot snapshot,

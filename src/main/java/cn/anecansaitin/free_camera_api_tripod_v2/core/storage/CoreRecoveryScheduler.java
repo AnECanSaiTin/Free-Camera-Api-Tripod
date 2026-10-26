@@ -127,8 +127,9 @@ public final class CoreRecoveryScheduler implements AutoCloseable {
             snapshot = snapshots.get();
             resource = resources.get();
         } catch (RuntimeException exception) {
+            // 周期任务不能因一次提供者异常而停止后续调度。
             capturing.set(false);
-            throw exception;
+            return;
         }
 
         if (snapshot == null || resource == null) {
@@ -146,7 +147,7 @@ public final class CoreRecoveryScheduler implements AutoCloseable {
             });
         } catch (RuntimeException exception) {
             capturing.set(false);
-            throw exception;
+            return;
         }
     }
 

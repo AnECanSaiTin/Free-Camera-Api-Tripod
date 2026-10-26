@@ -10,7 +10,6 @@ import org.jspecify.annotations.Nullable;
 
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -27,8 +26,6 @@ import java.util.regex.Pattern;
 /// `a.b[0]` 口径。
 final class NbtStructureFieldPath {
 
-    private static final Set<String> INTEGER_FIELDS = Set.of(
-            "data_version", "update_every_frames", "resample_every_ticks");
     private static final List<String> KNOWN_FIELDS = List.of(
             "data_version", "rigs", "channels", "keys", "tracks", "samples", "overlays",
             "update_every_frames", "resample_every_ticks", "type", "name");
@@ -113,32 +110,56 @@ final class NbtStructureFieldPath {
                 || (int) number == CameraAnimation.CURRENT_DATA_VERSION;
     }
 
+    /// 只检查真实文档结构中的整数语义字段，不递归任意扩展子树。
+    ///
+    /// `data_version` 只在根；`update_every_frames` 只在 `rigs[i].view`；
+    /// `resample_every_ticks` 只在 `samples[i]`。扩展轨道/锚点里同名字段不参与该检查，
+    /// 避免把无关字段当成当前失败的定位证据。
     private static @Nullable String findInvalidInteger(CompoundTag root, String prefix) {
-        for (String key : root.keySet()) {
-            Tag value = root.get(key);
-            String path = join(prefix, key);
+        Tag version = root.get("data_version");
 
-            if (INTEGER_FIELDS.contains(key) && !isIntegerValue(value, key)) {
-                return path;
-            }
+        if (version != null && !isIntegerValue(version, "data_version")) {
+            return "data_version";
+        }
 
-            if (value instanceof CompoundTag compound) {
-                String nested = findInvalidInteger(compound, path);
+        ListTag rigs = root.getList("rigs").orElse(null);
 
-                if (nested != null) {
-                    return nested;
+        if (rigs != null) {
+            for (int index = 0; index < rigs.size(); index++) {
+                CompoundTag rig = rigs.getCompound(index).orElse(null);
+
+                if (rig == null) {
+                    continue;
                 }
-            } else if (value instanceof ListTag list) {
-                for (int index = 0; index < list.size(); index++) {
-                    Tag element = list.get(index);
 
-                    if (element instanceof CompoundTag compound) {
-                        String nested = findInvalidInteger(compound, indexPrefix(path, index));
+                CompoundTag view = rig.getCompound("view").orElse(null);
 
-                        if (nested != null) {
-                            return nested;
-                        }
-                    }
+                if (view == null) {
+                    continue;
+                }
+
+                Tag frames = view.get("update_every_frames");
+
+                if (frames != null && !isIntegerValue(frames, "update_every_frames")) {
+                    return "rigs[" + index + "].view.update_every_frames";
+                }
+            }
+        }
+
+        ListTag samples = root.getList("samples").orElse(null);
+
+        if (samples != null) {
+            for (int index = 0; index < samples.size(); index++) {
+                CompoundTag sample = samples.getCompound(index).orElse(null);
+
+                if (sample == null) {
+                    continue;
+                }
+
+                Tag ticks = sample.get("resample_every_ticks");
+
+                if (ticks != null && !isIntegerValue(ticks, "resample_every_ticks")) {
+                    return "samples[" + index + "].resample_every_ticks";
                 }
             }
         }

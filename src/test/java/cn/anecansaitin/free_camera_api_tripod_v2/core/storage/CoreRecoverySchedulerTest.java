@@ -88,6 +88,35 @@ class CoreRecoverySchedulerTest {
     }
 
     @Test
+    void supplierFailureDoesNotStopLaterCaptures() {
+        ManualTimer timer = new ManualTimer();
+        FakeRecovery recovery = new FakeRecovery();
+        AtomicInteger completed = new AtomicInteger();
+        AnimationSnapshot snapshot = snapshot();
+        java.util.concurrent.atomic.AtomicBoolean fail = new java.util.concurrent.atomic.AtomicBoolean(true);
+        CoreRecoveryScheduler scheduler = new CoreRecoveryScheduler(
+                timer,
+                () -> {
+                    if (fail.get()) {
+                        throw new IllegalStateException("snapshot provider failed");
+                    }
+
+                    return snapshot;
+                },
+                () -> RESOURCE, recovery, result -> completed.incrementAndGet(), 10, 100);
+
+        scheduler.onPublished();
+        timer.runAll();
+        assertEquals(0, recovery.captures.get());
+
+        fail.set(false);
+        scheduler.onPublished();
+        timer.runAll();
+        assertEquals(1, recovery.captures.get());
+        assertEquals(1, completed.get());
+    }
+
+    @Test
     void nullSnapshotSkipsCapture() {
         ManualTimer timer = new ManualTimer();
         FakeRecovery recovery = new FakeRecovery();

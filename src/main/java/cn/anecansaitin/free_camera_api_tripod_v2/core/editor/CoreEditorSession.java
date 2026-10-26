@@ -232,8 +232,24 @@ public final class CoreEditorSession implements EditorSession {
         }
 
         draft.fieldTexts.put(fieldPath, text);
-        CoreDraftTextParser.Result parsed = CoreDraftTextParser.parse(
-                draft.transaction.target(), draft.fieldTexts, store.snapshot());
+        CoreDraftTextParser.Result parsed;
+
+        try {
+            parsed = CoreDraftTextParser.parse(
+                    draft.transaction.target(), draft.fieldTexts, store.snapshot());
+        } catch (RuntimeException exception) {
+            draft.candidate = null;
+            draft.textDiagnostics.clear();
+            draft.textDiagnostics.put(fieldPath, diagnostic(
+                    DiagnosticCode.INVALID_EDIT,
+                    Severity.ERROR,
+                    "Draft field could not be parsed safely: " + exception.getMessage(),
+                    new Diagnostic.Location(null, fieldPath),
+                    draft.transaction.baseRevision()));
+            currentTransactionId = transaction.transactionId();
+            return;
+        }
+
         draft.candidate = parsed.candidate();
         draft.textDiagnostics.clear();
 
