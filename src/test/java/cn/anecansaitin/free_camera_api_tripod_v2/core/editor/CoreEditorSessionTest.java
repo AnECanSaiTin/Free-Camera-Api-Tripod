@@ -132,11 +132,11 @@ class CoreEditorSessionTest {
 
         EditOp candidate = new EditOp.RenameDocument("renamed");
         session.updateDraftOperation(transaction, candidate);
-        session.updateDraftText(transaction, "name", "not a valid name");
+        session.updateDraftText(transaction, "unsupported", "not a valid name");
 
         var draft = session.draft(transaction);
-        assertSame(candidate, draft.candidate());
-        assertEquals("not a valid name", draft.fieldTexts().get("name"));
+        assertNull(draft.candidate());
+        assertEquals("not a valid name", draft.fieldTexts().get("unsupported"));
         assertFalse(draft.hasCandidate());
         assertEquals(Severity.ERROR, draft.diagnostics().getFirst().severity());
 
@@ -148,7 +148,7 @@ class CoreEditorSessionTest {
         assertEquals(Revision.INITIAL, store.snapshot().revision());
         assertEquals("doc", store.snapshot().document().name());
         // 失败保留事务与草稿，用户可继续修正。
-        assertEquals("not a valid name", session.draft(transaction).fieldTexts().get("name"));
+        assertEquals("not a valid name", session.draft(transaction).fieldTexts().get("unsupported"));
 
         session.updateDraftOperation(transaction, null);
         assertNull(session.draft(transaction).candidate());
@@ -280,7 +280,7 @@ class CoreEditorSessionTest {
         assertTrue(diagnostic.location() != null);
         assertEquals("view.rect.width", diagnostic.location().fieldPath());
         assertTrue(diagnostic.message() instanceof LocalizedMessage.Literal);
-        assertTrue(((LocalizedMessage.Literal) diagnostic.message()).text().contains("not implemented"));
+        assertTrue(((LocalizedMessage.Literal) diagnostic.message()).text().contains("Unsupported"));
 
         assertThrows(UnsupportedOperationException.class,
                 () -> draft.fieldTexts().put("other", "text"));
@@ -291,6 +291,59 @@ class CoreEditorSessionTest {
         assertEquals(1, session.draft(transaction).diagnostics().size());
         assertEquals(Revision.INITIAL, store.snapshot().revision());
 
+        session.close();
+    }
+
+    @Test
+    void structuredRigTextDraftProducesCandidateAndCommits() {
+        CoreAnimationDocumentStore store = store("doc");
+        CoreEditorSession session = new CoreEditorSession(store, null);
+        EditTransaction transaction = session.beginEdit(
+                new EditTarget.Rig(new RigId("rig")), LABEL);
+
+        session.updateDraftText(transaction, "view.rect.width", "2.5");
+        var draft = session.draft(transaction);
+
+        assertEquals("2.5", draft.fieldTexts().get("view.rect.width"));
+        assertTrue(draft.hasCandidate());
+        assertTrue(draft.diagnostics().isEmpty());
+
+        EditResult committed = session.commit(transaction);
+
+        assertTrue(committed instanceof EditResult.Applied, () -> "commit failed: " + committed);
+        assertEquals(1L, store.snapshot().revision().value());
+        session.close();
+    }
+
+    @Test
+    void invalidStructuredRigTextRejectsCommitAndKeepsDraft() {
+        CoreAnimationDocumentStore store = store("doc");
+        CoreEditorSession session = new CoreEditorSession(store, null);
+        EditTransaction transaction = session.beginEdit(
+                new EditTarget.Rig(new RigId("rig")), LABEL);
+
+        session.updateDraftText(transaction, "view.rect.width", "-1");
+        var draft = session.draft(transaction);
+
+        assertNull(draft.candidate());
+        assertFalse(draft.hasCandidate());
+        assertEquals(DiagnosticCode.INVALID_EDIT, draft.diagnostics().getFirst().code());
+        assertTrue(session.commit(transaction) instanceof EditResult.Rejected);
+        assertEquals("view.rect.width", draft.fieldTexts().keySet().iterator().next());
+        session.close();
+    }
+
+    @Test
+    void documentNameTextDraftCommits() {
+        CoreAnimationDocumentStore store = store("doc");
+        CoreEditorSession session = new CoreEditorSession(store, null);
+        EditTransaction transaction = session.beginEdit(new EditTarget.Document(), LABEL);
+
+        session.updateDraftText(transaction, "name", "renamed");
+        EditResult committed = session.commit(transaction);
+
+        assertTrue(committed instanceof EditResult.Applied, () -> "commit failed: " + committed);
+        assertEquals("renamed", store.snapshot().document().name());
         session.close();
     }
 

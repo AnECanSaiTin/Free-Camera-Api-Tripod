@@ -146,7 +146,8 @@ EditorSession 写文档必须走 EditSubmission/store；播放头、轨道显隐
 | C17 | 基于 C16，已提交 `4f1a641` | R66-N1–N4 修复：令牌归属、烘焙时间、避障前捕获、NBT 整数语义 | 施工方自检；R67 待执行 |
 | C18 | 基于 C17，已提交 `bc06d8c` + `ce3e777` | 有界资源枚举、截断标记与有界堆 | 施工方自检；独立复核待定 |
 | C19 | 基于 C18，已提交 `77ca26f` | 恢复调度：防抖、周期、在途去重与关闭 | 施工方自检；独立复核待定 |
-| C20 | 基于 C19，未提交 | 帧执行顺序：相机应用 → 事件分派、部分执行 | 施工方自检；独立复核待定 |
+| C20 | 基于 C19，已提交 `6dd982f` | 帧执行顺序：相机应用 → 事件分派、部分执行 | 施工方自检；独立复核待定 |
+| C21 | 基于 C20，未提交 | 编辑器文本草稿结构化解析：文档/机位/轨道字段 | 施工方自检；独立复核待定 |
 
 ### 4.1 历史交付摘要
 
@@ -475,7 +476,7 @@ EditorSession 写文档必须走 EditSubmission/store；播放头、轨道显隐
 
 **关闭边界。** 尚未接真实客户端生命周期、资源身份切换或恢复选择 UI；调度线程池生命周期由宿主管理。
 
-### 4.17 C20：帧执行顺序（2026-10-26，未提交）
+### 4.17 C20：帧执行顺序（2026-10-26，已提交 `6dd982f`）
 
 - 新增 [CameraFrameSink](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/playback/CameraFrameSink.java>)：把来源与已准备机位姿态交给宿主相机边界；异常表示该帧相机应用失败。
 - 新增 [CoreFrameExecutor](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/playback/CoreFrameExecutor.java>)：
@@ -491,6 +492,22 @@ EditorSession 写文档必须走 EditSubmission/store；播放头、轨道显隐
 **施工验证。** `.\gradlew.bat --offline clean compileJava test --no-build-cache --rerun-tasks --console=plain`，BUILD SUCCESSFUL；按测试结果 XML 统计 **70 suite / 625 用例**（v2 64 / 559），失败/错误 0、跳过 1（Windows 符号链接权限）。
 
 **关闭边界。** 真实相机 API 接线、MC 度/象限转换、renderer 合成与真实宿主回滚仍属客户端阶段；本类不提供跨帧事务回滚。
+
+### 4.18 C21：编辑器文本草稿结构化解析（2026-10-26，未提交）
+
+- 新增 [CoreDraftTextParser](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/editor/CoreDraftTextParser.java>)：
+  - `EditTarget.Document`：`name`；
+  - `EditTarget.Rig`：`name`、`view.enabled`、`view.zOrder`、`view.resolutionScale`、`view.updateEveryFrames`、`view.rect.{x,y,width,height}`、`obstacle.enabled`、`obstacle.margin`；
+  - `EditTarget.Track`：`name`；
+  - `EditTarget.Field` 按 owner 解释。
+- 同一批字段先全部解析；矩形四分量合并成一个 `SetRigRect`，质量两项合并成一个 `SetRigQuality`；任一字段失败时整批不产生候选，原文保留。
+- [CoreEditorSession](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/editor/CoreEditorSession.java>) 的 `updateDraftText` 现在根据全部字段重算候选与诊断，成功后可预览/提交，不再一律报“未实现”。
+
+测试新增 3 例：机位矩形文本候选与提交、非法宽高拒绝、文档名文本提交；原“未实现”测试改为不支持字段仍保留原文与诊断。
+
+**施工验证。** `.\gradlew.bat --offline clean compileJava test --no-build-cache --rerun-tasks --console=plain`，BUILD SUCCESSFUL；按测试结果 XML 统计 **70 suite / 628 用例**（v2 64 / 562），失败/错误 0、跳过 1（Windows 符号链接权限）。
+
+**关闭边界。** 未覆盖键时间/值、符号表、路径节点、样本、动作/颜色等字段；不支持字段仍不伪造候选；真实面板输入/本地化输入法未接。
 
 ## 5. 后续实现与验收清单
 
@@ -668,6 +685,14 @@ C5 审核基线实际执行：
 
 结果 BUILD SUCCESSFUL，按测试结果 XML 统计 **70 suite / 625 用例**（v2 64 / 559），失败/错误 0、跳过 1（Windows 无符号链接权限的 JUnit assumption）。C20 新增 4 个用例、1 个 suite。施工方自检命令与证据见 §4.17。
 
+2026-10-26 C21 施工批次执行：
+
+```powershell
+.\gradlew.bat --offline clean compileJava test --no-build-cache --rerun-tasks --console=plain
+```
+
+结果 BUILD SUCCESSFUL，按测试结果 XML 统计 **70 suite / 628 用例**（v2 64 / 562），失败/错误 0、跳过 1（Windows 无符号链接权限的 JUnit assumption）。C21 新增 3 个用例、suite 数不变。施工方自检命令与证据见 §4.18。
+
 必守门禁：api 不依赖旧根、net.minecraft.client、core/editor 实现；editor.spi 不依赖 editor.internal；按 Q13 允许 edit ↔ document。源码文本扫描只作辅助，依赖门禁检查编译产物。测试目前集中于结构不变量、容器隔离、JSON/压缩 JSON Codec 与替身契约，不代替真实 store/时序/世界/渲染/网络验证。
 
 关键基线保留为里程碑，完整历史命令和原始论证由 Git 追溯：
@@ -700,5 +725,6 @@ C5 审核基线实际执行：
 | C18（有界资源枚举） | 68/617        | 62/551        |
 | C19（恢复调度） | 69/621        | 63/555        |
 | C20（帧执行顺序） | 70/625        | 64/559        |
+| C21（编辑器文本字段） | 70/628        | 64/562        |
 
 后续维护分为两个入口：本文更新契约、实施批次、施工记录与验证基线；[P1 审核与复核记录](<P1-review.md>)更新审核编号、原问题、关闭边界与独立复核结论。行为规则变更同步主设计；审核通过只关闭明确的问题范围，新增需求另行分期。原 R1–R14/R1–R29 归档、协议提案、注册表选型与旧复核日志已并入两份文档；如需原文，可查凝练前提交 `7095284` 的对应路径。

@@ -66,8 +66,8 @@ import java.util.Objects;
 ///
 /// ## 第一版边界
 ///
-/// - [updateDraftText] 只保留字段原文并产生 `INVALID_EDIT` 诊断：结构化字段解析尚未实现，
-///   不根据文本伪造候选；
+/// - [updateDraftText] 保留字段原文，并用 [CoreDraftTextParser] 解析当前支持的结构化字段；
+///   不支持的字段保留原文并产生 `INVALID_EDIT` 诊断；
 /// - 交互选项 [choose] 只记录选择并移除请求，不执行任何回调；
 /// - [preview] 通过 [DocumentPreviewer] 生成只读候选，不发布、不写历史。
 @NullMarked
@@ -232,13 +232,18 @@ public final class CoreEditorSession implements EditorSession {
         }
 
         draft.fieldTexts.put(fieldPath, text);
-        draft.textDiagnostics.put(fieldPath, diagnostic(
-                DiagnosticCode.INVALID_EDIT,
-                Severity.ERROR,
-                "Structured field parsing is not implemented for '" + fieldPath
-                        + "'; the draft text is kept verbatim and cannot be committed",
-                new Diagnostic.Location(null, fieldPath),
-                draft.transaction.baseRevision()));
+        CoreDraftTextParser.Result parsed = CoreDraftTextParser.parse(
+                draft.transaction.target(), draft.fieldTexts, store.snapshot());
+        draft.candidate = parsed.candidate();
+        draft.textDiagnostics.clear();
+
+        for (Diagnostic diagnostic : parsed.diagnostics()) {
+            String path = diagnostic.location() == null
+                    ? fieldPath
+                    : diagnostic.location().fieldPath();
+            draft.textDiagnostics.put(path, diagnostic);
+        }
+
         currentTransactionId = transaction.transactionId();
     }
 
