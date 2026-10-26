@@ -8,6 +8,7 @@ import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.CameraRig;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.CameraSource;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.CameraSourceTrack;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.CurveTrack;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.ExtensionTimelineTrack;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.RigView;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.ValueKeyframe;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.Revision;
@@ -395,11 +396,14 @@ public final class UnifiedDocumentValidator implements DocumentValidator {
         }
     }
 
-    /// 同一条曲线 / 状态轨道内 `KeyId` 必须唯一（主设计 §3.1 的稳定 ID 约束）。
+    /// 全文档作用域内 `KeyId` 必须唯一（主设计 §3.1）。
     ///
-    /// 构造期已经拒绝重复，这里在发布校验再核对一次：编辑层按 ID 改值时必须只有一个命中，
-    /// 不能让“同 KeyId、不同时间”的两个键同时进入候选。全文档作用域复用仍留待后续统一裁决。
+    /// 构造期只保证单轨唯一；发布校验必须跨机位、跨轨道、跨状态 / 布局曲线与扩展时间轴再核对，
+    /// 否则按 ID 改值会出现多个命中。非 `ExtensionTimelineTrack` 的扩展轨道无法派生键身份，
+    /// 由类型校验器负责其内部约束；本方法只覆盖框架可见的键。
     private void checkKeyIds(CameraAnimation document, List<Diagnostic> diagnostics) {
+        Map<KeyId, String> seen = new LinkedHashMap<>();
+
         for (int rigIndex = 0; rigIndex < document.rigs().size(); rigIndex++) {
             CameraRig rig = document.rigs().get(rigIndex);
             String prefix = "rigs[" + rigIndex + "]";
@@ -407,67 +411,78 @@ public final class UnifiedDocumentValidator implements DocumentValidator {
             for (int channelIndex = 0; channelIndex < rig.channels().size(); channelIndex++) {
                 CurveTrack channel = rig.channels().get(channelIndex);
                 checkCurveKeyIds(channel.curve(), channel.id(),
-                        prefix + ".channels[" + channelIndex + "].curve", diagnostics);
+                        prefix + ".channels[" + channelIndex + "].curve", seen, diagnostics);
             }
 
             checkStateKeyIds(rig.aim().keys(), rig.aim().id(),
-                    prefix + ".aim.keys", diagnostics);
+                    prefix + ".aim.keys", seen, diagnostics);
             checkStateKeyIds(rig.view().active().keys(), rig.view().active().id(),
-                    prefix + ".view.active.keys", diagnostics);
+                    prefix + ".view.active.keys", seen, diagnostics);
             checkRectKeyIds(rig.view().rect(), rig.id(),
-                    prefix + ".view.rect", diagnostics);
+                    prefix + ".view.rect", seen, diagnostics);
         }
 
         checkStateKeyIds(document.cameraSource().keys(), document.cameraSource().id(),
-                "camera_source.keys", diagnostics);
+                "camera_source.keys", seen, diagnostics);
+
+        for (int trackIndex = 0; trackIndex < document.tracks().size(); trackIndex++) {
+            AnimationTrack track = document.tracks().get(trackIndex);
+
+            if (!(track instanceof ExtensionTimelineTrack timeline)) {
+                continue;
+            }
+
+            String fieldPath = "tracks[" + trackIndex + "].keys";
+
+            for (int keyIndex = 0; keyIndex < timeline.timelineKeys().size(); keyIndex++) {
+                ExtensionTimelineTrack.TimelineKey key = timeline.timelineKeys().get(keyIndex);
+                recordKeyId(key.keyId(), track.id(), fieldPath + "[" + keyIndex + "]",
+                        seen, diagnostics);
+            }
+        }
     }
 
     private void checkCurveKeyIds(Curve curve,
                                   DocumentObjectId objectId,
                                   String fieldPath,
+                                  Map<KeyId, String> seen,
                                   List<Diagnostic> diagnostics) {
-        Set<KeyId> ids = new HashSet<>();
-
-        for (Keyframe key : curve.keys()) {
-            if (!ids.add(key.keyId())) {
-                diagnostics.add(error(DiagnosticCode.DUPLICATE_KEY_ID,
-                        "Duplicate key id " + key.keyId() + " in " + fieldPath,
-                        objectId, fieldPath));
-            }
+        for (int index = 0; index < curve.keys().size(); index++) {
+            Keyframe key = curve.keys().get(index);
+            recordKeyId(key.keyId(), objectId, fieldPath + ".keys[" + index + "]",
+                    seen, diagnostics);
         }
     }
 
     private void checkStateKeyIds(List<? extends ValueKeyframe<?>> keys,
                                   DocumentObjectId objectId,
                                   String fieldPath,
+                                  Map<KeyId, String> seen,
                                   List<Diagnostic> diagnostics) {
-        Set<KeyId> ids = new HashSet<>();
-
-        for (ValueKeyframe<?> key : keys) {
-            if (!ids.add(key.keyId())) {
-                diagnostics.add(error(DiagnosticCode.DUPLICATE_KEY_ID,
-                        "Duplicate key id " + key.keyId() + " in " + fieldPath,
-                        objectId, fieldPath));
-            }
+        for (int index = 0; index < keys.size(); index++) {
+            ValueKeyframe<?> key = keys.get(index);
+            recordKeyId(key.keyId(), objectId, fieldPath + "[" + index + "]",
+                    seen, diagnostics);
         }
     }
 
     private void checkRectKeyIds(RigView.Rect rect,
                                  DocumentObjectId objectId,
                                  String fieldPath,
+                                 Map<KeyId, String> seen,
                                  List<Diagnostic> diagnostics) {
         switch (rect) {
             case RigView.Rect.Normalized normalized -> {
-                checkAnimatedKeyIds(normalized.x(), objectId, fieldPath + ".x", diagnostics);
-                checkAnimatedKeyIds(normalized.y(), objectId, fieldPath + ".y", diagnostics);
-                checkAnimatedKeyIds(normalized.width(), objectId, fieldPath + ".width", diagnostics);
-                checkAnimatedKeyIds(normalized.height(), objectId, fieldPath + ".height", diagnostics);
+                checkAnimatedKeyIds(normalized.x(), objectId, fieldPath + ".x", seen, diagnostics);
+                checkAnimatedKeyIds(normalized.y(), objectId, fieldPath + ".y", seen, diagnostics);
+                checkAnimatedKeyIds(normalized.width(), objectId, fieldPath + ".width", seen, diagnostics);
+                checkAnimatedKeyIds(normalized.height(), objectId, fieldPath + ".height", seen, diagnostics);
             }
             case RigView.Rect.Anchored anchored -> {
-                checkAnimatedKeyIds(anchored.x(), objectId, fieldPath + ".x", diagnostics);
-                checkAnimatedKeyIds(anchored.y(), objectId, fieldPath + ".y", diagnostics);
-                checkAnimatedKeyIds(anchored.width(), objectId, fieldPath + ".width", diagnostics);
-                checkAnimatedKeyIds(anchored.height(), objectId, fieldPath + ".height", diagnostics);
+                checkAnimatedKeyIds(anchored.x(), objectId, fieldPath + ".x", seen, diagnostics);
+                checkAnimatedKeyIds(anchored.y(), objectId, fieldPath + ".y", seen, diagnostics);
+                checkAnimatedKeyIds(anchored.width(), objectId, fieldPath + ".width", seen, diagnostics);
+                checkAnimatedKeyIds(anchored.height(), objectId, fieldPath + ".height", seen, diagnostics);
             }
         }
     }
@@ -475,9 +490,25 @@ public final class UnifiedDocumentValidator implements DocumentValidator {
     private void checkAnimatedKeyIds(AnimatedNumber number,
                                      DocumentObjectId objectId,
                                      String fieldPath,
+                                     Map<KeyId, String> seen,
                                      List<Diagnostic> diagnostics) {
         if (number instanceof AnimatedNumber.Keyed keyed) {
-            checkCurveKeyIds(keyed.curve(), objectId, fieldPath + ".curve", diagnostics);
+            checkCurveKeyIds(keyed.curve(), objectId, fieldPath + ".curve", seen, diagnostics);
+        }
+    }
+
+    private void recordKeyId(KeyId keyId,
+                             DocumentObjectId objectId,
+                             String fieldPath,
+                             Map<KeyId, String> seen,
+                             List<Diagnostic> diagnostics) {
+        String previous = seen.putIfAbsent(keyId, fieldPath);
+
+        if (previous != null) {
+            diagnostics.add(error(DiagnosticCode.DUPLICATE_KEY_ID,
+                    "Duplicate key id " + keyId + " at " + fieldPath
+                            + "; first seen at " + previous,
+                    objectId, fieldPath));
         }
     }
 

@@ -5,6 +5,7 @@ import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.CameraRig;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.AnimationSnapshot;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.Revision;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.eval.EvaluationContext;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.eval.EvaluationSession;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.eval.FrameFacts;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.eval.TrackIndex;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.eval.TrackLookup;
@@ -13,6 +14,9 @@ import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.KeyId;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.RigId;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.TrackId;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.playback.AimOverride;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.spatial.Rotation;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.spatial.Vec3;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.spatial.WorldPose;
 import net.minecraft.resources.Identifier;
 import org.junit.jupiter.api.Test;
 
@@ -86,19 +90,29 @@ class EditToolsBindingTest {
     }
 
     @Test
-    void aimCaptureCarriesModeOverrideAndMatchingRevision() {
+    void aimCaptureCarriesModeOverrideBasePoseAndMatchingRevision() {
         AnimationSnapshot snapshot = snapshot("aim");
         EvaluationContext context = context(snapshot);
+        WorldPose basePose = new WorldPose(Vec3.ZERO, Rotation.NONE, 70f);
+        EvaluationSession session = EvaluationSession.create(64, 8);
         AimCaptureRequest request = new AimCaptureRequest(
                 new RigId("rig"), 1f, AimCaptureMode.CURRENT,
-                AimOverride.inherit(), new Revision(1), context);
+                AimOverride.inherit(), basePose, new Revision(1), context, session);
 
         assertEquals(AimCaptureMode.CURRENT, request.mode());
         assertEquals(AimOverride.inherit(), request.override());
+        assertEquals(basePose, request.basePose());
+        assertEquals(session, request.session());
         assertEquals(new Revision(1), request.baseRevision());
 
         assertThrows(IllegalArgumentException.class, () -> new AimCaptureRequest(
                 new RigId("rig"), 1f, AimCaptureMode.LEFT_TARGET,
-                AimOverride.inherit(), new Revision(2), context));
+                AimOverride.inherit(), basePose, new Revision(2), context, session));
+        assertThrows(NullPointerException.class, () -> new AimCaptureRequest(
+                new RigId("rig"), 1f, AimCaptureMode.CURRENT,
+                AimOverride.inherit(), null, new Revision(1), context, session));
+        assertThrows(NullPointerException.class, () -> new AimCaptureRequest(
+                new RigId("rig"), 1f, AimCaptureMode.CURRENT,
+                AimOverride.inherit(), basePose, new Revision(1), context, null));
     }
 }

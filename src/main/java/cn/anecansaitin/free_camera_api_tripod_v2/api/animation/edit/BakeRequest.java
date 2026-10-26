@@ -1,6 +1,7 @@
 package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.edit;
 
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.eval.EvaluationContext;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.eval.EvaluationSession;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.field.Curve;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.RigId;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.TrackId;
@@ -13,6 +14,8 @@ import java.util.Objects;
 /// 预览区间不隐式决定烘焙范围；缺输入、UNKNOWN、ERROR 或超预算时不发布。世界 / 非确定依赖
 /// 必须提示“固化这份事实 / 这次结果”，不能伪称可复现世界历史。
 ///
+/// [session] 是本次烘焙共享的求值额度与深度；工具不得为每个采样点新建会话。
+///
 /// @param rigId         目标机位
 /// @param trackId       目标轨道
 /// @param startTime     起始时间，秒；有限且非负
@@ -21,6 +24,7 @@ import java.util.Objects;
 /// @param interpolation 生成键的插值策略
 /// @param maxKeys       允许生成的最大键数，正整数
 /// @param context       冻结的求值上下文（快照 + 事实 + 索引）
+/// @param session       本次烘焙共享的求值会话；非空
 @NullMarked
 public record BakeRequest(
         RigId rigId,
@@ -30,13 +34,15 @@ public record BakeRequest(
         float stepSeconds,
         Curve.Interpolation interpolation,
         int maxKeys,
-        EvaluationContext context) {
+        EvaluationContext context,
+        EvaluationSession session) {
 
     public BakeRequest {
         Objects.requireNonNull(rigId, "rigId");
         Objects.requireNonNull(trackId, "trackId");
         Objects.requireNonNull(interpolation, "interpolation");
         Objects.requireNonNull(context, "context");
+        Objects.requireNonNull(session, "session");
 
         if (!Float.isFinite(startTime) || startTime < 0f
                 || !Float.isFinite(endTime) || endTime <= startTime) {

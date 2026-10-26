@@ -379,7 +379,7 @@ EditTools 只生成 ToolResult.Ready(EditOp, diagnostics) 或整体 Rejected，�
 
 ### 4.7 将注视姿态转为旋转键并关闭注视
 
-AimCaptureRequest 已携带机位、time、AimCaptureMode、实际 AimOverride、baseRevision 与 EvaluationContext，并检查 baseRevision 等于冻结快照版本；CURRENT 使用当前目标，LEFT_TARGET 显式选择 t 已有 Off 的紧邻左侧 Target，不向更早区间回溯。覆盖来源由请求提供，不能从覆盖后 AimState 猜测。以上类型已交付，实际捕获、同时间键替换确认和原子提交仍待 core/editor。
+AimCaptureRequest 已携带机位、time、AimCaptureMode、实际 AimOverride、冻结基础姿态 basePose、baseRevision、EvaluationContext 与共享 EvaluationSession，并检查 baseRevision 等于冻结快照版本；CURRENT 使用当前目标，LEFT_TARGET 显式选择 t 已有 Off 的紧邻左侧 Target，不向更早区间回溯。覆盖来源由请求提供，不能从覆盖后 AimState 猜测。以上类型已交付，实际捕获、同时间键替换确认和原子提交仍待 core/editor。
 
 这是显式编辑工具，不是运行期切换器。作者选择机位与时间 t，冻结基文档、求值环境和当前世界事实，先得到关闭注视前的有效姿态，再一次性写入同时间的旋转 X/Y/Z 常量键与注视 Off 键。它不增加平滑混合、运行期继承上一帧角度或世界历史记录。
 

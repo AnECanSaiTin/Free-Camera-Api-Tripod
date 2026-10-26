@@ -1356,6 +1356,7 @@ classDiagram
         +Curve.Interpolation interpolation
         +int maxKeys
         +EvaluationContext context
+        +EvaluationSession session
     }
 
     class AimCaptureRequest {
@@ -1364,8 +1365,10 @@ classDiagram
         +float time
         +AimCaptureMode mode
         +AimOverride override
+        +WorldPose basePose
         +Revision baseRevision
         +EvaluationContext context
+        +EvaluationSession session
     }
 
     class AimCaptureMode {

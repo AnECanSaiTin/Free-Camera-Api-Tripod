@@ -269,6 +269,40 @@ class UnifiedDocumentValidatorTest {
     }
 
     @Test
+    void rejectsDuplicateKeyIdAcrossTracks() {
+        CurveTrack first = CurveTrack.ofCurve(new TrackId("first"), "first",
+                Curve.of(new Keyframe(new KeyId("shared-key"), 0f, new Constant(1f),
+                        0f, 0f, 0f, 0f, Curve.Interpolation.LINEAR)));
+        CurveTrack second = CurveTrack.ofCurve(new TrackId("second"), "second",
+                Curve.of(new Keyframe(new KeyId("shared-key"), 0f, new Constant(2f),
+                        0f, 0f, 0f, 0f, Curve.Interpolation.LINEAR)));
+        CameraRig rig = CameraRig.create(new RigId("rig"), "rig", List.of(first, second),
+                new TrackId("aim"), new TrackId("active"));
+        CameraAnimation document = CameraAnimation.create("doc", rig, new TrackId("source"));
+
+        List<Diagnostic> diagnostics = validator(emptyRegistries()).validate(document);
+
+        assertTrue(hasMessage(diagnostics, "Duplicate key id"), () -> "unexpected: " + diagnostics);
+    }
+
+    @Test
+    void acceptsDistinctKeyIdsAcrossTracks() {
+        CurveTrack first = CurveTrack.ofCurve(new TrackId("first"), "first",
+                Curve.of(new Keyframe(new KeyId("first-key"), 0f, new Constant(1f),
+                        0f, 0f, 0f, 0f, Curve.Interpolation.LINEAR)));
+        CurveTrack second = CurveTrack.ofCurve(new TrackId("second"), "second",
+                Curve.of(new Keyframe(new KeyId("second-key"), 0f, new Constant(2f),
+                        0f, 0f, 0f, 0f, Curve.Interpolation.LINEAR)));
+        CameraRig rig = CameraRig.create(new RigId("rig"), "rig", List.of(first, second),
+                new TrackId("aim"), new TrackId("active"));
+        CameraAnimation document = CameraAnimation.create("doc", rig, new TrackId("source"));
+
+        List<Diagnostic> diagnostics = validator(emptyRegistries()).validate(document);
+
+        assertTrue(diagnostics.isEmpty(), () -> "unexpected: " + diagnostics);
+    }
+
+    @Test
     void acceptsFormulaReferenceToExistingVariable() {
         CameraRig rig = CameraRig.create(new RigId("rig"), "rig", List.of(),
                 new TrackId("aim"), new TrackId("active"));

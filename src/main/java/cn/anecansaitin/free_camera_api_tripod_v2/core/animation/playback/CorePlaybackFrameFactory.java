@@ -166,6 +166,88 @@ public final class CorePlaybackFrameFactory implements PlaybackFrameFactory {
         return prepared.diagnostics();
     }
 
+    /// 为一个编辑工具准备单机位姿态：不检查活动集合、不展开事件、不读取当前 store。
+    ///
+    /// 供注视捕获等工具复用与播放相同的通道、锚点、注视、参考系与布局求值；只要求该机位
+    /// 本身存在于快照，且调用方已提供与快照同源的事实与环境。返回的 [RigPose] 已应用注视，
+    /// 位置可能已做避障修正；旋转仍是世界姿态，调用方需要时自行转回文档参考系。
+    ///
+    /// @param snapshot 冻结快照
+    /// @param rigId    目标机位
+    /// @param overrides 该机位的覆盖（注视覆盖使用请求实际值）
+    /// @param clock    冻结时钟；只使用其时间
+    /// @param facts    与快照同源的事实
+    /// @param env      本次环境的身份与时间
+    /// @param session  本次工具共享的执行会话
+    /// @return 姿态或含错误的诊断；错误时姿态为空
+    public RigPreparation prepareRig(AnimationSnapshot snapshot,
+                                     RigId rigId,
+                                     RigPlaybackOverrides overrides,
+                                     PlaybackClock clock,
+                                     FrameFacts facts,
+                                     FrameEnvironment env,
+                                     EvaluationSession session) {
+        Objects.requireNonNull(snapshot, "snapshot");
+        Objects.requireNonNull(rigId, "rigId");
+        Objects.requireNonNull(overrides, "overrides");
+        Objects.requireNonNull(clock, "clock");
+        Objects.requireNonNull(facts, "facts");
+        Objects.requireNonNull(env, "env");
+        Objects.requireNonNull(session, "session");
+
+        List<Diagnostic> diagnostics = new ArrayList<>();
+        CameraRig rig = snapshot.document().rig(rigId).orElse(null);
+
+        if (rig == null) {
+            diagnostics.add(error(snapshot, rigId, "Rig does not exist: " + rigId));
+            return new RigPreparation(null, diagnostics);
+        }
+
+        SnapshotTrackIndex index = SnapshotTrackIndex.build(snapshot);
+        diagnostics.addAll(index.diagnostics());
+
+        if (!index.diagnostics().isEmpty()) {
+            return new RigPreparation(null, diagnostics);
+        }
+
+        EvaluationContext context;
+
+        try {
+            context = EvaluationContext.bind(0, snapshot, facts,
+                    snapshot.document()::curveTrack, index);
+        } catch (RuntimeException exception) {
+            diagnostics.add(error(snapshot, rigId,
+                    "Rig context binding failed: " + messageOf(exception)));
+            return new RigPreparation(null, diagnostics);
+        }
+
+        WorldPose base;
+
+        try {
+            base = cameraProbe.basePose();
+        } catch (RuntimeException exception) {
+            diagnostics.add(error(snapshot, rigId,
+                    "Camera probe failed: " + messageOf(exception)));
+            return new RigPreparation(null, diagnostics);
+        }
+
+        RigPose pose = evaluateRig(rig, snapshot, context, session, clock.time(), env, base, facts,
+                overrides, diagnostics);
+        return new RigPreparation(pose, diagnostics);
+    }
+
+    /// 单机位准备结果；`pose` 为空表示不能生成姿态。
+    ///
+    /// @param pose        已求值姿态；错误时为空
+    /// @param diagnostics 本次求值诊断；存在 ERROR 时调用方必须拒绝
+    @NullMarked
+    public record RigPreparation(@Nullable RigPose pose, List<Diagnostic> diagnostics) {
+
+        public RigPreparation {
+            diagnostics = List.copyOf(diagnostics);
+        }
+    }
+
     private PreparedFrame prepareInternal(AnimationSnapshot snapshot,
                                           PlaybackRequest request,
                                           PlaybackClock clock,

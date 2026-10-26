@@ -1,8 +1,8 @@
 # P1 契约、实施与验收
 
-> 更新：2026-10-26。最近实施批次为 **C8**（相机接管仲裁与类型能力服务，未提交）；C7 为 R56-H1 修复（未提交，R57 已复核）；C6 为 R55 九项修复（未提交）；`95c3dda` 为 2026-10-25 已提交实现批次，经 R55 审核发现九项问题。审核、复核与关闭边界见[P1 审核与复核记录](<P1-review.md>)。
+> 更新：2026-10-26。最近实施批次为 **C13**（全文档 KeyId 唯一性，未提交）；C12 为 NBT 文档编解码（未提交，待 R62）；C11 为编辑器 UI 后端编排（未提交，待 R61）；C10 为播放请求接收入口（未提交，待 R60）；C9 为消息渲染与编辑工具（未提交，待 R59）；C8 为相机接管仲裁与类型能力服务（未提交，待 R58）；C7 为 R56-H1 修复（未提交，R57 已复核）；C6 为 R55 九项修复（未提交）；`95c3dda` 为 2026-10-25 已提交实现批次，经 R55 审核发现九项问题。审核、复核与关闭边界见[P1 审核与复核记录](<P1-review.md>)。
 >
-> **当前结论：P1 已列 R1–R12 契约均已交付；C5 两项修复在原范围复核通过；C7 已按 R56-H1 完成形参作用域修复，R57 独立复核在原范围关闭；C8 已实现相机接管仲裁与类型能力服务并通过施工方自检，待独立复核 R58；C8 未发现确定新增回归。** 这不表示 core、客户端或完整 P1 运行验收完成。C5 审核基线为 **33 suite / 219 用例**（v2 27 / 153）；`95c3dda` 为 **59 suite / 511 用例**（v2 53 / 445）；C6 复核为 **60 suite / 537 用例**（v2 54 / 471）；C7 后全量为 **60 suite / 542 用例**（v2 54 / 476）；C8 后全量为 **62 suite / 566 用例**（v2 56 / 500），失败/错误 0、跳过 1（Windows 符号链接权限）。
+> **当前结论：P1 已列 R1–R12 契约均已交付；C5 两项修复在原范围复核通过；C7 已按 R56-H1 完成形参作用域修复，R57 独立复核在原范围关闭；C8 已实现相机接管仲裁与类型能力服务，待 R58；C9 已实现消息渲染与四个编辑工具，待 R59；C10 已实现播放请求接收入口，待 R60；C11 已实现编辑器 UI 后端选择编排，待 R61；C12 已实现 NBT 文档编解码与规模限制，待 R62；C13 已实现全文档 KeyId 唯一性，待 R63。** 这不表示 core、客户端或完整 P1 运行验收完成。C5 审核基线为 **33 suite / 219 用例**（v2 27 / 153）；`95c3dda` 为 **59 suite / 511 用例**（v2 53 / 445）；C6 复核为 **60 suite / 537 用例**（v2 54 / 471）；C7 后全量为 **60 suite / 542 用例**（v2 54 / 476）；C8 后全量为 **62 suite / 566 用例**（v2 56 / 500）；C9 后全量为 **64 suite / 580 用例**（v2 58 / 514）；C10 后全量为 **65 suite / 585 用例**（v2 59 / 519）；C11 后全量为 **66 suite / 593 用例**（v2 60 / 527）；C12 后全量为 **67 suite / 598 用例**（v2 61 / 532）；C13 后全量为 **67 suite / 600 用例**（v2 61 / 534），失败/错误 0、跳过 1（Windows 符号链接权限）。
 >
 > 行为规范仍以[动画主设计](<../design-animation-editor-framework.md>)、[UI 设计](<../design-editor-ui-framework.md>)和[音频设计](<../design-spatial-audio-api.md>)为准；本文维护实际交付、既有裁决、施工记录、施工边界与证据，不新增产品裁决。
 
@@ -25,7 +25,7 @@
 | 编辑器       | 会话、草稿、选择/视图、按 RigId 预览覆盖、交互请求、后端选择与 open 契约                                        | 会话实现、后端装配、草稿恢复、UI/输入/生命周期及预览执行                           |
 | 叠加与音频   | OverlayElement 暂存不透明内容；AudioRef / AudioRefId 仅身份与边界                                               | 叠加封闭内容等 O1–O3 补全设计后实施；音频整体最后实施                              |
 
-源码入口：[v2 API](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/>)；回归入口：[v2 测试](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/>)。当前 v2 主源码为 292 个 Java 文件（api / core / editor）。
+源码入口：[v2 API](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/>)；回归入口：[v2 测试](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/>)。当前 v2 主源码为 299 个 Java 文件（api / core / editor）。
 
 ## 2. 已确认裁决
 
@@ -135,6 +135,11 @@ EditorSession 写文档必须走 EditSubmission/store；播放头、轨道显隐
 | C6 | 基于 `95c3dda`，未提交 | R55 九项修复 | R56：八项关闭，依赖环部分关闭 |
 | C7 | 基于 C6，未提交 | R56-H1 形参作用域修复 | R57：原范围关闭 |
 | C8 | 基于 C7，未提交 | 相机接管仲裁、类型能力服务、实参作用域测试 | 施工方自检；独立复核待 R58 |
+| C9 | 基于 C8，未提交 | 消息渲染、缓动/批量/烘焙/注视捕获、EditTools 请求扩展 | 施工方自检；独立复核待 R59 |
+| C10 | 基于 C9，未提交 | 播放协议动作接收入口 | 施工方自检；独立复核待 R60 |
+| C11 | 基于 C10，未提交 | 编辑器 UI 后端选择 / 回退编排 | 施工方自检；独立复核待 R61 |
+| C12 | 基于 C11，未提交 | NBT 文档编解码与深度 / 条目 / 字节限制 | 施工方自检；独立复核待 R62 |
+| C13 | 基于 C12，未提交 | 全文档 KeyId 唯一性 | 施工方自检；独立复核待 R63 |
 
 ### 4.1 历史交付摘要
 
@@ -284,6 +289,102 @@ EditorSession 写文档必须走 EditSubmission/store；播放头、轨道显隐
 - 类型能力服务只回答当前冻结快照；编辑器徽标、播放前提示、真实 resolver / collector 注册、受控世界查询与客户端接线都未验收。
 - R58 独立复核尚未执行；C8 不能写成审核通过。
 
+### 4.6 C9：消息渲染与编辑工具（缓动/批量/烘焙/注视捕获）（2026-10-26，未提交）
+
+**1. 消息渲染。** [CoreLocalizedMessageRenderer](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/editor/CoreLocalizedMessageRenderer.java>) 实现 `LocalizedMessageRenderer`：
+
+- `Literal` 使用 `Component.literal`，`Translatable` 使用 `Component.translatable` / `translatableWithFallback`，参数按原顺序转换；
+- 嵌套 `Argument.Message` 递归渲染，不先转纯文本；
+- 只应用 `Formatting` 的 RGB 颜色、粗体、斜体与下划线；未设置样式保持继承；
+- 每次调用生成独立组件，不缓存、不回写消息；调用方修改返回值不影响下一次渲染。
+
+[CoreLocalizedMessageRendererTest](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/core/editor/CoreLocalizedMessageRendererTest.java>) 覆盖 5 个用例：受限样式、翻译回退与参数顺序、嵌套消息、组件独立性、空文本与空输入。
+
+**2. 编辑工具请求扩展（破坏性）。** 为后续 `CoreEditTools` 提供完整冻结输入：
+
+- [AimCaptureRequest](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/edit/AimCaptureRequest.java>) 增加必填 `WorldPose basePose` 与 `EvaluationSession session`。原因：`EvaluationContext` 只含快照 / 事实 / 索引，没有基础相机姿态；缺失旋转 / 位置通道时无法得到“关闭注视前的有效姿态”，也无法继承共享额度与深度。
+- [BakeRequest](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/edit/BakeRequest.java>) 增加必填 `EvaluationSession session`；烘焙的所有采样点必须共享同一额度与深度，不能逐点新建会话。
+- 同步更新[主设计 §4.7](<../design-animation-editor-framework.md#L382>)与 [UML 字段](<../design-uml.md#L1349>)；构造器变更要求调用方重新编译，属于本轮允许的破坏性更新。
+- [EditToolsBindingTest](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/api/animation/edit/EditToolsBindingTest.java>) 更新并覆盖新字段、基版本不一致、空 `basePose` / 空 `session`。
+
+**3. 编辑工具主体。** [CoreEditTools](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/edit/CoreEditTools.java>) 实现四个工具：
+
+- 缓动：目标必须是曲线轨道；预设曲柄长度超过统一校验 L4 上限时整体拒绝；选中的键不存在时拒绝；输出 `Batch(SetKeyInterpolation, SetKeyHandles)`。
+- 批量变换：按“先取反、再缩放、最后偏移”计算常量值；公式值显式拒绝，不静默转常量；先计算全部最终时间并检查轨道内冲突；状态轨道只允许时间移动，值域变换拒绝；扩展轨道暂不支持。
+- 烘焙：要求轨道属于请求机位；按 `[start, end]` 生成含端点的时间序列，采样前检查 `maxKeys`；所有采样共享 `BakeRequest.session`；`ABSENT` / `ERROR` / 采样器异常整体拒绝；成功输出整条 `ReplaceKeys`。
+- 注视捕获：通过 [CorePlaybackFrameFactory#prepareRig](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/playback/CorePlaybackFrameFactory.java>) 复用播放的通道、锚点、注视、参考系与布局求值，使用请求的 `basePose` 补全缺失轴；写同时间旋转 X/Y/Z 常量键与注视 Off 键；`Replace`、显式 `Disabled`、无有效目标、事实无效、缺少旋转通道或 `LEFT_TARGET` 无同刻 Off 键时整体拒绝；已有键替换产生 WARNING，不静默覆盖。
+
+[CoreEditToolsTest](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/edit/CoreEditToolsTest.java>) 覆盖 9 个用例：缓动的插值/曲柄与缺失键/超长曲柄、批量值变换与时间冲突/公式拒绝、烘焙端点与 ID、烘焙超键数前置拒绝与 ABSENT 拒绝、注视捕获的旋转 + Off 输出与 `Replace` / 缺通道拒绝。
+
+**4. 边界。** `captureAim` 通过冻结事实与基础姿态求值，不再访问当前 store；但 `LEFT_TARGET` 仍要求调用方把左侧 Target 的解析结果放进本帧事实，不能仅凭文档模式临时重解析。已有同时间键的替换以 WARNING 提示，不是显式确认字段；若需要强制二次确认，应在后续编辑器 UI 契约中增加。批量变换的“先取反、再缩放、最后偏移”顺序、烘焙整轨替换与含端点口径在本次固定，后续若要改变属于行为变更。
+
+**施工验证。** `.\gradlew.bat --offline clean compileJava test --no-build-cache --rerun-tasks --console=plain`，BUILD SUCCESSFUL；按测试结果 XML 统计 **64 suite / 580 用例**（v2 58 / 514），失败/错误 0、跳过 1（Windows 符号链接权限）。C9 相对 C8 新增 14 个用例、2 个 suite（渲染器 5 + 工具 9）；v2 主源码 294 个 Java 文件，API class 仍为 386；JDK 25 jdeps 对 386 个 API class 的禁止类型依赖为 0，`git diff --check` 通过。
+
+**关闭边界。** 渲染器尚未接语言切换、UI 宿主或显示缓存；仅支持契约列出的受限样式。R59 独立复核尚未执行。
+
+### 4.7 C10：播放请求接收入口（2026-10-26，未提交）
+
+[CorePlaybackRequestReceiver](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/playback/CorePlaybackRequestReceiver.java>) 把已解码的 `PlaybackAction` 接到本地播放服务：
+
+- `Stop` 直接调用 `PlaybackService.stopAndReset()`；不要求发布序号。
+- `Start` 的 `Embedded` 沿用同一文档实例，`Local` 通过 `AnimationResourceService.load` 解析；`Start#toRequest` 继续校验 Embedded 实例身份。
+- 开始动作统一交给 `PlaybackService.start(request, expectedRevision)`，因此基版本、播放参数、启动准备与文档 store 的统一校验仍走既有链路；接收端不复制校验、不构造默认锚点。
+- 本地资源载入拒绝返回 `HOST_CAPABILITY_MISSING` 并携带原 File 诊断；缺少开始序号、未知来源或请求构造失败返回 `EVALUATION_ERROR`；播放服务拒绝时原样返回其 `PlaybackFailure`。
+- 不注册网络包、不做传输、不做跨线程排队；`Local` 载入可能阻塞，宿主应在进入播放宿主线程前完成解析。
+
+[CorePlaybackRequestReceiverTest](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/playback/CorePlaybackRequestReceiverTest.java>) 覆盖 5 个用例：Embedded 同实例、Local 解析、Local 载入拒绝、Stop 委派、播放拒绝与缺少序号。
+
+**施工验证。** `.\gradlew.bat --offline clean compileJava test --no-build-cache --rerun-tasks --console=plain`，BUILD SUCCESSFUL；按测试结果 XML 统计 **65 suite / 585 用例**（v2 59 / 519），失败/错误 0、跳过 1（Windows 符号链接权限）。C10 新增 5 个用例、1 个 suite；v2 主源码 295 个 Java 文件，API class 仍为 386；jdeps 对 386 个 API class 的禁止类型依赖为 0，`git diff --check` 通过。
+
+**关闭边界。** 真实网络包注册 / 传输 / 收包线程切换未做；接收端本身不是 `StreamCodec` 处理器，调用方负责先解码并进入播放宿主线程。Local 资源载入是同步调用，未实现异步解析或请求超时；服务端权限、来源授权和客户端资源根仍未验收。R60 独立复核尚未执行。
+
+### 4.8 C11：编辑器 UI 后端选择编排（2026-10-26，未提交）
+
+[CoreEditorUiHost](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/editor/CoreEditorUiHost.java>) 实现主设计 §9.3 的宿主编排：
+
+- `auto`：第三方后端按优先级降序、同优先级按 ID 稳定排序；逐个 `canOpen`，第一个接受者打开；全部拒绝时打开内置；内置不参与自动排序之前。
+- 指定已注册且接受：直接打开该后端；指定已注册但拒绝：报告失败，不自动切换、不调用内置。
+- 指定未注册：报告警告并打开内置。
+- `canOpen` 抛异常视为拒绝；`auto` 继续尝试下一个，指定 ID 报告失败且不回退。
+- `open` 抛异常只报告失败，不关闭会话、不遗留令牌由后端自行保证。
+- 构造时拒绝重复后端 ID（含内置 ID）；`Reporter` 提供警告 / 失败回调，`noop()` 可用。
+
+[CoreEditorUiHostTest](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/core/editor/CoreEditorUiHostTest.java>) 覆盖 8 个用例：auto 优先级/同优先级 ID、全部拒绝回内置、指定接受、指定拒绝不回退、未注册警告回内置、open 失败、canOpen 异常继续、重复 ID。
+
+**施工验证。** `.\gradlew.bat --offline clean compileJava test --no-build-cache --rerun-tasks --console=plain`，BUILD SUCCESSFUL；按测试结果 XML 统计 **66 suite / 593 用例**（v2 60 / 527），失败/错误 0、跳过 1（Windows 符号链接权限）。C11 新增 8 个用例、1 个 suite；v2 主源码 296 个 Java 文件，API class 仍为 386；jdeps 对 386 个 API class 的禁止类型依赖为 0，`git diff --check` 通过。
+
+**关闭边界。** 未实现真实客户端屏幕 / 面板挂载，也没有后端接管令牌或会话关闭；`Reporter` 由宿主实现，默认不写日志。`auto` 中某个后端 `open` 抛异常时当前停止，不再尝试下一个；若产品需要继续回退，应显式修改编排语义。R61 独立复核尚未执行。
+
+### 4.9 C12：NBT 文档编解码与规模限制（2026-10-26，未提交）
+
+[NbtDocumentCodec](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/storage/NbtDocumentCodec.java>) 提供文档与未命名 CompoundTag 字节之间的适配：
+
+- 编码先走 `DocumentCodec.encode(..., NbtOps.INSTANCE)`；结果不是 CompoundTag 或 NBT 深度 / 条目 / 字节超限时返回 `DataResult` 错误。
+- 解码先检查字节上限，再用 `NbtAccounter.create(maxBytes)` 读取；随后检查深度 / 条目，最后交给 `DocumentCodec` 执行结构解码与统一文档校验。
+- [NbtResourceLimits](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/storage/NbtResourceLimits.java>) 提供 8 MiB / 128 层 / 1,000,000 条目默认值；[NbtTagGuard](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/storage/NbtTagGuard.java>) 在遍历前统计 Compound 键、List 元素与基本数组元素。
+- 本类不读写文件、不选择资源根、不做压缩或 SavedData 生命周期；文件 IO / 原子替换仍属资源服务。
+
+[NbtDocumentCodecTest](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/core/storage/NbtDocumentCodecTest.java>) 覆盖 5 个用例：NBT 往返 Accepted、解码字节超限、编码字节超限、损坏字节、深度 / 条目守卫。
+
+**施工验证。** `.\gradlew.bat --offline clean compileJava test --no-build-cache --rerun-tasks --console=plain`，BUILD SUCCESSFUL；按测试结果 XML 统计 **67 suite / 598 用例**（v2 61 / 532），失败/错误 0、跳过 1（Windows 符号链接权限）。C12 新增 5 个用例、1 个 suite；v2 主源码 299 个 Java 文件，API class 仍为 386；jdeps 对 386 个 API class 的禁止类型依赖为 0，`git diff --check` 通过。
+
+**关闭边界。** 未实现 NBT 文件资源服务、命名根 / 压缩策略、SavedData 生命周期、原子替换或恢复调度；解码深度 / 条目检查发生在读取之后，读取阶段只由 `NbtAccounter` 限制字节。NBT 结构失败没有 JSON 字段路径，`fieldPath` 为空是如实结果，不是已填充。R62 独立复核尚未执行。
+
+### 4.10 C13：全文档 KeyId 唯一性（2026-10-26，未提交）
+
+[UnifiedDocumentValidator](<../../src/main/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/validation/UnifiedDocumentValidator.java>) 的 L2 键身份检查由“同轨唯一”扩展为**全文档唯一**：
+
+- 统一遍历机位通道曲线、注视 / 活动状态键、布局矩形 X/Y/宽/高的 `AnimatedNumber.Keyed` 曲线、相机来源键，以及实现 `ExtensionTimelineTrack` 的文档级扩展轨道键。
+- 命中重复时在第二个位置产生 `DUPLICATE_KEY_ID`，消息包含首次出现的字段路径；同轨重复与跨轨 / 跨对象重复使用同一诊断码。
+- 非 `ExtensionTimelineTrack` 的扩展轨道无法派生键身份，仍由注册的类型校验器负责内部约束；本次只覆盖框架可见键。
+- 构造期仍只保证单轨唯一；发布 / 载入统一校验负责全局作用域，编辑层按 KeyId 改值不再可能出现多个命中。
+
+[UnifiedDocumentValidatorTest](<../../src/test/java/cn/anecansaitin/free_camera_api_tripod_v2/core/animation/validation/UnifiedDocumentValidatorTest.java>) 新增 `rejectsDuplicateKeyIdAcrossTracks` 与 `acceptsDistinctKeyIdsAcrossTracks`；全量 600 用例通过。
+
+**施工验证。** `.\gradlew.bat --offline clean compileJava test --no-build-cache --rerun-tasks --console=plain`，BUILD SUCCESSFUL；按测试结果 XML 统计 **67 suite / 600 用例**（v2 61 / 534），失败/错误 0、跳过 1（Windows 符号链接权限）。C13 新增 2 个用例、suite 数不变；v2 主源码 299 个 Java 文件，API class 仍为 386；jdeps 对 386 个 API class 的禁止类型依赖为 0，`git diff --check` 通过。
+
+**关闭边界。** 真实文档若在多个轨道复用同一 KeyId，现在会被拒绝；这是按主设计 §3.1 的全局作用域收紧，第三方类型校验器若维护自己的键身份表仍需单独检查。跨文档作用域、非时间轴扩展轨道内部键与源文件字段路径不在本次范围。R63 独立复核尚未执行。
+
 ## 5. 后续实现与验收清单
 
 <a id="p1-follow-up"></a>
@@ -305,6 +406,16 @@ EditorSession 写文档必须走 EditSubmission/store；播放头、轨道显隐
 明确后续阶段：叠加 O1–O3 等设计补全字段；编辑器公开 SPI/组件（U1/U2）、采样实时读数/洋葱皮/构图辅助（S1/S2、E1）另行实施。全部非音频阶段完成后才实施独立音频 API、可选接入、音频数据/Codec、波形与同步；现有 AudioRef 不代表音频后端已完成。
 
 C8 已交付 `CoreCameraControlClaims`、`FrozenAnchorResolverRegistry` / `FrozenSampleCollectorRegistry` 与 `CoreTypeCapabilityService`；它们仍是 core 层供宿主装配的部件，不代表编辑器、renderer 或客户端世界查询已接线。
+
+C9 已交付 `CoreLocalizedMessageRenderer` 与 `CoreEditTools` 的缓动、批量变换、烘焙与注视捕获；编辑器 UI、语言切换与真实宿主姿态接线仍未接。
+
+C10 已交付 `CorePlaybackRequestReceiver` 的本地接收入口；真实网络包注册、传输、收包线程切换与授权仍未接。
+
+C11 已交付 `CoreEditorUiHost` 的后端选择编排；实际客户端 UI 挂载、接管令牌与会话生命周期接线仍未接。
+
+C12 已交付 `NbtDocumentCodec` 的 NBT 载荷编解码与规模限制；NBT 文件服务、SavedData 生命周期、压缩与原子替换仍未接。
+
+C13 已把 `KeyId` 唯一性收紧到全文档作用域；非时间轴扩展轨道内部键仍由类型校验器负责。
 
 ## 6. 验证基线与维护方式
 
@@ -348,6 +459,46 @@ C5 审核基线实际执行：
 
 结果 BUILD SUCCESSFUL，按测试结果 XML 统计 **62 suite / 566 用例**（v2 56 / 500），失败/错误 0、跳过 1（Windows 无符号链接权限的 JUnit assumption）。新增 24 个用例、2 个 suite；v2 主源码 292 个 Java 文件，v2 API class 仍为 386。施工方自检命令与证据见 §4.5；R58 独立复核尚未执行。
 
+2026-10-26 C9 修复批次执行：
+
+```powershell
+.\gradlew.bat --offline clean compileJava test --no-build-cache --rerun-tasks --console=plain
+```
+
+结果 BUILD SUCCESSFUL，按测试结果 XML 统计 **64 suite / 580 用例**（v2 58 / 514），失败/错误 0、跳过 1（Windows 无符号链接权限的 JUnit assumption）。C9 相对 C8 新增 14 个用例、2 个 suite；v2 主源码 294 个 Java 文件，v2 API class 仍为 386。施工方自检命令与证据见 §4.6；R59 独立复核尚未执行。
+
+2026-10-26 C10 修复批次执行：
+
+```powershell
+.\gradlew.bat --offline clean compileJava test --no-build-cache --rerun-tasks --console=plain
+```
+
+结果 BUILD SUCCESSFUL，按测试结果 XML 统计 **65 suite / 585 用例**（v2 59 / 519），失败/错误 0、跳过 1（Windows 无符号链接权限的 JUnit assumption）。C10 新增 5 个用例、1 个 suite；v2 主源码 295 个 Java 文件，v2 API class 仍为 386。施工方自检命令与证据见 §4.7；R60 独立复核尚未执行。
+
+2026-10-26 C11 修复批次执行：
+
+```powershell
+.\gradlew.bat --offline clean compileJava test --no-build-cache --rerun-tasks --console=plain
+```
+
+结果 BUILD SUCCESSFUL，按测试结果 XML 统计 **66 suite / 593 用例**（v2 60 / 527），失败/错误 0、跳过 1（Windows 无符号链接权限的 JUnit assumption）。C11 新增 8 个用例、1 个 suite；v2 主源码 296 个 Java 文件，v2 API class 仍为 386。施工方自检命令与证据见 §4.8；R61 独立复核尚未执行。
+
+2026-10-26 C12 修复批次执行：
+
+```powershell
+.\gradlew.bat --offline clean compileJava test --no-build-cache --rerun-tasks --console=plain
+```
+
+结果 BUILD SUCCESSFUL，按测试结果 XML 统计 **67 suite / 598 用例**（v2 61 / 532），失败/错误 0、跳过 1（Windows 无符号链接权限的 JUnit assumption）。C12 新增 5 个用例、1 个 suite；v2 主源码 299 个 Java 文件，v2 API class 仍为 386。施工方自检命令与证据见 §4.9；R62 独立复核尚未执行。
+
+2026-10-26 C13 修复批次执行：
+
+```powershell
+.\gradlew.bat --offline clean compileJava test --no-build-cache --rerun-tasks --console=plain
+```
+
+结果 BUILD SUCCESSFUL，按测试结果 XML 统计 **67 suite / 600 用例**（v2 61 / 534），失败/错误 0、跳过 1（Windows 无符号链接权限的 JUnit assumption）。C13 新增 2 个用例、suite 数不变；v2 主源码 299 个 Java 文件，v2 API class 仍为 386。施工方自检命令与证据见 §4.10；R63 独立复核尚未执行。
+
 必守门禁：api 不依赖旧根、net.minecraft.client、core/editor 实现；editor.spi 不依赖 editor.internal；按 Q13 允许 edit ↔ document。源码文本扫描只作辅助，依赖门禁检查编译产物。测试目前集中于结构不变量、容器隔离、JSON/压缩 JSON Codec 与替身契约，不代替真实 store/时序/世界/渲染/网络验证。
 
 关键基线保留为里程碑，完整历史命令和原始论证由 Git 追溯：
@@ -368,5 +519,10 @@ C5 审核基线实际执行：
 | C6 / R56（八项关闭、环检查部分关闭） | 60/537        | 54/471        |
 | C7 / R57（R56-H1 修复，原范围关闭） | 60/542        | 54/476        |
 | C8 / 待 R58（相机接管与能力服务） | 62/566        | 56/500        |
+| C9 / 待 R59（消息渲染与工具） | 64/580        | 58/514        |
+| C10 / 待 R60（播放请求接收） | 65/585        | 59/519        |
+| C11 / 待 R61（编辑器 UI 后端编排） | 66/593        | 60/527        |
+| C12 / 待 R62（NBT 文档编解码） | 67/598        | 61/532        |
+| C13 / 待 R63（全文档 KeyId） | 67/600        | 61/534        |
 
 后续维护分为两个入口：本文更新契约、实施批次、施工记录与验证基线；[P1 审核与复核记录](<P1-review.md>)更新审核编号、原问题、关闭边界与独立复核结论。行为规则变更同步主设计；审核通过只关闭明确的问题范围，新增需求另行分期。原 R1–R14/R1–R29 归档、协议提案、注册表选型与旧复核日志已并入两份文档；如需原文，可查凝练前提交 `7095284` 的对应路径。
