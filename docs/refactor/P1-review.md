@@ -154,7 +154,7 @@ K个键、I区间、每区间M命中，当前初始化O(Σkᵢlogkᵢ)/O(K)，�
 
 ### 6.7 改名能力讨论结论
 
-当前强制ExtensionTrack.withName没有确定性能错误，也不能把过去强制契约误报为违反“可选能力”。推荐讨论独立非泛型RenamableTrack mixin，不extends sealed AnimationTrack：让支持者显式实现、协变返回原类型，无能力明确拒绝；统一入口检查返回ID/type/name/class，再按原owner替换、store校验。接口不能替未知类型自动复制载荷，不用NamedTrack包装器。若产品坚持所有名称都必须可改，维持强制方案合理；需第三方不可改类时才考虑typed注册适配器。方案/迁移测试见[主设计§3.1.3](<../design-animation-editor-framework.md#313-轨道改名能力本轮讨论建议尚未迁移>)及实施文档§3。本轮只建议，未新增裁决或改源码。
+当前强制ExtensionTrack.withName没有确定性能错误，也不能把过去强制契约误报为违反“可选能力”。推荐讨论独立非泛型RenamableTrack mixin，不extends sealed AnimationTrack：让支持者显式实现、协变返回原类型，无能力明确拒绝；统一入口检查返回ID/type/name/class，再按原owner替换、store校验。接口不能替未知类型自动复制载荷，不用NamedTrack包装器。若产品坚持所有名称都必须可改，维持强制方案合理；需第三方不可改类时才考虑typed注册适配器。方案/迁移测试见[主设计§3.1.3](<../design-animation-editor-framework.md#313-轨道改名能力已确认方向可选能力尚未实现>)及实施文档§3。R69 当时只建议、未改源码；该方向后经 D37 确认，仍未迁移。
 
 ### 6.8 实际验证与证据限制
 

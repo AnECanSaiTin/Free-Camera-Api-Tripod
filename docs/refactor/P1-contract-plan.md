@@ -3,6 +3,8 @@
 > 更新：2026-10-26。当前基线为 **`4a08774` 加工作区 C22**；C22 尚未提交。R68 对 C22 的两项原问题复核关闭；R69 按实现方式与性能整体审查，确认五项待修缺陷及若干结构性成本。正式全量 **70 suite / 631 用例**，v2 **64 / 565**，失败/错误 0、跳过 1（Windows 符号链接权限）。测试通过不代替缺陷关闭或真实游戏验收。
 >
 > 本文维护唯一当前实施状态与后续清单；详细问题及独立验证见[审核记录](<P1-review.md>)，行为规范见[主设计](<../design-animation-editor-framework.md>)、[UI 设计](<../design-editor-ui-framework.md>)与[音频设计](<../design-spatial-audio-api.md>)。全局导航见[文档索引](<../README.md>)。本轮凝练不修改公开接口或源码，不把设计讨论写成用户新裁决。
+>
+> **设计变更待实施（2026-10-28）**：主设计 [§1.3](<../design-animation-editor-framework.md#13-相机属性与全局轨道池2026-10-28-变更未实现>) 将属性/轨道改为全局轨道池与显式绑定，属性默认关闭，旋转统一四元数，移除专用注视阶段，改名为可选能力。这是破坏性模型变更，尚未进入本施工清单；本文 §1–§5 仍描述当前旧模型实现与待修项。迁移批次、数据版本与验收矩阵需另行立项，不能把新设计写成已实现。
 
 ## 1. 当前实现与边界
 
@@ -71,11 +73,11 @@
 - 资源路径/原子替换/恢复槽分离；有界列表截断须可见，返回条数不等于扫描/IO 上限。网络 encode 成功用非空 Unit.INSTANCE，失败缓冲丢弃。
 - 会话/后端/预览覆盖不进文档历史；过期交互拒绝；指定已注册后端拒绝不回退。真正 UI 生命周期仍待客户端。
 
-## 3. 轨道改名：当前实现与待讨论建议
+## 3. 轨道改名：已确认方向与当前实现
 
 **当前实际契约**仍是 ExtensionTrack 强制 `withName(String)`，EditOpApplier 对曲线/三类状态/扩展分别分派；未迁移。方法纯派生、保留 TrackId/type/具体载荷，不能用通用 NamedTrack 包装器替代，否则 Codec 分派可能失败。当前强制设计本身不是性能缺陷。
 
-本轮建议新增独立可选 `api.animation.block.RenamableTrack` mixin：
+D37 已确认新增独立可选 `api.animation.block.RenamableTrack` mixin：
 
 ```java
 public interface RenamableTrack {
@@ -88,10 +90,10 @@ public interface RenamableTrack {
 | 方案 | 收益 | 成本 / 适用条件 |
 | --- | --- | --- |
 | 保持所有轨道强制 withName | 契约简单，所有名称保证可编辑 | 第三方固定名/只读类型也必须实现；通用编辑与基础数据绑定 |
-| 可选 RenamableTrack（推荐讨论） | 能力可查询，不扩 sealed 树，支持固定名类型 | 新增 unsupported 分支；属于当前“全部名可改”的行为收紧，需确认后迁移 |
+| 可选 RenamableTrack（D37 已确认） | 能力可查询，不扩 sealed 树，支持固定名类型 | 新增 unsupported 分支；属于当前“全部名可改”的行为收紧，迁移前需补 UI 拒绝路径 |
 | 注册 TrackRenamer<T> 适配器 | 不改第三方类也能提供编辑插件 | 多一套注册/冻结/缺失/类型匹配成本，只有真实集成需求时采用 |
 
-迁移尚未获新裁决，本轮不改源码。若采纳，移除/过渡扩展强制方法，内建实现 mixin，第三方显式重新编译或注册原类型适配器；Codec 字段不变，不提升 data_version。补能力支持/不支持、目标缺失、同名 no-op、错 ID/type/name/class、空/异常、Codec 载荷往返、Batch 拒绝与 undo/redo 测试。详见[主设计 §3.1.3](<../design-animation-editor-framework.md#313-轨道改名能力本轮讨论建议尚未迁移>)。
+方向已确认，本轮不改源码。迁移时移除/过渡扩展强制方法，内建实现 mixin，第三方显式重新编译或注册原类型适配器；Codec 字段不变，不提升 data_version。补能力支持/不支持、目标缺失、同名 no-op、错 ID/type/name/class、空/异常、Codec 载荷往返、Batch 拒绝与 undo/redo 测试。详见[主设计 §3.1.3](<../design-animation-editor-framework.md#313-轨道改名能力已确认方向可选能力尚未实现>)。
 
 ## 4. 施工与复核里程碑
 
