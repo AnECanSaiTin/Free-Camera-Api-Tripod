@@ -430,7 +430,6 @@ class UnifiedDocumentValidatorTest {
     private record FakeTrack(TrackId id, String name) implements AnimationTrack.ExtensionTrack {
         private static final Identifier TYPE = Identifier.fromNamespaceAndPath("test", "fake");
 
-        @Override
         public FakeTrack withName(String newName) {
             return new FakeTrack(id, newName);
         }

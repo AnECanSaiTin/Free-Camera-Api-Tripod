@@ -49,7 +49,7 @@ import java.util.Optional;
 /// @param curve   曲线数据
 @NullMarked
 public record CurveTrack(TrackId id, String name, @Nullable CameraChannel channel, Curve curve)
-        implements AnimationTrack {
+        implements AnimationTrack, RenamableTrack {
 
     /// 相机通道轨道的类型标识。
     public static final Identifier TYPE = Identifier.fromNamespaceAndPath("free_camera_api_tripod", "curve");

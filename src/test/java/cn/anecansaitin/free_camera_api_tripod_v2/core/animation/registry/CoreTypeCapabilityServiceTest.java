@@ -229,7 +229,6 @@ class CoreTypeCapabilityServiceTest {
 
         private static final Identifier TYPE = Identifier.fromNamespaceAndPath("test", "fake_track");
 
-        @Override
         public FakeTrack withName(String newName) {
             return new FakeTrack(id, newName);
         }

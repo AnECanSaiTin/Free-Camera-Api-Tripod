@@ -44,7 +44,7 @@ import org.jspecify.annotations.NullMarked;
 /// 不知道第三方轨道里的键长什么样。播放长度取启用机位的姿态与状态轨道、相机来源、
 /// 文档轨道、标记与叠加范围的**有限最大结束时间**；静态布局不延长动画。
 @NullMarked
-public sealed interface AnimationTrack permits CurveTrack, KeyframeTrack, AnimationTrack.ExtensionTrack {
+public sealed interface AnimationTrack permits CurveTrack, QuaternionTrack, KeyframeTrack, AnimationTrack.ExtensionTrack {
 
     /// 稳定身份，整份文档内唯一。移动、排序、重命名、撤销都保留它。
     TrackId id();
@@ -83,20 +83,11 @@ public sealed interface AnimationTrack permits CurveTrack, KeyframeTrack, Animat
     ///
     /// ## 改名
     ///
-    /// [withName] 是扩展轨道的必需能力：`EditOp.RenameTrack` 对扩展轨道直接调用它，
-    /// 不再经过反射、包装器或 `ReplaceTrack` 兜底。实现必须返回**同一具体类型**的新实例，
-    /// 保留 [id]、[type] 与自身 Codec 能编码的全部字段，只替换显示名；不得返回框架
-    /// 不认识的装饰器，否则按 [type] 分派到的 `TrackType.codec()` 无法编码该对象。
-    ///
-    /// 这是对扩展点的破坏性契约变更：已有实现必须补上本方法并重新编译。
+    /// 改名是**可选能力**：需要通用改名编辑的扩展轨道实现 [RenamableTrack]；
+    /// `EditOp.RenameTrack` 检查能力，缺失时明确拒绝，不用反射、包装器或
+    /// `ReplaceTrack` 伪造能力。实现必须返回**同一具体类型**的新实例，保留 [id]、[type]
+    /// 与自身 Codec 能编码的全部字段，只替换显示名；不得返回框架不认识的装饰器，
+    /// 否则按 [type] 分派到的 `TrackType.codec()` 无法编码该对象。
     non-sealed interface ExtensionTrack extends AnimationTrack {
-
-        /// 返回替换显示名后的同类型实例。
-        ///
-        /// [id] 与 [type] 必须保持不变；其余字段由实现自行保留或按本类型语义更新。
-        /// 该方法必须是纯派生操作，不修改当前对象。
-        ///
-        /// @param name 新的显示名，非空白
-        ExtensionTrack withName(String name);
     }
 }

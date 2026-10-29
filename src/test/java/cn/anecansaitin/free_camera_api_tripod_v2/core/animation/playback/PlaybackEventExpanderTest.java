@@ -306,7 +306,6 @@ class PlaybackEventExpanderTest {
             return keys;
         }
 
-        @Override
         public TestTimelineTrack withName(String newName) {
             return new TestTimelineTrack(id, newName, keys);
         }
@@ -329,7 +328,6 @@ class PlaybackEventExpanderTest {
 
     private record PlainExtensionTrack(TrackId id) implements AnimationTrack.ExtensionTrack {
 
-        @Override
         public PlainExtensionTrack withName(String newName) {
             return this;
         }
@@ -388,7 +386,6 @@ class PlaybackEventExpanderTest {
             return 0;
         }
 
-        @Override
         public ThrowingTimelineTrack withName(String newName) {
             return this;
         }

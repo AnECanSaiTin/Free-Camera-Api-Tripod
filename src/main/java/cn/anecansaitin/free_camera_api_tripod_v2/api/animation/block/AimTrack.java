@@ -53,7 +53,7 @@ public record AimTrack(
         TrackId id,
         String name,
         AimState defaultValue,
-        List<ValueKeyframe<AimState>> keys) implements KeyframeTrack<AimState> {
+        List<ValueKeyframe<AimState>> keys) implements KeyframeTrack<AimState>, RenamableTrack {
 
     /// 注视状态轨道的类型标识。
     public static final Identifier TYPE = Identifier.fromNamespaceAndPath("free_camera_api_tripod", "aim");

@@ -2,6 +2,7 @@ package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block;
 
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.codec.Codecs;
 import com.mojang.serialization.Codec;
+import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.TrackId;
 import net.minecraft.resources.Identifier;
@@ -47,7 +48,7 @@ public record ActiveTrack(
         TrackId id,
         String name,
         Boolean defaultValue,
-        List<ValueKeyframe<Boolean>> keys) implements KeyframeTrack<Boolean> {
+        List<ValueKeyframe<Boolean>> keys) implements KeyframeTrack<Boolean>, RenamableTrack {
 
     /// 活动状态轨道的类型标识。
     public static final Identifier TYPE = Identifier.fromNamespaceAndPath("free_camera_api_tripod", "active");
@@ -110,12 +111,15 @@ public record ActiveTrack(
         return new ActiveTrack(newId, name, defaultValue, keys);
     }
 
-    /// 结构编码：`id / name / default / keys`；键为有类型 STEP 键（主设计 §3.1.1）。
-    public static final Codec<ActiveTrack> CODEC =
+    /// 结构 MapCodec：`id / name / default / keys`；键为有类型 STEP 键（主设计 §3.1.1）。
+    public static final MapCodec<ActiveTrack> MAP_CODEC =
             RecordCodecBuilder.<ActiveTrack>mapCodec(instance -> instance.group(
                     TrackId.CODEC.fieldOf("id").forGetter(ActiveTrack::id),
                     Codecs.nonBlankString().fieldOf("name").forGetter(ActiveTrack::name),
                     Codec.BOOL.fieldOf("default").forGetter(ActiveTrack::defaultValue),
                     ValueKeyframe.codec(Codec.BOOL).listOf().fieldOf("keys").forGetter(ActiveTrack::keys)
-            ).apply(instance, ActiveTrack::new)).codec();
+            ).apply(instance, ActiveTrack::new));
+
+    /// 独立 Codec。
+    public static final Codec<ActiveTrack> CODEC = MAP_CODEC.codec();
 }

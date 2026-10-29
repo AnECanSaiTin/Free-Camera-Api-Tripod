@@ -2,6 +2,7 @@ package cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block;
 
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.codec.Codecs;
 import com.mojang.serialization.Codec;
+import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.id.TrackId;
 import net.minecraft.resources.Identifier;
@@ -47,7 +48,7 @@ public record CameraSourceTrack(
         TrackId id,
         String name,
         CameraSource defaultValue,
-        List<ValueKeyframe<CameraSource>> keys) implements KeyframeTrack<CameraSource> {
+        List<ValueKeyframe<CameraSource>> keys) implements KeyframeTrack<CameraSource>, RenamableTrack {
 
     /// 相机来源轨道的类型标识。
     public static final Identifier TYPE =
@@ -106,13 +107,16 @@ public record CameraSourceTrack(
         return new CameraSourceTrack(newId, name, defaultValue, keys);
     }
 
-    /// 结构编码：`id / name / default / keys`；来源按 `Player` / `Rig` 分支写入。
-    public static final Codec<CameraSourceTrack> CODEC =
+    /// 结构 MapCodec：`id / name / default / keys`；来源按 `Player` / `Rig` 分支写入。
+    public static final MapCodec<CameraSourceTrack> MAP_CODEC =
             RecordCodecBuilder.<CameraSourceTrack>mapCodec(instance -> instance.group(
                     TrackId.CODEC.fieldOf("id").forGetter(CameraSourceTrack::id),
                     Codecs.nonBlankString().fieldOf("name").forGetter(CameraSourceTrack::name),
                     CameraSource.CODEC.fieldOf("default").forGetter(CameraSourceTrack::defaultValue),
                     ValueKeyframe.codec(CameraSource.CODEC).listOf().fieldOf("keys")
                             .forGetter(CameraSourceTrack::keys)
-            ).apply(instance, CameraSourceTrack::new)).codec();
+            ).apply(instance, CameraSourceTrack::new));
+
+    /// 独立 Codec。
+    public static final Codec<CameraSourceTrack> CODEC = MAP_CODEC.codec();
 }

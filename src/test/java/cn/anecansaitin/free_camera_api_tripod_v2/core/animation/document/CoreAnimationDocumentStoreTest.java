@@ -3,6 +3,7 @@ package cn.anecansaitin.free_camera_api_tripod_v2.core.animation.document;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.AnimationTrack;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.CameraAnimation;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.CameraRig;
+import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.block.RenamableTrack;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.AnimationSnapshot;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.DocumentListener;
 import cn.anecansaitin.free_camera_api_tripod_v2.api.animation.document.EditSubmission;
@@ -238,6 +239,23 @@ class CoreAnimationDocumentStoreTest {
     }
 
     @Test
+    void rejectsRenameForExtensionWithoutCapability() {
+        FixedNameTrack track = new FixedNameTrack(new TrackId("fixed"), "fixed");
+        CoreAnimationDocumentStore store = CoreAnimationDocumentStore.withFixedValidator(
+                document("doc").withTracks(List.of(track)), candidate -> List.of());
+
+        EditResult result = store.submit(new EditSubmission(
+                new EditOp.RenameTrack(track.id(), "after"),
+                Revision.INITIAL, LocalizedMessage.literal("rename fixed")));
+
+        assertTrue(result instanceof EditResult.Rejected);
+        assertEquals(DiagnosticCode.INVALID_EDIT,
+                ((EditResult.Rejected) result).diagnostics().getFirst().code());
+        FixedNameTrack unchanged = (FixedNameTrack) store.snapshot().document().tracks().getFirst();
+        assertEquals("fixed", unchanged.name());
+    }
+
+    @Test
     void rejectsExtensionRenameThatChangesStableIdentity() {
         BadExtensionTrack track = new BadExtensionTrack(new TrackId("ext"), "before");
         CoreAnimationDocumentStore store = CoreAnimationDocumentStore.withFixedValidator(
@@ -295,7 +313,26 @@ class CoreAnimationDocumentStoreTest {
         assertFalse(called.get());
     }
 
-    private record BadExtensionTrack(TrackId id, String name) implements AnimationTrack.ExtensionTrack {
+    private record FixedNameTrack(TrackId id, String name) implements AnimationTrack.ExtensionTrack {
+
+        @Override
+        public net.minecraft.resources.Identifier type() {
+            return net.minecraft.resources.Identifier.fromNamespaceAndPath("test", "fixed_name");
+        }
+
+        @Override
+        public float duration() {
+            return 0f;
+        }
+
+        @Override
+        public int keyCount() {
+            return 0;
+        }
+    }
+
+    private record BadExtensionTrack(TrackId id, String name)
+            implements AnimationTrack.ExtensionTrack, RenamableTrack {
 
         @Override
         public BadExtensionTrack withName(String newName) {
@@ -318,7 +355,8 @@ class CoreAnimationDocumentStoreTest {
         }
     }
 
-    private record TestExtensionTrack(TrackId id, String name) implements AnimationTrack.ExtensionTrack {
+    private record TestExtensionTrack(TrackId id, String name)
+            implements AnimationTrack.ExtensionTrack, RenamableTrack {
 
         @Override
         public TestExtensionTrack withName(String newName) {

@@ -287,10 +287,16 @@ final class EditOpApplier {
 
         return switch (track) {
             case CurveTrack curve -> replaceCurve(document, curve.withName(name));
+            case QuaternionTrack ignored -> throw invalid(
+                    "Quaternion tracks are not yet addressable in the legacy per-rig document model");
             case AimTrack aim -> replaceValueTrack(document, aim.withName(name));
             case ActiveTrack active -> replaceValueTrack(document, active.withName(name));
             case CameraSourceTrack source -> replaceValueTrack(document, source.withName(name));
             case AnimationTrack.ExtensionTrack extension -> {
+                if (!(extension instanceof RenamableTrack renamable)) {
+                    throw invalid("Track type does not support renaming: " + extension.type());
+                }
+
                 List<AnimationTrack.ExtensionTrack> tracks = new ArrayList<>(document.tracks());
                 int index = indexOfTrack(tracks, trackId);
 
@@ -298,15 +304,25 @@ final class EditOpApplier {
                     throw target("document track", trackId);
                 }
 
-                AnimationTrack.ExtensionTrack renamed = Objects.requireNonNull(
-                        extension.withName(name), "withName result");
+                AnimationTrack renamed = Objects.requireNonNull(
+                        renamable.withName(name), "withName result");
 
-                if (!trackId.equals(renamed.id()) || !extension.type().equals(renamed.type())) {
-                    throw invalid("Extension track withName must preserve TrackId and type: "
+                if (!trackId.equals(renamed.id())
+                        || !extension.type().equals(renamed.type())
+                        || renamed.getClass() != extension.getClass()) {
+                    throw invalid("RenamableTrack must preserve TrackId, type and concrete class: "
                             + trackId + " / " + extension.type());
                 }
 
-                tracks.set(index, renamed);
+                if (!(renamed instanceof AnimationTrack.ExtensionTrack newExtension)) {
+                    throw invalid("RenamableTrack must return the same extension track family");
+                }
+
+                if (name.isBlank() || !name.equals(renamed.name())) {
+                    throw invalid("RenamableTrack must apply the requested non-blank name");
+                }
+
+                tracks.set(index, newExtension);
                 yield document.withTracks(tracks);
             }
         };

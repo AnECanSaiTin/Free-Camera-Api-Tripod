@@ -49,7 +49,6 @@ class CameraAnimationDurationTest {
     private record TestExtensionTrack(TrackId id, String name, float duration)
             implements AnimationTrack.ExtensionTrack {
 
-        @Override
         public TestExtensionTrack withName(String newName) {
             return new TestExtensionTrack(id, newName, duration);
         }

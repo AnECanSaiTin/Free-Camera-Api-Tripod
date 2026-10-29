@@ -141,7 +141,6 @@ class DocumentCodecTest {
     }
 
     private record TextTrack(TrackId id, String name, String text) implements AnimationTrack.ExtensionTrack {
-        @Override
         public TextTrack withName(String newName) {
             return new TextTrack(id, newName, text);
         }

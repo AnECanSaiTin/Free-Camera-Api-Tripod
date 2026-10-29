@@ -164,7 +164,6 @@ class CoreEventDispatcherTest {
     private record TestTrack(TrackId id, Identifier type, String name)
             implements AnimationTrack.ExtensionTrack {
 
-        @Override
         public TestTrack withName(String newName) {
             return new TestTrack(id, type, newName);
         }

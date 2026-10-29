@@ -605,7 +605,6 @@ class CorePlaybackFrameFactoryTest {
             return timelineKeys.size();
         }
 
-        @Override
         public TestTimelineTrack withName(String newName) {
             return new TestTimelineTrack(id, newName, timelineKeys);
         }

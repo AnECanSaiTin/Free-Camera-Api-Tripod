@@ -45,7 +45,6 @@ class FrozenTypeRegistryTest {
     }
 
     private record TestTrack(TrackId id, String name) implements AnimationTrack.ExtensionTrack {
-        @Override
         public TestTrack withName(String newName) {
             return new TestTrack(id, newName);
         }

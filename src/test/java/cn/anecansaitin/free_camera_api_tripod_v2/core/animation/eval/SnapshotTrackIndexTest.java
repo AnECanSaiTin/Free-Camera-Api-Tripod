@@ -86,7 +86,6 @@ class SnapshotTrackIndexTest {
 
     private record TestExtensionTrack(TrackId id, String name) implements AnimationTrack.ExtensionTrack {
 
-        @Override
         public TestExtensionTrack withName(String newName) {
             return new TestExtensionTrack(id, newName);
         }
