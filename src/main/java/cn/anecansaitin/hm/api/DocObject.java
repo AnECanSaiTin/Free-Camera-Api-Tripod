@@ -1,5 +1,7 @@
 package cn.anecansaitin.hm.api;
 
-public interface DocObject<T> extends CodecProvider<T>, StreamCodecProvider<T> {
+import cn.anecansaitin.hm.api.animation.registry.DocType;
 
+public interface DocObject {
+    DocType<?> getType();
 }

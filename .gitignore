@@ -29,4 +29,7 @@ logs
 # 本地依赖 jar（前置 mod、界面框架）不入库
 libs
 
+# 解压/反编译的 MC、DataFixerUpper 参考源码（本地查询用，含第三方版权代码）
+.mc-ref
+
 repo

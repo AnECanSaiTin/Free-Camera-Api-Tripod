@@ -34,8 +34,7 @@ public sealed interface PlaybackRange permits PlaybackRange.Auto, PlaybackRange.
             "type",
             range -> DataResult.success(range instanceof Manual ? "manual" : "auto"),
             type -> switch (type) {
-                case "auto" -> DataResult.<MapCodec<? extends PlaybackRange>>success(
-                        MapCodec.unit(AUTO));
+                case "auto" -> DataResult.<MapCodec<? extends PlaybackRange>>success(MapCodec.unit(AUTO));
                 case "manual" -> DataResult.<MapCodec<? extends PlaybackRange>>success(
                         RecordCodecBuilder.<Manual>mapCodec(instance -> instance.group(
                                 Codecs.seconds().fieldOf("start").forGetter(Manual::start),

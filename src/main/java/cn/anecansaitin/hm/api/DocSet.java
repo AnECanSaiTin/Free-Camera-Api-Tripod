@@ -1,5 +1,8 @@
 package cn.anecansaitin.hm.api;
 
+import cn.anecansaitin.hm.api.animation.DocTypes;
+import cn.anecansaitin.hm.api.animation.registry.DocType;
+import com.mojang.serialization.Codec;
 import org.jspecify.annotations.NullMarked;
 
 import java.util.*;
@@ -8,13 +11,13 @@ import java.util.*;
 ///
 /// 要求文档对象的 id 必须唯一，且每个文档对象均为深不可变。
 @NullMarked
-public class DocSet<T extends IdentityDocObject> {
+public class DocSet<T extends IdDocObject> implements DocObject{
     private final List<T> list;
-    private final Map<DocObjectId, T> map;
+    private final Map<DocId, T> map;
     private final int hash;
 
     public DocSet(Collection<T> documentObjects) {
-        HashMap<DocObjectId, T> map = new HashMap<>();
+        HashMap<DocId, T> map = new HashMap<>();
 
         for (T t : documentObjects) {
             T old = map.put(t.id(), t);
@@ -29,7 +32,7 @@ public class DocSet<T extends IdentityDocObject> {
         this.hash = hash();
     }
 
-    public DocSet(Map<DocObjectId, T> documentObjects) {
+    public DocSet(Map<DocId, T> documentObjects) {
         this.list = List.copyOf(documentObjects.values());
         this.map = Map.copyOf(documentObjects);
         this.hash = hash();
@@ -50,7 +53,7 @@ public class DocSet<T extends IdentityDocObject> {
         return Objects.equals(list, that.list);
     }
 
-    public T get(DocObjectId id) {
+    public T get(DocId id) {
         return map.get(id);
     }
 
@@ -62,11 +65,18 @@ public class DocSet<T extends IdentityDocObject> {
         return list.size();
     }
 
-    public boolean contains(DocObjectId id) {
+    public boolean contains(DocId id) {
         return map.containsKey(id);
     }
 
     public boolean contains(T documentObject) {
         return map.containsValue(documentObject);
     }
+
+    @Override
+    public DocType<?> getType() {
+        return DocTypes.DOC_SET;
+    }
+
+    public static final Codec<DocSet<?>> CODEC = Codec.
 }

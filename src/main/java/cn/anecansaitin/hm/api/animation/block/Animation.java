@@ -1,4 +1,4 @@
-package cn.anecansaitin.hm.api.block;
+package cn.anecansaitin.hm.api.animation.block;
 
 import cn.anecansaitin.hm.api.DocSet;
 
@@ -7,7 +7,7 @@ public record Animation(
         String name,
         DocSet<?> tracks,
         Object symbols,
-        Object playbackRange,
+        PlaybackRange playbackRange,
         DocSet<?> rigs
         ) {
 
