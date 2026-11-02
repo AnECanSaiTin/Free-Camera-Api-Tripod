@@ -13,7 +13,7 @@ public final class DocTypes {
     public static final DocType<PlaybackRange.Manual> PLAYBACK_RANGE_MANUAL;
 
     static {
-        DOC_SET = new DocType<>(Identifier.fromNamespaceAndPath(MODID, "doc_set"), );
+        DOC_SET = new DocType<>(Identifier.fromNamespaceAndPath(MODID, "doc_set"), DocTypeCodec.flex(DocSet::codec, DocSet::mapCodec, DocSet::streamCodec));
         PLAYBACK_RANGE_AUTO = new DocType<>(Identifier.fromNamespaceAndPath(MODID, "playback_range_auto"), DocTypeCodec.stable(PlaybackRange.Auto.CODEC, PlaybackRange.Auto.MAP_CODEC, PlaybackRange.Auto.STREAM_CODEC));
         PLAYBACK_RANGE_MANUAL = new DocType<>(Identifier.fromNamespaceAndPath(MODID, "playback_range_manual"), DocTypeCodec.stable(PlaybackRange.Manual.CODEC, PlaybackRange.Manual.MAP_CODEC, PlaybackRange.Manual.STREAM_CODEC));
     }

@@ -21,10 +21,10 @@ public sealed interface PlaybackRange extends DocObject {
     record Auto() implements PlaybackRange {
         public static final MapCodec<Auto> MAP_CODEC = MapCodec.unit(AUTO);
         public static final Codec<Auto> CODEC = MAP_CODEC.codec();
-        public static final StreamCodec<? super RegistryFriendlyByteBuf, Auto> STREAM_CODEC = StreamCodec.unit(AUTO);
+        public static final StreamCodec<RegistryFriendlyByteBuf, Auto> STREAM_CODEC = StreamCodec.unit(AUTO);
 
         @Override
-        public DocType<?> getType() {
+        public DocType<Auto> type() {
             return DocTypes.PLAYBACK_RANGE_AUTO;
         }
     }
@@ -38,7 +38,7 @@ public sealed interface PlaybackRange extends DocObject {
                 ).apply(instance, Manual::new)
         );
         public static final Codec<Manual> CODEC = MAP_CODEC.codec();
-        public static final StreamCodec<? super RegistryFriendlyByteBuf, Manual> STREAM_CODEC = StreamCodec.composite(
+        public static final StreamCodec<RegistryFriendlyByteBuf, Manual> STREAM_CODEC = StreamCodec.composite(
                 ByteBufCodecs.FLOAT, Manual::start,
                 ByteBufCodecs.FLOAT, Manual::end,
                 Manual::new
@@ -53,7 +53,7 @@ public sealed interface PlaybackRange extends DocObject {
         }
 
         @Override
-        public DocType<?> getType() {
+        public DocType<Manual> type() {
             return DocTypes.PLAYBACK_RANGE_MANUAL;
         }
     }

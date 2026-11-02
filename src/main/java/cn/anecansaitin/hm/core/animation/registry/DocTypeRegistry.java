@@ -1,6 +1,7 @@
 package cn.anecansaitin.hm.core.animation.registry;
 
 import cn.anecansaitin.hm.api.animation.registry.DocType;
+import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
@@ -9,6 +10,8 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.registries.DeferredRegister;
 import net.neoforged.neoforge.registries.NewRegistryEvent;
 import net.neoforged.neoforge.registries.RegistryBuilder;
+
+import java.util.Optional;
 
 @EventBusSubscriber()
 public class DocTypeRegistry {
@@ -23,6 +26,7 @@ public class DocTypeRegistry {
     static {
         DeferredRegister<DocType<?>> a = DeferredRegister.create(DOC_OBJECT_KEY, "a");
         Identifier cc = Identifier.parse("cc");
-        docObjects.get
+        Optional<Holder.Reference<DocType<?>>> holder = docObjects.get(23);
+        docObjects.getId()
     }
 }

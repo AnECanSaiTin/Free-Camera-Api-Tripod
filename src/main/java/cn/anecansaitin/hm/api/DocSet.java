@@ -2,7 +2,12 @@ package cn.anecansaitin.hm.api;
 
 import cn.anecansaitin.hm.api.animation.DocTypes;
 import cn.anecansaitin.hm.api.animation.registry.DocType;
+import cn.anecansaitin.hm.api.animation.registry.TypeRegistry;
 import com.mojang.serialization.Codec;
+import com.mojang.serialization.MapCodec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.codec.StreamCodec;
 import org.jspecify.annotations.NullMarked;
 
 import java.util.*;
@@ -74,9 +79,21 @@ public class DocSet<T extends IdDocObject> implements DocObject{
     }
 
     @Override
-    public DocType<?> getType() {
+    public DocType<?> type() {
         return DocTypes.DOC_SET;
     }
 
-    public static final Codec<DocSet<?>> CODEC = Codec.
+    public static Codec<DocSet<?>> codec(TypeRegistry registry) {
+        return mapCodec(registry).codec();
+    }
+
+    public static MapCodec<DocSet<?>> mapCodec(TypeRegistry registry) {
+        return RecordCodecBuilder.mapCodec(i -> i.group(
+                Doc
+        ));
+    }
+
+    public static StreamCodec<RegistryFriendlyByteBuf, DocSet<?>> streamCodec(TypeRegistry registry) {
+
+    }
 }
