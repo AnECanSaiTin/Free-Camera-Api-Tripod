@@ -5,7 +5,6 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.DataResult;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.KeyDispatchCodec;
-import io.netty.buffer.ByteBuf;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
@@ -13,6 +12,7 @@ import net.minecraft.resources.Identifier;
 
 public record DocType<T extends DocObject>(
         Identifier id,
+        Class<?> clazz,
         DocTypeCodec<T> codec) {
 
     public static MapCodec<DocType<?>> mapCodec(TypeRegistry registry) {
@@ -32,14 +32,14 @@ public record DocType<T extends DocObject>(
         return mapCodec(registry).codec();
     }
 
-    public static StreamCodec<? super RegistryFriendlyByteBuf, DocType<?>> streamCodec(TypeRegistry registry) {
-        return ByteBufCodecs.idMapper(
+    public static StreamCodec<RegistryFriendlyByteBuf, DocType<?>> streamCodec(TypeRegistry registry) {
+        return ByteBufCodecs.<DocType<?>>idMapper(
                 id -> {
                     DocType<?> docType = registry.get(id);
                     if (docType == null) throw new RuntimeException("No DocType with id " + id);
                     return docType;
                 },
                 registry::getId
-        );
+        ).cast();
     }
 }

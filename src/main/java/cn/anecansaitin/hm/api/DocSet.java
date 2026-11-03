@@ -4,9 +4,10 @@ import cn.anecansaitin.hm.api.animation.DocTypes;
 import cn.anecansaitin.hm.api.animation.registry.DocType;
 import cn.anecansaitin.hm.api.animation.registry.TypeRegistry;
 import com.mojang.serialization.Codec;
+import com.mojang.serialization.DataResult;
 import com.mojang.serialization.MapCodec;
-import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import org.jspecify.annotations.NullMarked;
 
@@ -88,12 +89,24 @@ public class DocSet<T extends IdDocObject> implements DocObject{
     }
 
     public static MapCodec<DocSet<?>> mapCodec(TypeRegistry registry) {
-        return RecordCodecBuilder.mapCodec(i -> i.group(
-                Doc
-        ));
+        return Codec.list(IdDocObject.codec(registry))
+                .<DocSet<?>>comapFlatMap(
+                        list -> {
+                            try {
+                                return DataResult.success(new DocSet<>(list));
+                            } catch (IllegalArgumentException e) {
+                                return DataResult.error(e::getMessage);
+                            }
+                        },
+                        set -> List.copyOf(set.list))
+                .fieldOf("values");
     }
 
     public static StreamCodec<RegistryFriendlyByteBuf, DocSet<?>> streamCodec(TypeRegistry registry) {
-
+        return StreamCodec.composite(
+                ByteBufCodecs.list().apply(IdDocObject.streamCodec(registry)),
+                set -> List.copyOf(set.list),
+                list -> new DocSet<IdDocObject>(list)
+        );
     }
 }

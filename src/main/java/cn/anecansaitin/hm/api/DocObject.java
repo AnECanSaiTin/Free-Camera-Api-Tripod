@@ -23,11 +23,8 @@ public interface DocObject {
 
     static StreamCodec<RegistryFriendlyByteBuf, DocObject> streamCodec(TypeRegistry registry) {
         return DocType.streamCodec(registry).dispatch(
-               DocObject::type,
-               type -> {
-                   StreamCodec<? super RegistryFriendlyByteBuf, ?> codec = type.codec().streamCodec(registry);
-                   return codec;
-               }
+                DocObject::type,
+                type -> type.codec().streamCodec(registry)
         );
     }
 }

@@ -4,6 +4,7 @@ import cn.anecansaitin.hm.api.Codecs;
 import cn.anecansaitin.hm.api.DocObject;
 import cn.anecansaitin.hm.api.animation.DocTypes;
 import cn.anecansaitin.hm.api.animation.registry.DocType;
+import com.mojang.datafixers.util.Pair;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.DataResult;
 import com.mojang.serialization.MapCodec;
@@ -31,12 +32,14 @@ public sealed interface PlaybackRange extends DocObject {
 
     /// 自定义播放范围
     record Manual(float start, float end) implements PlaybackRange {
-        public static final MapCodec<Manual> MAP_CODEC = RecordCodecBuilder.mapCodec(
-                instance -> instance.group(
-                        Codecs.positiveFloat().fieldOf("start").forGetter(Manual::start),
-                        Codecs.positiveFloat().fieldOf("end").forGetter(Manual::end)
-                ).apply(instance, Manual::new)
-        );
+        public static final MapCodec<Manual> MAP_CODEC = Codec.mapPair(
+                        Codecs.positiveFloat().fieldOf("start"),
+                        Codecs.positiveFloat().fieldOf("end"))
+                .flatXmap(
+                        p -> p.getFirst() < p.getSecond()
+                                ? DataResult.success(new Manual(p.getFirst(), p.getSecond()))
+                                : DataResult.error(() -> "PlaybackRange.Manual requires finite 0 <= start < end, got " + p),
+                        m -> DataResult.success(Pair.of(m.start(), m.end())));
         public static final Codec<Manual> CODEC = MAP_CODEC.codec();
         public static final StreamCodec<RegistryFriendlyByteBuf, Manual> STREAM_CODEC = StreamCodec.composite(
                 ByteBufCodecs.FLOAT, Manual::start,
