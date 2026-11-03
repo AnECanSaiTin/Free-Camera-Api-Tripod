@@ -1,7 +1,7 @@
 package cn.anecansaitin.hm.api;
 
 import cn.anecansaitin.hm.api.animation.registry.DocType;
-import cn.anecansaitin.hm.api.animation.registry.TypeRegistry;
+import cn.anecansaitin.hm.api.animation.registry.DocTypeRegistry;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.DataResult;
 import com.mojang.serialization.MapCodec;
@@ -13,7 +13,7 @@ public interface IdDocObject extends DocObject {
     DocId id();
 
     @SuppressWarnings("unchecked")
-    static MapCodec<IdDocObject> mapCodec(TypeRegistry registry) {
+    static MapCodec<IdDocObject> mapCodec(DocTypeRegistry registry) {
         return new KeyDispatchCodec<>(
                 DocType.mapCodec(registry),
                 obj -> DataResult.success(obj.type()),
@@ -28,12 +28,12 @@ public interface IdDocObject extends DocObject {
         );
     }
 
-    static Codec<IdDocObject> codec(TypeRegistry registry) {
+    static Codec<IdDocObject> codec(DocTypeRegistry registry) {
         return mapCodec(registry).codec();
     }
 
     @SuppressWarnings("unchecked")
-    static StreamCodec<RegistryFriendlyByteBuf, IdDocObject> streamCodec(TypeRegistry registry) {
+    static StreamCodec<RegistryFriendlyByteBuf, IdDocObject> streamCodec(DocTypeRegistry registry) {
         return DocType.streamCodec(registry).dispatch(
                 IdDocObject::type,
                 type -> {

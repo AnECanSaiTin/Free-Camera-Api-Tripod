@@ -1,15 +1,13 @@
-package cn.anecansaitin.hm.api.animation;
+package cn.anecansaitin.hm.api.animation.registry;
 
+import cn.anecansaitin.hm.Hm;
 import cn.anecansaitin.hm.api.DocObject;
 import cn.anecansaitin.hm.api.DocSet;
 import cn.anecansaitin.hm.api.animation.block.PlaybackRange;
-import cn.anecansaitin.hm.api.animation.registry.DocType;
-import cn.anecansaitin.hm.api.animation.registry.DocTypeCodec;
 import net.minecraft.resources.Identifier;
 
 public final class DocTypes {
-    public static final String MODID = "free_camera_api_tripod";
-    public static final DocType<DocSet<?>> DOC_SET;
+    public static final DocType<DocSet<?, ?>> DOC_SET;
     public static final DocType<PlaybackRange.Auto> PLAYBACK_RANGE_AUTO;
     public static final DocType<PlaybackRange.Manual> PLAYBACK_RANGE_MANUAL;
 
@@ -20,11 +18,11 @@ public final class DocTypes {
     }
 
     private static <T extends DocObject> DocType<T> docType(Class<?> clazz, DocTypeCodec<T> codec) {
-        return new DocType<>(Identifier.fromNamespaceAndPath(MODID, toSnakeCase(clazz.getName())), clazz, codec);
+        return new DocType<>(Identifier.fromNamespaceAndPath(Hm.MODID, toSnakeCase(clazz.getName())), clazz, codec);
     }
 
     public static String toSnakeCase(String fullClassName) {
-        if (fullClassName == null || fullClassName.isEmpty()) {
+        if (fullClassName.isEmpty()) {
             return fullClassName;
         }
 
@@ -47,7 +45,7 @@ public final class DocTypes {
     }
 
     private static String camelToSnake(String camelCase) {
-        if (camelCase == null || camelCase.isEmpty()) {
+        if (camelCase.isEmpty()) {
             return camelCase;
         }
 
@@ -62,4 +60,6 @@ public final class DocTypes {
         // 转小写
         return step2.toLowerCase();
     }
+
+    private DocTypes() {}
 }

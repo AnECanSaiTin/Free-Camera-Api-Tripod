@@ -5,10 +5,10 @@ import cn.anecansaitin.hm.api.DocSet;
 public record Animation(
         int dataVersion,
         String name,
-        DocSet<?> tracks,
-        Object symbols,
+        DocSet<?, ?> tracks,
+        Symbols symbols,
         PlaybackRange playbackRange,
-        DocSet<?> rigs
+        DocSet<?, ?> rigs
         ) {
 
 }

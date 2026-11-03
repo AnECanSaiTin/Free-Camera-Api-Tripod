@@ -2,14 +2,12 @@ package cn.anecansaitin.hm.api.animation.block;
 
 import cn.anecansaitin.hm.api.Codecs;
 import cn.anecansaitin.hm.api.DocObject;
-import cn.anecansaitin.hm.api.animation.DocTypes;
+import cn.anecansaitin.hm.api.animation.registry.DocTypes;
 import cn.anecansaitin.hm.api.animation.registry.DocType;
 import com.mojang.datafixers.util.Pair;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.DataResult;
 import com.mojang.serialization.MapCodec;
-import com.mojang.serialization.codecs.KeyDispatchCodec;
-import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
